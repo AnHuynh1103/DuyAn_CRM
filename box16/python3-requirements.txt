@@ -1,0 +1,9 @@
+html3text==2020.1.16
+# Skype SDK
+SkPy==0.10.4
+
+# Google SDK
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+oauth2client

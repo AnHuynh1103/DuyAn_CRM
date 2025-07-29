@@ -1,0 +1,28 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "📜 Logs: Odoo",
+      "type": "shell",
+      "command": "docker logs -f 31f0abd50436",
+      "problemMatcher": []
+    },
+    {
+      "label": "📤 Sync /tmp from Odoo container",
+      "type": "shell",
+      "command": "docker cp 31f0abd50436:/tmp ./odoo_exports",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "📜 Logs: Nginx",
+      "type": "shell",
+      "command": "docker logs -f 9b6ddec35068",
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <menuitem id="menu_project_contents_root"
+              name="Contents"
+              parent="project.menu_main_pm"
+              action="action_project_contents"
+              sequence="50"/>
+</odoo>

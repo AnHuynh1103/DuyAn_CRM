@@ -1,0 +1,36 @@
+DAC_CRM/
+├── __init__.py
+├── __manifest__.py
+├── controllers/
+│ └── __init__.py
+├── data/
+│ ├── crm_stage_data.xml # Custom CRM stages
+│ ├── project_stage_data.xml # Custom Project stages (for Design, Production, Installation)
+│ └── mail_template_data.xml # Email templates for notifications
+├── models/
+│ ├── __init__.py
+│ ├── crm_lead.py # Inherit crm.lead
+│ ├── sale_order.py # Inherit sale.order
+│ ├── project_project.py # Inherit project.project (if needed for overall project types)
+│ ├── project_task.py # Inherit project.task (for design, production, installation tasks)
+│ └── account_move.py # Inherit account.move (for deposit/payment tracking)
+├── report/
+│ └── __init__.py
+├── security/
+│ ├── ir.model.access.csv
+│ └── custom_groups.xml # Optional: If new user groups are needed (e.g., Design Team)
+├── static/
+│ └── description/
+│ └── icon.png
+├── views/
+│ ├── assets.xml # For custom CSS/JS if needed
+│ ├── crm_lead_views.xml
+│ ├── sale_order_views.xml
+│ ├── project_task_views.xml
+│ ├── project_project_views.xml
+│ ├── account_move_views.xml
+│ └── custom_menus.xml # To add or modify menu items
+└── wizard/
+├── __init__.py
+└── send_design_to_sale_wizard.py # Wizard for Design team to send info to Sales
+└── send_design_to_sale_wizard_views.xml

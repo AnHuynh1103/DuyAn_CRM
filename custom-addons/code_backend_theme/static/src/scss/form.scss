@@ -1,0 +1,139 @@
+.o_form_view {
+  &:not(.o_field_highlight) .o_field_widget:not(.o_field_invalid):not(.o_field_highlight) .o_input:not(:hover):not(:focus) {
+      --o-input-border-color: transparent;
+      background-color: transparent ;
+      box-shadow: none;
+      border: 1px solid #ced4da ;
+
+  } 
+}
+
+body:not(.o_touch_device) .o_field_selection {
+  &:not(:hover):not(:focus-within) {
+      & select:not(:hover) {
+        // box-shadow: none;
+        border: 1px solid #ced4da ;
+
+      }
+  }
+}
+.form-check-input:not(:disabled), .form-check-input:not(:disabled) + label {
+        cursor: pointer;
+      box-shadow: none;
+
+}
+.text-danger {
+  color: #f46a6a !important;
+}
+
+.o_field_invalid:not(:focus-within) {
+  &.o_input, .o_input, &.o_form_label {
+      @extend .text-danger;
+  }
+  &.o_input, .o_input{
+    box-shadow: 0 0 0 3px rgba(255, 66, 104, 0.4) ;
+  }
+  &.o_input , .o_input{
+    box-shadow: 0 0 0 3px rgba(255, 66, 104, 0.4) ;
+  }
+}
+
+
+.o_group {
+  .o_td_label, .o_checkbox_optional_field > .o_form_label {
+      border-right: 1px solid #ddd;
+      width: 20px !important;
+  }
+}
+
+.o_form_view.o_xxl_form_view {
+  .o_form_sheet_bg {
+
+      > .o_form_sheet {
+          width: 100%;
+          max-width: 824px; 
+      }
+  }
+}
+
+.mt-4 {
+  margin-top: 1rem !important;
+}
+
+// Notebooks
+.o_notebook {
+  clear: both; // For the notebook not to have alongside floating elements
+  margin-top: $o-form-spacing-unit * 2;
+
+  .tab-content > .tab-pane {
+      padding: $o-horizontal-padding 0;
+      border-top: 1px solid black;
+      >.oe_form_field {
+          >.note-editable {
+              border-width: 0;
+              padding: 0;
+              min-height: 180px;
+          }
+          &.oe-bordered-editor>.note-editable {
+              border-width: 1px;
+              padding: 4px 40px 4px 4px;
+          }
+      }
+  }
+}
+
+.o_horizontal_separator {
+  color: #0E21A0!important;
+}
+
+.text-900 {
+  min-width: 120px !important;
+}
+
+.o_form_view .cusform .o_group .o_wrap_label .o_form_label {
+  margin-left: 20%;
+}
+.cusform .row {
+  --gutter-x:   0px;
+}
+
+.cusform{
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.o_form_view .cusform .o_form_label{
+  // margin-left: 20%;
+}
+.o_form_view .image_80 .o_form_label{
+  margin-left: 80%;
+
+}
+
+.o_form_view .cusform .o_horizontal_separator:not(:empty){
+  box-shadow: 0 10px 0 #e6e6e6; 
+}
+
+textarea#comment {
+  height: 300px;
+}
+
+.o_field_widget.o_readonly_modifier {
+  color: black;
+  font-weight: 600 !important;
+}
+
+.none_container > .o_form_sheet.position-relative.clearfix {
+  background-color: transparent;
+  border: none;
+  padding: 0;
+}
+.container {
+  max-width: none !important;
+  padding: 0px 0px 20px 0px !important;
+  width: 100%;
+}
+
+.o_field_widget.o_field_many2many_tags .badge .o_badge_text, .o_field_widget.o_field_many2many_tags .badge .o_tag_badge_text {
+  max-width: none !important;
+}
