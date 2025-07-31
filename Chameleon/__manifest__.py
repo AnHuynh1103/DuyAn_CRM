@@ -4,12 +4,12 @@
     'version': '1.0',
 
     # Loại module
-    'category': '1. MixDD POS',
+    'category': '1. Duy An ERP',
 
     # Độ ưu tiên module trong list module
     # Số càng nhỏ, độ ưu tiên càng cao
     #### Chấp nhận số âm
-    'sequence': 5,
+    'sequence': 1,
 
     # Mô tả module
     'summary': 'Module này để các bạn đổi màu theme theo ý muốn',
@@ -19,14 +19,14 @@
     # Module dựa trên các category nào
     # Khi hoạt động, category trong 'depends' phải được install
     ### rồi module này mới đc install
-    'depends': ['base_setup', "point_of_sale"],
+    'depends': ['base','web',],
 
     # Module có được phép install hay không
     # Nếu bạn thắc mắc nếu tắt thì làm sao để install
     # Bạn có thể dùng 'auto_install'
     'installable': True,
     'auto_install': False,
-    'application': False,
+    'application': True,
 
     # Import các file cấu hình
     # Những file ảnh hưởng trực tiếp đến giao diện (không phải file để chỉnh sửa giao diện)

@@ -1,6 +1,6 @@
 {
     # Tên module
-    'name': 'Home Menu',
+    'name': 'DAC ERP',
     'version': '1.0',
     
     # Loại module
@@ -12,16 +12,16 @@
     # Độ ưu tiên module trong list module
     # Số càng nhỏ, độ ưu tiên càng cao
     #### Chấp nhận số âm
-    'sequence': 0,
+    'sequence': -1,
     
     # Mô tả module
-    'summary': 'Home Menu',
+    'summary': 'Module này để quản lý hệ thống ERP của Duy An Company',
     'description': '',
     
     # Module dựa trên các category nào
     # Khi hoạt động, category trong 'depends' phải được install
     ### rồi module này mới đc install
-    'depends': ['base','web'],
+    'depends': ['base','web','home_menu','sale','account','product'],
     
     
     # Module có được phép install hay không
@@ -35,9 +35,9 @@
     # Những file ảnh hưởng trực tiếp đến giao diện (không phải file để chỉnh sửa giao diện)
     ## hoặc hệ thống (file group, phân quyền)
     'data': [
+        'security/user_access.xml',
         'security/ir.model.access.csv',
-        'views/home_menu.xml',
-        'views/menu_item.xml',
+        'views/sale_order_view.xml',
     ],
 
     # Import các file cấu hình (chỉ gọi từ folder 'static')
@@ -47,8 +47,7 @@
     ## + t
     'assets': {  
         'web.assets_backend': [
-            'home_menu/static/src/js/backend/**/*',
-            'home_menu/static/src/xml/backend/**/*',
+            'dac_erp/static/src/css/row_form_order_custom.css',
         ],
     },
     'license': 'LGPL-3',

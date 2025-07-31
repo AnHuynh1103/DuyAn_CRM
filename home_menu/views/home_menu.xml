@@ -7,8 +7,8 @@
                 <form string="Trang chủ" create="0" edit="0" delete="0">
                     <sheet>
                         <div style="text-align: center; margin-top: 10px;">
-                            <h1>Chào mừng đến với E - Wallet T4Tek</h1>
-                            <img src="/home_menu/static/src/img/home_welcome.png" style="width: 200px; margin-bottom: 30px; margin-top: 30px;"/>
+                            <h1>Chào mừng đến với Duy An Company</h1>
+                            <img src="/home_menu/static/src/img/DAC_logo.png" style="width: 200px; margin-bottom: 30px; margin-top: 30px;"/>
                         </div>
                     </sheet>
                 </form>
