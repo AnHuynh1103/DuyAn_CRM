@@ -1,0 +1,29 @@
+<odoo>
+    <record id="project_task_view_form_custom_dac" model="ir.ui.view">
+        <field name="name">project.task.form.custom.dac</field>
+        <field name="model">project.task</field>
+        <field name="inherit_id" ref="project.view_task_form2"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="before">
+                <group string="Thông tin cho Sales (Từ Thiết kế)"
+                       name="group_design_for_sale_info_dac">
+                       <!-- attrs="{'invisible': [('project_id.x_project_type', '!=', 'design')]}"> -->
+                    <field name="task_currency_id" invisible="1"/>
+                    <field name="x_internal_estimated_cost" widget="monetary" options="{'currency_field': 'task_currency_id'}"/>
+                    <field name="x_design_notes_for_sale"/>
+                    <button name="action_send_quotation_info_to_sale"
+                            string="Gửi Thông tin cho Sales"
+                            type="object" class="oe_highlight"
+                            help="Cập nhật chi phí và ghi chú lên Cơ hội CRM liên quan, thông báo cho Salesperson và chuyển giai đoạn CRM."
+                            confirm="Bạn có chắc muốn gửi thông tin này cho bộ phận Sales không?"
+                            groups="project.group_project_manager"
+                            />
+                </group>
+            </xpath>
+             <xpath expr="//field[@name='stage_id']" position="attributes">
+                <attribute name="domain">[('project_ids', 'in', project_id)]</attribute>
+                <attribute name="context">{'default_project_ids': project_id}</attribute>
+            </xpath>
+        </field>
+    </record>
+</odoo>

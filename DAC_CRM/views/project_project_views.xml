@@ -1,0 +1,54 @@
+<odoo>
+    <record id="project_project_view_form_custom_dac" model="ir.ui.view">
+        <field name="name">project.project.form.custom.dac</field>
+        <field name="model">project.project</field>
+        <field name="inherit_id" ref="project.edit_project"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='partner_id']" position="before">
+                 <field name="x_project_type" widget="radio" options="{'horizontal': true}"/>
+            </xpath>
+            <xpath expr="//field[@name='partner_id']" position="after">
+                <field name="crm_lead_id" readonly="1"
+                       attrs="{'invisible': ['|', ('crm_lead_id', '=', False), ('x_project_type', '!=', 'design')]}"/>
+                <field name="sale_order_id" readonly="1"
+                       attrs="{'invisible': ['|', ('sale_order_id', '=', False), ('x_project_type', 'in', ['design'])]}"/>
+            </xpath>
+            <xpath expr="//field[@name='stage_id']" position="attributes">
+                <attribute name="domain">[]</attribute> <attribute name="context">{
+                    'default_project_ids': [active_id],
+                    'project_type_stages_domain': x_project_type,
+                }</attribute>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="action_dac_design_projects" model="ir.actions.act_window">
+        <field name="name">Dự án Thiết kế và Khảo sát</field>
+        <field name="res_model">project.project</field>
+        <field name="view_mode">kanban,tree,form,activity</field>
+        <field name="domain">[('x_project_type', '=', 'design')]</field>
+        <field name="context">{'default_x_project_type': 'design'}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Tạo một Dự án Thiết kế mới!
+            </p>
+        </field>
+    </record>
+
+    <record id="action_dac_production_projects" model="ir.actions.act_window">
+        <field name="name">Dự án Sản xuất</field>
+        <field name="res_model">project.project</field>
+        <field name="view_mode">kanban,tree,form,activity</field>
+        <field name="domain">[('x_project_type', '=', 'production')]</field>
+        <field name="context">{'default_x_project_type': 'production'}</field>
+    </record>
+
+    <record id="action_dac_installation_projects" model="ir.actions.act_window">
+        <field name="name">Dự án Thi công và Lắp đặt</field>
+        <field name="res_model">project.project</field>
+        <field name="view_mode">kanban,tree,form,activity</field>
+        <field name="domain">[('x_project_type', '=', 'installation')]</field>
+        <field name="context">{'default_x_project_type': 'installation'}</field>
+    </record>
+
+</odoo>

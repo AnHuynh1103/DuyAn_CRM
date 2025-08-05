@@ -1,0 +1,85 @@
+<odoo>
+    <data noupdate="1">
+        <record id="project_task_type_design_new" model="project.task.type">
+            <field name="name">Mới (Thiết kế)</field>
+            <field name="sequence">1</field>
+            <field name="project_ids" eval="[(6, 0, [])]"/> 
+        </record>
+        <record id="project_task_type_design_survey" model="project.task.type">
+            <field name="name">Khảo sát</field>
+            <field name="sequence">5</field>
+        </record>
+        <record id="project_task_type_design_check_file" model="project.task.type">
+            <field name="name">Kiểm tra File</field>
+            <field name="sequence">10</field>
+        </record>
+        <record id="project_task_type_design_in_progress" model="project.task.type">
+            <field name="name">Đang Thiết kế</field>
+            <field name="sequence">15</field>
+        </record>
+        <record id="project_task_type_design_internal_review" model="project.task.type">
+            <field name="name">Chờ Duyệt Nội bộ (TK)</field>
+            <field name="sequence">20</field>
+            <field name="fold" eval="True"/>
+        </record>
+        <record id="project_task_type_design_info_sent" model="project.task.type">
+            <field name="name">Đã gửi BG cho Sales</field>
+            <field name="sequence">25</field>
+        </record>
+        <record id="project_task_type_design_completed" model="project.task.type">
+            <field name="name">Hoàn thành (Thiết kế)</field>
+            <field name="sequence">30</field>
+            <field name="is_closed" eval="True"/> 
+        </record>
+
+        <record id="project_task_type_production_new" model="project.task.type">
+            <field name="name">Mới (Sản xuất)</field>
+            <field name="sequence">100</field>
+        </record>
+        <record id="project_task_type_production_in_progress" model="project.task.type">
+            <field name="name">Đang Sản xuất</field>
+            <field name="sequence">105</field>
+        </record>
+        <record id="project_task_type_production_qc" model="project.task.type">
+            <field name="name">Kiểm tra Chất lượng (SX)</field>
+            <field name="sequence">110</field>
+            <field name="fold" eval="True"/>
+        </record>
+        <record id="project_task_type_production_ready" model="project.task.type">
+            <field name="name">Sẵn sàng Giao/Thi công</field>
+            <field name="sequence">115</field>
+        </record>
+        <record id="project_task_type_production_completed" model="project.task.type">
+            <field name="name">Hoàn thành (Sản xuất)</field>
+            <field name="sequence">120</field>
+            <field name="is_closed" eval="True"/>
+        </record>
+
+        <record id="project_task_type_installation_new" model="project.task.type">
+            <field name="name">Mới (Thi công)</field>
+            <field name="sequence">200</field>
+        </record>
+        <record id="project_task_type_installation_preparation" model="project.task.type">
+            <field name="name">Chuẩn bị Thi công</field>
+            <field name="sequence">205</field>
+        </record>
+        <record id="project_task_type_installation_in_progress" model="project.task.type">
+            <field name="name">Đang Thi công</field>
+            <field name="sequence">210</field>
+        </record>
+        <record id="project_task_type_installation_acceptance" model="project.task.type">
+            <field name="name">Chờ Nghiệm thu</field>
+            <field name="sequence">215</field>
+            <field name="fold" eval="True"/>
+        </record>
+        <record id="project_task_type_installation_completed" model="project.task.type">
+            <field name="name">Hoàn thành (Thi công)</field>
+            <field name="sequence">220</field>
+            <field name="is_closed" eval="True"/>
+        </record>
+        <record id="project_task_type_installation_delivery_3rd_party" model="project.task.type">
+            <field name="name">Giao hàng (Bên T3)</field>
+            <field name="sequence">225</field>
+        </record>
+    </data>
+</odoo>

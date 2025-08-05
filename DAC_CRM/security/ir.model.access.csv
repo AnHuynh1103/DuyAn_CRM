@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_crm_lead_custom_dac,crm.lead.custom.dac,model_crm_lead,base.group_user,1,1,1,1
+access_project_project_custom_dac,project.project.custom.dac,model_project_project,base.group_user,1,1,1,1
+access_project_task_custom_dac,project.task.custom.dac,model_project_task,base.group_user,1,1,1,1
+access_sale_order_custom_dac,sale.order.custom.dac,model_sale_order,sales_team.group_sale_salesman,1,1,1,1

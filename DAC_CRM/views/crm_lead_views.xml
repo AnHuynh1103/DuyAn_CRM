@@ -1,0 +1,64 @@
+<odoo>
+    <record id="crm_lead_view_form_custom_dac" model="ir.ui.view">
+        <field name="name">crm.lead.form.custom.dac</field>
+        <field name="model">crm.lead</field>
+        <field name="inherit_id" ref="crm.crm_lead_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header" position="inside">
+                 <button name="action_create_design_project"
+                         string="Yêu cầu Thiết kế/KS"
+                         type="object"
+                         class="oe_highlight"
+                         attrs="{'invisible': ['|', ('type', '=', 'lead'), ('x_design_project_id', '!=', False)]}"
+                         help="Tạo một dự án mới cho việc thiết kế hoặc khảo sát dựa trên thông tin hiện tại."
+                         groups="project.group_project_user"/> </xpath>
+            <xpath expr="//notebook" position="before">
+                 <group string="Thông tin Thiết kế và Khảo sát (DAC)" name="group_design_survey_info_dac">
+                     <group>
+                        <field name="x_has_design_file"/>
+                        <field name="x_survey_required" attrs="{'invisible': [('x_has_design_file', '=', True)]}"/>
+                     </group>
+                     <group>
+                        <field name="x_design_project_id"
+                               attrs="{'invisible': [('x_design_project_id', '=', False)]}"
+                               context="{'form_view_ref':'project.edit_project', 'default_x_project_type':'design'}"
+                               options="{'no_create': True, 'no_open': False}"/>
+                        <button name="action_create_design_project"
+                                string="Tạo Dự án TK/KS"
+                                type="object"
+                                class="oe_highlight"
+                                attrs="{'invisible': [('x_design_project_id', '!=', False)]}"
+                                groups="project.group_project_user"/>
+                        <button name="action_view_design_project"
+                                string="Xem Dự án TK"
+                                type="object"
+                                class="oe_link"
+                                attrs="{'invisible': [('x_design_project_id', '=', False)]}"
+                                groups="project.group_project_user"/>
+                     </group>
+                 </group>
+                 <group string="Thông tin Báo giá Nội bộ (từ Thiết kế)" name="group_internal_quotation_info_dac"
+                        attrs="{'invisible': [('x_design_project_id', '=', False)]}">
+                    <field name="x_internal_quotation_received" readonly="1"/>
+                    <field name="lead_currency_id" invisible="1"/>
+                    <field name="x_internal_estimated_cost" widget="monetary" options="{'currency_field': 'lead_currency_id'}" readonly="1"/>
+                 </group>
+            </xpath>
+            <xpath expr="//field[@name='team_id']" position="after"> <field name="order_ids" string="Đơn hàng" readonly="1"
+                       attrs="{'invisible': [('order_ids', '=', [])]}" widget="many2many_tags"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="crm_lead_view_tree_custom_dac" model="ir.ui.view">
+        <field name="name">crm.lead.tree.custom.dac</field>
+        <field name="model">crm.lead</field>
+        <field name="inherit_id" ref="crm.crm_case_tree_view_oppor"/>
+        <field name="arch" type="xml">
+            <field name="stage_id" position="after">
+                <field name="x_design_project_id" optional="show"/>
+                <field name="x_internal_quotation_received" optional="hide"/>
+            </field>
+        </field>
+    </record>
+</odoo>

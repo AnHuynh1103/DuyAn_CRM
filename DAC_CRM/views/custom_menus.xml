@@ -1,0 +1,31 @@
+<odoo>
+    <menuitem id="menu_dac_workflow_root"
+              name="DAC Workflow"
+              sequence="5"
+              web_icon="DAC_CRM,static/description/icon.png" groups="base.group_user"/>
+
+    <menuitem id="menu_dac_design_projects"
+              name="Dự án Thiết kế &amp; KS"
+              parent="menu_dac_workflow_root"
+              action="DAC_CRM.action_dac_design_projects" sequence="10"
+              groups="project.group_project_user"/>
+
+    <menuitem id="menu_dac_production_projects"
+              name="Dự án Sản xuất"
+              parent="menu_dac_workflow_root"
+              action="DAC_CRM.action_dac_production_projects" sequence="20"
+              groups="project.group_project_user"/>
+              <menuitem id="menu_dac_installation_projects"
+              name="Dự án Thi công"
+              parent="menu_dac_workflow_root"
+              action="DAC_CRM.action_dac_installation_projects" sequence="30"
+              groups="project.group_project_user"/>
+
+    <!-- <menuitem id="menu_dac_crm_opportunities"
+              name="DAC Opportunities"
+              parent="menu_dac_workflow_root"
+              action="crm.crm_opportunity_report_action_main" 
+              sequence="5"
+              groups="sales_team.group_sale_salesman"/> -->
+
+</odoo>

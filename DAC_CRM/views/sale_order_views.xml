@@ -1,0 +1,45 @@
+<odoo>
+    <record id="sale_order_view_form_custom_dac" model="ir.ui.view">
+        <field name="name">sale.order.form.custom.dac</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='payment_term_id']" position="after">
+                <field name="x_design_project_id"
+                       attrs="{'readonly': [('state', 'in', ('sale', 'done', 'cancel'))]}"
+                       context="{'default_x_project_type':'design'}"
+                       options="{'no_create': True}"/>
+            </xpath>
+            <xpath expr="//notebook" position="inside">
+                <page string="Thông tin Dự án và Sản xuất (DAC)" name="page_project_production_info_dac">
+                    <group>
+                        <group string="Dự án Liên quan">
+                            <field name="x_production_project_id" readonly="1"/>
+                            <button name="action_create_production_request"
+                                 string="Yêu cầu Sản xuất"
+                                 type="object" class="oe_highlight"
+                                 attrs="{'invisible': ['|', '|', ('state', 'not in', ['sale', 'done']), ('x_is_deposit_fully_paid', '=', False), ('x_production_project_id', '!=', False)]}"
+                                 help="Tạo dự án sản xuất sau khi đã nhận đủ cọc."
+                                 groups="sales_team.group_sale_manager,project.group_project_manager"/>
+                            <field name="x_installation_project_id" readonly="1"/>
+                             <button name="action_create_installation_request"
+                                 string="Yêu cầu Thi công"
+                                 type="object" class="oe_highlight"
+                                 attrs="{'invisible': ['|', ('state', 'not in', ['sale', 'done']), ('x_installation_project_id', '!=', False)]}"
+                                 help="Tạo dự án thi công."
+                                 groups="sales_team.group_sale_manager,project.group_project_manager"/>
+                        </group>
+                        <group string="Thông tin Cọc">
+                            <field name="x_deposit_invoice_ids" widget="many2many_tags"
+                                   options="{'no_create': True}"
+                                   context="{'default_move_type': 'out_invoice', 'move_type': 'out_invoice'}"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="x_deposit_amount_received" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                            <field name="x_is_deposit_fully_paid"/>
+                        </group>
+                    </group>
+                </page>
+            </xpath>
+            </field>
+    </record>
+</odoo>

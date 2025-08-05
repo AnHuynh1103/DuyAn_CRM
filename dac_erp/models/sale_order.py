@@ -1,0 +1,1076 @@
+from odoo import models, fields, api
+from odoo.exceptions import UserError
+import logging
+
+_logger = logging.getLogger(__name__)
+
+class SaleOrder(models.Model):
+    _inherit = 'sale.order'
+
+    order_state_custom = fields.Selection([
+        ('quotation', 'Báo giá'),
+        ('deposit', 'Đặt cọc'),
+        ('production', 'Sản xuất'),
+        ('delivery', 'Giao hàng'),
+        ('payment', 'Thu tiền')
+    ], string='Trạng thái đơn hàng', default='quotation')
+
+    date = fields.Date(string='Ngày đơn hàng')
+
+    # Trạng thái xác nhận
+    is_quotation_confirmed = fields.Boolean(string="Đã xác nhận báo giá", default=False)
+    is_deposit_confirmed = fields.Boolean(string="Đã xác nhận đặt cọc", default=False)
+    is_production_confirmed = fields.Boolean(string="Đã xác nhận sản xuất", default=False)
+    is_delivery_confirmed = fields.Boolean(string="Đã xác nhận giao hàng", default=False)
+    is_payment_confirmed = fields.Boolean(string="Đã xác nhận thanh toán", default=False)
+
+    # Đặt cọc
+    has_deposit = fields.Boolean(string="Có đặt cọc?", default=False)
+    deposit_amount = fields.Float(string="Tiền cọc", default=0.0)
+    
+    # Tiến trình sản xuất
+    production_deadline = fields.Date(string="Deadline sản xuất")
+    
+    # Tiến trình giao hàng
+    delivery_address = fields.Text(string="Địa chỉ giao hàng")
+
+    # Trạng thái hoàn thành đơn hàng
+    is_order_completed = fields.Boolean(string="Đơn hàng đã hoàn thành", default=False)
+    
+    # Thông tin báo giá mới nhất để hiển thị ở đầu list
+    latest_quotation_info = fields.Char(
+        string="Báo giá mới nhất",
+        compute="_compute_latest_quotation_info",
+        store=False
+    )
+    
+    # Kiểm tra tất cả hóa đơn đã thanh toán
+    all_invoices_paid = fields.Boolean(
+        string="Tất cả hóa đơn đã thanh toán",
+        compute="_compute_all_invoices_paid",
+        store=False
+    )
+    
+    # Số tiền còn lại cần thu (hiển thị cho user)
+    remaining_amount_display = fields.Monetary(
+        string="Số tiền còn lại",
+        compute="_compute_remaining_amount_display",
+        currency_field='currency_id',
+        store=False
+    )
+    
+    # Tổng tiền cọc đã thanh toán
+    total_deposit_paid = fields.Monetary(
+        string="Cọc đã thanh toán",
+        compute="_compute_total_deposit_paid",
+        currency_field='currency_id',
+        store=False
+    )
+    
+    # Số tiền sản phẩm gốc (chưa trừ cọc)
+    amount_untaxed_original = fields.Monetary(
+        string="Thành tiền",
+        compute="_compute_amount_untaxed_original",
+        currency_field='currency_id',
+        store=False
+    )
+
+    # Computed field để tự động kiểm tra và thêm dòng đặt cọc
+    auto_check_deposit = fields.Boolean(string="Auto Check Deposit", compute="_compute_auto_check_deposit", store=False)
+
+    @api.onchange('partner_id')
+    def _onchange_partner_id_address(self):
+        """Tự động điền địa chỉ giao hàng từ khách hàng"""
+        if self.partner_id and not self.delivery_address:
+            # Tìm địa chỉ delivery của partner
+            delivery_partner = self.partner_id.child_ids.filtered(lambda c: c.type == 'delivery')
+            if delivery_partner:
+                # Sử dụng địa chỉ delivery đầu tiên
+                partner = delivery_partner[0]
+            else:
+                # Fallback: sử dụng địa chỉ chính của partner
+                partner = self.partner_id
+            
+            # Tạo địa chỉ đầy đủ
+            address_parts = []
+            if partner.street:
+                address_parts.append(partner.street)
+            if partner.street2:
+                address_parts.append(partner.street2)
+            if partner.city:
+                address_parts.append(partner.city)
+            if partner.state_id:
+                address_parts.append(partner.state_id.name)
+            if partner.country_id:
+                address_parts.append(partner.country_id.name)
+            
+            if address_parts:
+                self.delivery_address = ', '.join(address_parts)
+
+    @api.depends('order_line', 'order_line.price_unit', 'order_line.product_uom_qty')
+    def _compute_total_deposit_paid(self):
+        """Tính tổng tiền cọc đã thanh toán từ hóa đơn"""
+        for order in self:
+            deposit_invoices = self.env['account.move'].search([
+                ('move_type', '=', 'out_invoice'),
+                ('invoice_origin', '=', order.name),
+                ('dac_deposit_invoice', '=', True),
+                ('payment_state', '=', 'paid')
+            ])
+            order.total_deposit_paid = sum(deposit_invoices.mapped('amount_total'))
+
+    @api.depends('order_line', 'order_line.price_unit', 'order_line.product_uom_qty')
+    def _compute_amount_untaxed_original(self):
+        """Tính số tiền sản phẩm gốc (chỉ dòng dương, bỏ qua dòng cọc âm)"""
+        for order in self:
+            # Chỉ lấy dòng sản phẩm có giá dương (bỏ qua dòng cọc âm)
+            product_lines = order.order_line.filtered(lambda l: not l.display_type and l.price_unit >= 0)
+            # Tính rõ ràng: price_unit * quantity (chưa tính thuế, chưa trừ cọc)
+            total = 0.0
+            for line in product_lines:
+                line_total = line.price_unit * line.product_uom_qty
+                if line.discount:
+                    line_total = line_total * (1 - line.discount / 100)
+                total += line_total
+            order.amount_untaxed_original = total
+
+    @api.depends('order_line', 'order_line.price_unit', 'order_line.product_uom_qty', 'total_deposit_paid', 'is_payment_confirmed', 'amount_untaxed_original')
+    def _compute_remaining_amount_display(self):
+        """Tính số tiền còn lại cần thu để hiển thị cho user"""
+        for order in self:
+            if order.is_payment_confirmed and order.is_order_completed:
+                # Đã hoàn thành -> hiển thị 0
+                order.remaining_amount_display = 0.0
+            else:
+                # Sử dụng amount_untaxed_original thay vì tính lại
+                remaining = order.amount_untaxed_original - order.total_deposit_paid
+                order.remaining_amount_display = max(remaining, 0.0)  # Không để âm
+
+    @api.depends('name', 'create_date', 'order_state_custom', 'partner_id')
+    def _compute_latest_quotation_info(self):
+        """Tính thông tin báo giá mới nhất để hiển thị ở đầu list"""
+        for order in self:
+            if order.create_date:
+                create_date_str = order.create_date.strftime('%d/%m/%Y')
+                order.latest_quotation_info = f"{order.name} - {create_date_str}"
+            else:
+                order.latest_quotation_info = order.name or "Chưa có tên"
+
+    @api.depends('order_line', 'order_line.product_id', 'order_line.price_unit')
+    def _compute_auto_check_deposit(self):
+        """Kiểm tra và tự động thêm dòng đặt cọc nếu có hóa đơn cọc đã thanh toán"""
+        for order in self:
+            # Tìm hóa đơn đặt cọc đã thanh toán
+            deposit_invoices = self.env['account.move'].search([
+                ('move_type', '=', 'out_invoice'),
+                ('invoice_origin', '=', order.name),
+                ('dac_deposit_invoice', '=', True),
+                ('payment_state', '=', 'paid')
+            ])
+            
+            if deposit_invoices:
+                # Kiểm tra đã có dòng đặt cọc trong order_line chưa
+                product = self.env['product.product'].search([('default_code', '=', 'DEPOSIT')], limit=1)
+                if product:
+                    deposit_line = order.order_line.filtered(lambda l: l.product_id == product and l.price_unit < 0)
+                    if not deposit_line:
+                        # Tự động thêm dòng đặt cọc
+                        deposit_amount = abs(deposit_invoices[0].amount_total)
+                        order.add_deposit_order_line(deposit_amount, invoice=deposit_invoices[0])
+            
+            order.auto_check_deposit = True
+
+    def read(self, fields=None, load='_classic_read'):
+        """Override read để kiểm tra và thêm dòng đặt cọc khi cần thiết"""
+        result = super().read(fields, load)
+        
+        # Chỉ kiểm tra khi đọc toàn bộ hoặc đọc order_line
+        if not fields or 'order_line' in fields or any('order_line' in str(f) for f in fields):
+            for record in self:
+                # Kiểm tra có hóa đơn cọc đã thanh toán không
+                deposit_invoices = self.env['account.move'].search([
+                    ('move_type', '=', 'out_invoice'),
+                    ('invoice_origin', '=', record.name),
+                    ('dac_deposit_invoice', '=', True),
+                    ('payment_state', '=', 'paid')
+                ])
+                if deposit_invoices:
+                    # Kiểm tra đã có dòng đặt cọc chưa
+                    deposit_line = record.order_line.filtered(lambda l: not l.display_type and l.price_unit < 0)
+                    if not deposit_line:
+                        _logger.info(f"Auto-sync: Thêm dòng đặt cọc cho order {record.name} khi đọc dữ liệu")
+                        deposit_amount = abs(deposit_invoices[0].amount_total)
+                        record.add_deposit_order_line(deposit_amount, invoice=deposit_invoices[0])
+                        
+                        # Force reload để đảm bảo UI cập nhật (Odoo 18 compatible)
+                        record.invalidate_recordset()
+                        
+        return result
+
+    def write(self, vals):
+        """Override write để trigger kiểm tra deposit khi cần"""
+        result = super().write(vals)
+        
+        # Nếu có thay đổi order_line, kiểm tra lại deposit
+        if 'order_line' in vals:
+            for record in self:
+                record._auto_sync_deposit_line()
+                
+        return result
+
+    def _auto_sync_deposit_line(self):
+        """Tự động đồng bộ dòng đặt cọc"""
+        deposit_invoices = self.env['account.move'].search([
+            ('move_type', '=', 'out_invoice'),
+            ('invoice_origin', '=', self.name),
+            ('dac_deposit_invoice', '=', True),
+            ('payment_state', '=', 'paid')
+        ])
+        
+        if deposit_invoices:
+            existing_deposit_line = self.order_line.filtered(lambda l: not l.display_type and l.price_unit < 0)
+            if not existing_deposit_line:
+                _logger.info(f"Auto-sync: Thêm dòng đặt cọc cho order {self.name}")
+                deposit_amount = abs(deposit_invoices[0].amount_total)
+                self.add_deposit_order_line(deposit_amount, invoice=deposit_invoices[0])
+
+    @api.model
+    def default_get(self, fields_list):
+        """Override để trigger kiểm tra deposit khi tạo mới hoặc load form"""
+        result = super().default_get(fields_list)
+        return result
+
+    def _check_auto_deposit_on_load(self):
+        """Kiểm tra tự động khi load record"""
+        self.check_and_add_deposit_line()
+
+    def action_save_custom(self):
+        return True
+    
+    
+    def action_back_custom_step(self):
+        """Quay lại xem tiến trình trước đó - CHỈ ĐỂ XEM, KHÔNG THAY ĐỔI TRẠNG THÁI XÁC NHẬN"""
+        state_order = ['quotation', 'deposit', 'production', 'delivery', 'payment']
+        for order in self:
+            if order.order_state_custom in state_order:
+                idx = state_order.index(order.order_state_custom)
+                if idx > 0:
+                    # CHỈ thay đổi trạng thái hiển thị, KHÔNG đụng đến các trạng thái xác nhận
+                    order.order_state_custom = state_order[idx - 1]
+                    # LƯU Ý: Không reset các trường is_*_confirmed
+        return True
+    
+
+    def action_next_step(self):
+        state_order = ['quotation', 'deposit', 'production', 'delivery', 'payment']
+        for order in self:
+            idx = state_order.index(order.order_state_custom)
+            # Kiểm tra xác nhận tiến trình hiện tại
+            confirmed_field = {
+                'quotation': 'is_quotation_confirmed',
+                'deposit': 'is_deposit_confirmed',
+                'production': 'is_production_confirmed',
+                'delivery': 'is_delivery_confirmed',
+                'payment': 'is_payment_confirmed',
+            }[order.order_state_custom]
+            if not getattr(order, confirmed_field):
+                raise UserError("Vui lòng xác nhận tiến trình hiện tại trước khi chuyển sang tiến trình tiếp theo!")
+            if idx < len(state_order) - 1:
+                order.order_state_custom = state_order[idx + 1]
+        return True
+    
+    def action_confirm_info(self):
+        state_order = ['quotation', 'deposit', 'production', 'delivery', 'payment']
+        for order in self:
+            idx = state_order.index(order.order_state_custom)
+            # Kiểm tra ở tiến trình đầu tiên (báo giá)
+            if order.order_state_custom == 'quotation':
+                # Chỉ tính dòng sản phẩm, không tính section/note
+                product_lines = order.order_line.filtered(lambda l: not l.display_type and l.product_id)
+                if not product_lines:
+                    raise UserError("Yêu cầu nhập sản phẩm trước khi xác nhận!")
+                order.is_quotation_confirmed = True
+            elif order.order_state_custom == 'production':
+                # Kiểm tra deadline sản xuất trước khi xác nhận
+                if not order.production_deadline:
+                    raise UserError("Vui lòng nhập 'Ngày hoàn tất' trước khi xác nhận sản xuất!")
+                order.is_production_confirmed = True
+            elif order.order_state_custom == 'delivery':
+                # Kiểm tra địa chỉ giao hàng trước khi xác nhận
+                if not order.delivery_address or not order.delivery_address.strip():
+                    raise UserError("Vui lòng nhập địa chỉ giao hàng trước khi xác nhận!")
+                order.is_delivery_confirmed = True
+            elif order.order_state_custom == 'payment':
+                order.is_payment_confirmed = True
+            
+            # CHỈ tự động chuyển tiến trình cho một số trạng thái cụ thể, KHÔNG áp dụng cho 'deposit'
+            if order.order_state_custom in ['quotation', 'production', 'delivery'] and idx < len(state_order) - 1:
+                order.order_state_custom = state_order[idx + 1]
+        return True
+
+    def action_proceed_to_production(self):
+        """Tiến hành sản xuất với 3 bước ràng buộc:
+        1. Đã lên cọc và thanh toán
+        2. Đã nhập ngày hoàn tất
+        3. Kiểm tra lại 2 điều kiện trên
+        """
+        for order in self:
+            if order.order_state_custom != 'deposit':
+                raise UserError("Chỉ có thể tiến hành sản xuất từ trạng thái đặt cọc!")
+            
+            if not order.is_deposit_confirmed:
+                raise UserError("Vui lòng xác nhận đặt cọc trước khi tiến hành sản xuất!")
+            
+            # RÀNG BUỘC 1: Kiểm tra đã thanh toán hóa đơn cọc
+            if not order.has_paid_deposit_invoice:
+                raise UserError("Vui lòng thanh toán hóa đơn đặt cọc trước khi tiến hành sản xuất!")
+            
+            # RÀNG BUỘC 2: Kiểm tra đã nhập ngày hoàn tất
+            if not order.production_deadline:
+                raise UserError("Vui lòng nhập 'Ngày hoàn tất' trước khi tiến hành sản xuất!")
+            
+            # RÀNG BUỘC 3: Double-check lại 2 điều kiện trên
+            deposit_invoices = self.env['account.move'].search([
+                ('move_type', '=', 'out_invoice'),
+                ('invoice_origin', '=', order.name),
+                ('dac_deposit_invoice', '=', True),
+                ('payment_state', '=', 'paid')
+            ])
+            
+            if not deposit_invoices:
+                raise UserError("Không tìm thấy hóa đơn cọc đã thanh toán!")
+            
+            # Chuyển sang trạng thái sản xuất
+            order.order_state_custom = 'production'
+            
+        return True
+
+    def action_deposit_invoice(self):
+        for order in self:
+            if order.is_deposit_confirmed:
+                raise UserError("Đặt cọc đã được xác nhận, không thể xác nhận lại!")
+            if order.deposit_amount <= 0:
+                raise UserError("Vui lòng nhập số tiền đặt cọc!")
+            
+            # KIỂM TRA HÓA ĐƠN CỌC ĐÃ TỒN TẠI TRƯỚC KHI TẠO MỚI
+            existing_deposit_invoices = self.env['account.move'].search([
+                ('move_type', '=', 'out_invoice'),
+                ('invoice_origin', '=', order.name),
+                ('dac_deposit_invoice', '=', True)
+            ])
+            
+            if existing_deposit_invoices:
+                # Phân loại hóa đơn theo trạng thái
+                draft_invoices = existing_deposit_invoices.filtered(lambda inv: inv.state == 'draft')
+                posted_unpaid_invoices = existing_deposit_invoices.filtered(lambda inv: inv.state == 'posted' and inv.payment_state != 'paid')
+                paid_invoices = existing_deposit_invoices.filtered(lambda inv: inv.payment_state == 'paid')
+                
+                if draft_invoices:
+                    # Có hóa đơn draft chưa xác nhận
+                    draft_names = [inv.name or f"Draft-{inv.id}" for inv in draft_invoices]
+                    raise UserError(f"Đã có hóa đơn cọc chưa xác nhận!\n"
+                                   f"Vui lòng xác nhận và thanh toán hóa đơn sau trước khi tạo mới:\n"
+                                   f"{', '.join(draft_names)}")
+                
+                elif posted_unpaid_invoices:
+                    # Có hóa đơn đã confirm nhưng chưa thanh toán
+                    unpaid_names = [inv.name or f"Invoice-{inv.id}" for inv in posted_unpaid_invoices]
+                    raise UserError(f"Đã có hóa đơn cọc chưa thanh toán!\n"
+                                   f"Vui lòng thanh toán hóa đơn sau trước khi tạo mới:\n"
+                                   f"{', '.join(unpaid_names)}")
+                
+                elif paid_invoices:
+                    # Có hóa đơn đã thanh toán -> không cho tạo thêm
+                    paid_names = [inv.name or f"Invoice-{inv.id}" for inv in paid_invoices]
+                    raise UserError(f"Đã có hóa đơn cọc đã thanh toán!\n"
+                                   f"Không thể tạo thêm hóa đơn cọc mới:\n"
+                                   f"{', '.join(paid_names)}")
+            
+            # Mở popup xác nhận (wizard)
+            return {
+                'type': 'ir.actions.act_window',
+                'res_model': 'deposit.confirm.wizard',
+                'view_mode': 'form',
+                'target': 'new',
+                'context': {'active_id': order.id},
+            }
+
+    def action_custom_view_deposit_invoice(self):
+        self.ensure_one()
+        action = self.env.ref('account.action_move_out_invoice_type').read()[0]
+        deposit_invoices = self.env['account.move'].search([
+            ('move_type', '=', 'out_invoice'),
+            ('invoice_origin', '=', self.name),
+            ('dac_deposit_invoice', '=', True)
+        ])
+        action['domain'] = [('id', 'in', deposit_invoices.ids)]
+        action['context'] = {'create': False}
+        if len(deposit_invoices) == 1:
+            action['views'] = [(self.env.ref('account.view_move_form').id, 'form')]
+            action['res_id'] = deposit_invoices.id
+        return action
+
+    def action_view_all_invoices(self):
+        """Xem tất cả hóa đơn liên quan đến đơn hàng (cọc + thanh toán)"""
+        self.ensure_one()
+        action = self.env.ref('account.action_move_out_invoice_type').read()[0]
+        all_invoices = self.env['account.move'].search([
+            ('move_type', '=', 'out_invoice'),
+            ('invoice_origin', '=', self.name)
+        ])
+        action['domain'] = [('id', 'in', all_invoices.ids)]
+        action['context'] = {'create': False}
+        if len(all_invoices) == 1:
+            action['views'] = [(self.env.ref('account.view_move_form').id, 'form')]
+            action['res_id'] = all_invoices.id
+        else:
+            action['name'] = f'Hóa đơn - {self.name}'
+        return action
+    
+    def add_deposit_order_line(self, deposit_amount, invoice=None):
+        """
+        Thêm section 'Khoản cọc', note chi tiết hóa đơn, và dòng sản phẩm đặt cọc âm đúng chuẩn Odoo.
+        """
+        self.ensure_one()
+        _logger.info(f"=== BẮT ĐẦU THÊM DÒNG ĐẶT CỌC cho order {self.name} ===")
+        _logger.info(f"Số tiền cọc: {deposit_amount}")
+        _logger.info(f"Hóa đơn: {invoice.name if invoice else 'Không có'}")
+        
+        # Tìm hoặc tạo product đặt cọc
+        product = None
+        if invoice:
+            # Ưu tiên lấy sản phẩm từ hóa đơn đặt cọc
+            invoice_lines = invoice.invoice_line_ids.filtered(lambda l: not l.display_type and l.product_id)
+            if invoice_lines:
+                product = invoice_lines[0].product_id
+                _logger.info(f"Sử dụng sản phẩm từ hóa đơn: {product.name} (ID: {product.id})")
+        
+        if not product:
+            # Fallback: tìm hoặc tạo sản phẩm DEPOSIT
+            product = self.env['product.product'].search([('default_code', '=', 'DEPOSIT')], limit=1)
+            if not product:
+                _logger.info("Tạo sản phẩm DEPOSIT mới")
+                product = self.env['product.product'].create({
+                    'name': 'Đặt cọc',
+                    'default_code': 'DEPOSIT',
+                    'type': 'service',
+                    'sale_ok': True,
+                    'purchase_ok': False,
+                    'list_price': 0.0,
+                    'taxes_id': [(6, 0, [])],
+                })
+                _logger.info(f"Đã tạo sản phẩm DEPOSIT: {product.id}")
+            else:
+                _logger.info(f"Sử dụng sản phẩm DEPOSIT có sẵn: {product.id} - {product.name}")
+        
+        # Kiểm tra đã có dòng đặt cọc chưa (linh hoạt - kiểm tra tất cả dòng có giá âm)
+        existing_deposit_line = self.order_line.filtered(
+            lambda l: not l.display_type and l.price_unit < 0
+        )
+        if existing_deposit_line:
+            _logger.info(f"Đã có dòng đặt cọc trong order {self.name}, không thêm nữa")
+            for line in existing_deposit_line:
+                _logger.info(f"  - Dòng hiện có: {line.name}, Sản phẩm: {line.product_id.name}, Giá: {line.price_unit}")
+            return True
+        
+        _logger.info("Bắt đầu tạo các dòng order_line...")
+        
+        # Kiểm tra đã có section 'Khoản cọc' chưa
+        section_line = self.order_line.filtered(
+            lambda l: l.display_type == 'line_section' and 'cọc' in (l.name or '').lower()
+        )
+        if not section_line:
+            _logger.info("Tạo section 'Khoản cọc'")
+            section_line = self.order_line.create({
+                'order_id': self.id,
+                'display_type': 'line_section',
+                'name': 'Khoản cọc',
+                'sequence': 9999,  # Đặt cuối, Odoo sẽ tự sắp xếp lại
+            })
+            _logger.info(f"Đã tạo section: {section_line.id}")
+        else:
+            _logger.info("Section 'Khoản cọc' đã tồn tại")
+        
+        # Thêm dòng note chi tiết hóa đơn cọc
+        note_content = 'Tiền cọc'
+        if invoice:
+            note_content += f" (hóa đơn: {invoice.name} ngày {invoice.invoice_date.strftime('%d/%m/%Y') if invoice.invoice_date else ''})"
+        
+        _logger.info(f"Nội dung note: {note_content}")
+        
+        note_line = self.order_line.filtered(
+            lambda l: l.display_type == 'line_note' and note_content in (l.name or '')
+        )
+        if not note_line:
+            _logger.info("Tạo dòng note")
+            note_line = self.order_line.create({
+                'order_id': self.id,
+                'display_type': 'line_note',
+                'name': note_content,
+                'sequence': 10000,
+            })
+            _logger.info(f"Đã tạo note: {note_line.id}")
+        else:
+            _logger.info("Dòng note đã tồn tại")
+        
+        # Thêm dòng sản phẩm đặt cọc âm
+        _logger.info(f"Tạo dòng sản phẩm đặt cọc với giá: -{abs(deposit_amount)}")
+        deposit_line = self.order_line.create({
+            'order_id': self.id,
+            'product_id': product.id,
+            'name': 'Đặt cọc',
+            'product_uom_qty': 1,
+            'price_unit': -abs(deposit_amount),
+            'tax_id': [(6, 0, [])],
+            'display_type': False,
+            'sequence': 10001,
+        })
+        
+        _logger.info(f"Đã tạo dòng sản phẩm đặt cọc: {deposit_line.id}")
+        _logger.info(f"=== HOÀN THÀNH THÊM DÒNG ĐẶT CỌC {deposit_amount} vào order {self.name} ===")
+        return True
+    
+    
+    deposit_invoice_count = fields.Integer(string="Số hóa đơn đặt cọc", compute="_compute_deposit_invoice_count")
+    total_invoice_count = fields.Integer(string="Tổng số hóa đơn", compute="_compute_total_invoice_count")
+    has_paid_deposit_invoice = fields.Boolean(string="Có hóa đơn cọc đã thanh toán", compute="_compute_has_paid_deposit_invoice")
+    has_final_invoice = fields.Boolean(string="Có hóa đơn thanh toán cuối", compute="_compute_has_final_invoice")
+    has_paid_final_invoice = fields.Boolean(string="Có hóa đơn cuối đã thanh toán", compute="_compute_has_paid_final_invoice")
+
+    def _compute_deposit_invoice_count(self):
+        for order in self:
+            order.deposit_invoice_count = self.env['account.move'].search_count([
+                ('move_type', '=', 'out_invoice'),
+                ('invoice_origin', '=', order.name),
+                ('dac_deposit_invoice', '=', True)
+            ])
+
+    def _compute_total_invoice_count(self):
+        for order in self:
+            order.total_invoice_count = self.env['account.move'].search_count([
+                ('move_type', '=', 'out_invoice'),
+                ('invoice_origin', '=', order.name)
+            ])
+
+    def _compute_has_paid_deposit_invoice(self):
+        for order in self:
+            paid_count = self.env['account.move'].search_count([
+                ('move_type', '=', 'out_invoice'),
+                ('invoice_origin', '=', order.name),
+                ('dac_deposit_invoice', '=', True),
+                ('payment_state', '=', 'paid')
+            ])
+            order.has_paid_deposit_invoice = paid_count > 0
+            _logger.info(f"Order {order.name}: has_paid_deposit_invoice = {order.has_paid_deposit_invoice} (paid_count = {paid_count})")
+            
+            # BỎ LOGIC TỰ ĐỘNG SET is_order_completed TẠI ĐÂY - đã chuyển vào action_post của account.move
+
+    def _compute_has_final_invoice(self):
+        """Kiểm tra xem đã có hóa đơn thanh toán cuối chưa (hóa đơn không phải cọc)"""
+        for order in self:
+            final_invoice_count = self.env['account.move'].search_count([
+                ('move_type', '=', 'out_invoice'),
+                ('invoice_origin', '=', order.name),
+                ('dac_deposit_invoice', '=', False)  # Không phải hóa đơn cọc
+            ])
+            order.has_final_invoice = final_invoice_count > 0
+            _logger.info(f"Order {order.name}: has_final_invoice = {order.has_final_invoice} (count = {final_invoice_count})")
+
+    def _compute_has_paid_final_invoice(self):
+        """Kiểm tra xem đã có hóa đơn thanh toán cuối đã thanh toán chưa"""
+        for order in self:
+            paid_final_invoice_count = self.env['account.move'].search_count([
+                ('move_type', '=', 'out_invoice'),
+                ('invoice_origin', '=', order.name),
+                ('dac_deposit_invoice', '=', False),  # Không phải hóa đơn cọc
+                ('payment_state', '=', 'paid')
+            ])
+            order.has_paid_final_invoice = paid_final_invoice_count > 0
+            _logger.info(f"Order {order.name}: has_paid_final_invoice = {order.has_paid_final_invoice} (count = {paid_final_invoice_count})")
+
+    @api.depends('invoice_ids', 'invoice_ids.payment_state', 'name')
+    def _compute_all_invoices_paid(self):
+        """Kiểm tra xem tất cả hóa đơn của đơn hàng đã được thanh toán chưa"""
+        for order in self:
+            # SỬA: Search trực tiếp thay vì dựa vào relation để đảm bảo dữ liệu chính xác
+            order_invoices = self.env['account.move'].search([
+                ('move_type', '=', 'out_invoice'),
+                ('invoice_origin', '=', order.name),
+                ('state', '=', 'posted')
+            ])
+            
+            if not order_invoices:
+                # Nếu chưa có hóa đơn nào -> chưa hoàn thành
+                order.all_invoices_paid = False
+                unpaid_invoices = self.env['account.move']  # Empty recordset for logging
+            else:
+                # Kiểm tra tất cả hóa đơn đã thanh toán (paid) hay chưa
+                unpaid_invoices = order_invoices.filtered(lambda inv: inv.payment_state != 'paid')
+                order.all_invoices_paid = len(unpaid_invoices) == 0
+            
+            _logger.info(f"Order {order.name}: all_invoices_paid = {order.all_invoices_paid} "
+                        f"(invoices: {len(order_invoices)}, unpaid: {len(unpaid_invoices)})")
+            
+            # In chi tiết từng hóa đơn để debug
+            for inv in order_invoices:
+                _logger.info(f"  - Invoice {inv.name}: payment_state = {inv.payment_state}")
+            
+            # CHỈ TỰ ĐỘNG set is_order_completed khi có hóa đơn cuối đã thanh toán (không phải chỉ hóa đơn cọc)
+            if order.all_invoices_paid and order_invoices and not order.is_order_completed:
+                # Kiểm tra xem có hóa đơn cuối đã thanh toán không (không phải chỉ hóa đơn cọc)
+                final_invoices = order_invoices.filtered(lambda inv: not inv.dac_deposit_invoice)
+                if final_invoices:
+                    # Có hóa đơn cuối -> có thể set hoàn thành
+                    order.is_order_completed = True
+                    _logger.info(f"Tự động set is_order_completed = True cho order {order.name} - có hóa đơn cuối đã thanh toán")
+                else:
+                    # Chỉ có hóa đơn cọc -> KHÔNG set hoàn thành
+                    _logger.info(f"Order {order.name} chỉ có hóa đơn cọc đã thanh toán, không set hoàn thành")
+
+    def check_and_update_completion_status(self):
+        """OPTIMIZED: Kiểm tra và cập nhật trạng thái hoàn thành với minimal compute calls"""
+        for order in self:
+            _logger.info(f"OPTIMIZED CHECK: Processing order {order.name}")
+            
+            # SINGLE SEARCH: Tìm tất cả invoices của order cùng lúc
+            order_invoices = self.env['account.move'].search([
+                ('move_type', '=', 'out_invoice'),
+                ('invoice_origin', '=', order.name),
+                ('state', '=', 'posted')
+            ])
+            
+            if not order_invoices:
+                continue
+                
+            # EFFICIENT CHECK: Kiểm tra paid invoices một lần
+            paid_invoices = order_invoices.filtered(lambda inv: inv.payment_state == 'paid')
+            unpaid_invoices = order_invoices - paid_invoices
+            
+            # LOGIC: Kiểm tra có final invoice paid không
+            final_paid_invoices = paid_invoices.filtered(lambda inv: not inv.dac_deposit_invoice)
+            
+            # CHỈ UPDATE KHI CẦN THIẾT
+            if final_paid_invoices and not order.is_order_completed:
+                order.is_order_completed = True
+                _logger.info(f"OPTIMIZED CHECK: Set completed cho order {order.name}")
+            
+            # CHỈ INVALIDATE MỘT LẦN
+            order.invalidate_recordset()
+            
+        # Trả về action reload
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'reload',
+        }
+
+    def action_force_refresh_view(self):
+        """Force refresh view sau khi thanh toán"""
+        self.ensure_one()
+        
+        # Refresh tất cả computed fields
+        self._compute_all_invoices_paid()
+        self._compute_has_paid_final_invoice()
+        self._compute_remaining_amount_display()
+        self._compute_total_deposit_paid()
+        self.invalidate_recordset()
+        
+        # Kiểm tra và cập nhật trạng thái hoàn thành
+        self.check_and_update_completion_status()
+        
+        _logger.info(f"Force refresh view cho đơn hàng {self.name}")
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'reload',
+        }
+
+    @api.model
+    def poll_order_status(self, order_id):
+        """API để polling trạng thái đơn hàng - gọi từ JavaScript"""
+        try:
+            order = self.browse(order_id)
+            if order.exists():
+                # Force refresh computed fields
+                order._compute_all_invoices_paid()
+                order._compute_has_paid_final_invoice()
+                order._compute_remaining_amount_display()
+                order._compute_total_deposit_paid()
+                
+                # Kiểm tra và cập nhật trạng thái hoàn thành
+                if order.has_paid_final_invoice and not order.is_order_completed:
+                    order.is_order_completed = True
+                    order.invalidate_recordset()
+                    _logger.info(f"POLLING: Auto set is_order_completed = True cho order {order.name}")
+                
+                return {
+                    'success': True,
+                    'is_order_completed': order.is_order_completed,
+                    'has_paid_final_invoice': order.has_paid_final_invoice,
+                    'all_invoices_paid': order.all_invoices_paid,
+                    'remaining_amount': order.remaining_amount_display,
+                    'total_deposit_paid': order.total_deposit_paid,
+                }
+            else:
+                return {'success': False, 'error': 'Order not found'}
+        except Exception as e:
+            _logger.error(f"Lỗi khi polling order status {order_id}: {e}")
+            return {'success': False, 'error': str(e)}
+
+    @api.model
+    def force_check_completion_after_payment(self, invoice_id):
+        """Method để force check completion sau khi thanh toán - có thể gọi từ bên ngoài"""
+        try:
+            invoice = self.env['account.move'].browse(invoice_id)
+            if invoice.exists() and invoice.invoice_origin and invoice.payment_state == 'paid':
+                sale_order = self.search([('name', '=', invoice.invoice_origin)], limit=1)
+                if sale_order and not invoice.dac_deposit_invoice:  # Chỉ hóa đơn cuối
+                    _logger.info(f"FORCE CHECK: Checking completion for order {sale_order.name} after invoice {invoice.name} payment")
+                    result = sale_order.check_and_update_completion_status()
+                    sale_order.env.cr.commit()
+                    _logger.info(f"FORCE CHECK: Completed with result {result}")
+                    return True
+        except Exception as e:
+            _logger.error(f"FORCE CHECK: Error {e}")
+        return False
+
+    def check_and_add_deposit_line(self):
+        """Phương thức thủ công để kiểm tra và thêm dòng đặt cọc"""
+        _logger.info("=== BẮT ĐẦU KIỂM TRA VÀ THÊM DÒNG ĐẶT CỌC ===")
+        
+        for order in self:
+            _logger.info(f"Đang kiểm tra order: {order.name}")
+            
+            # Tìm hóa đơn đặt cọc
+            deposit_invoices = self.env['account.move'].search([
+                ('move_type', '=', 'out_invoice'),
+                ('invoice_origin', '=', order.name),
+                ('dac_deposit_invoice', '=', True),
+                ('payment_state', '=', 'paid')
+            ])
+            
+            _logger.info(f"Tìm thấy {len(deposit_invoices)} hóa đơn cọc đã thanh toán cho order {order.name}")
+            
+            if deposit_invoices:
+                for invoice in deposit_invoices:
+                    _logger.info(f"  - Hóa đơn: {invoice.name}, Số tiền: {invoice.amount_total}, Trạng thái thanh toán: {invoice.payment_state}")
+                
+                # Lấy sản phẩm từ hóa đơn đặt cọc đã có thay vì tạo mới
+                invoice_lines = deposit_invoices[0].invoice_line_ids.filtered(lambda l: not l.display_type and l.product_id)
+                if invoice_lines:
+                    product = invoice_lines[0].product_id
+                    _logger.info(f"Sử dụng sản phẩm từ hóa đơn cọc: {product.name} (ID: {product.id})")
+                else:
+                    # Fallback: tìm hoặc tạo sản phẩm DEPOSIT
+                    product = self.env['product.product'].search([('default_code', '=', 'DEPOSIT')], limit=1)
+                    if not product:
+                        _logger.info("Tạo sản phẩm DEPOSIT mới làm fallback")
+                        product = self.env['product.product'].create({
+                            'name': 'Đặt cọc',
+                            'default_code': 'DEPOSIT',
+                            'type': 'service',
+                            'sale_ok': True,
+                            'purchase_ok': False,
+                            'list_price': 0.0,
+                            'taxes_id': [(6, 0, [])],
+                        })
+                        _logger.info(f"Đã tạo sản phẩm DEPOSIT: {product.id}")
+                    else:
+                        _logger.info(f"Sử dụng sản phẩm DEPOSIT có sẵn: {product.id} - {product.name}")
+                
+                _logger.info(f"Sản phẩm sử dụng: {product.name} (ID: {product.id})")
+                
+                # Kiểm tra đã có dòng đặt cọc chưa (linh hoạt với bất kỳ sản phẩm nào có giá âm)
+                deposit_line = order.order_line.filtered(lambda l: not l.display_type and l.price_unit < 0)
+                _logger.info(f"Dòng đặt cọc hiện có: {len(deposit_line)} dòng")
+                
+                if deposit_line:
+                    for line in deposit_line:
+                        _logger.info(f"  - Dòng cọc: {line.name}, Sản phẩm: {line.product_id.name}, Giá: {line.price_unit}")
+                
+                if not deposit_line:
+                    deposit_amount = abs(deposit_invoices[0].amount_total)
+                    _logger.info(f"SẼ THÊM dòng đặt cọc với số tiền: {deposit_amount}")
+                    
+                    # Gọi hàm thêm dòng đặt cọc
+                    result = order.add_deposit_order_line(deposit_amount, invoice=deposit_invoices[0])
+                    _logger.info(f"Kết quả thêm dòng đặt cọc: {result}")
+                    
+                    # Hiển thị thông báo cho user
+                    return {
+                        'type': 'ir.actions.client',
+                        'tag': 'display_notification',
+                        'params': {
+                            'title': 'Thành công!',
+                            'message': f'Đã thêm dòng đặt cọc {deposit_amount:,.0f} đ vào đơn hàng {order.name}',
+                            'type': 'success',
+                            'sticky': False,
+                        }
+                    }
+                else:
+                    _logger.info("KHÔNG THÊM - Đã có dòng đặt cọc")
+                    return {
+                        'type': 'ir.actions.client',
+                        'tag': 'display_notification',
+                        'params': {
+                            'title': 'Thông báo',
+                            'message': f'Đơn hàng {order.name} đã đặt cọc',
+                            'type': 'info',
+                            'sticky': False,
+                        }
+                    }
+            else:
+                _logger.info("KHÔNG CÓ hóa đơn cọc đã thanh toán")
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {
+                        'title': 'Thông báo',
+                        'message': f'Đơn hàng {order.name} chưa có hóa đơn cọc đã thanh toán',
+                        'type': 'info',
+                        'sticky': False,
+                    }
+                }
+        
+        _logger.info("=== KẾT THÚC KIỂM TRA ===")
+        return True
+
+    def action_create_final_invoice(self):
+        """Tạo hóa đơn thanh toán cuối cùng (đã trừ tiền cọc)"""
+        self.ensure_one()
+        _logger.info(f"=== TẠO HÓA ĐƠN THANH TOÁN CUỐI CHO ORDER {self.name} ===")
+        
+        # KIỂM TRA TIỀN CỌC TRƯỚC: Đảm bảo double-check (defense in depth)
+        # Logic chính đã được kiểm tra ở nút "Lên cọc", đây chỉ là backup check
+        
+        # 1. Kiểm tra hóa đơn cọc draft (chưa confirm) - Backup check
+        draft_deposit_invoices = self.env['account.move'].search([
+            ('move_type', '=', 'out_invoice'),
+            ('invoice_origin', '=', self.name),
+            ('dac_deposit_invoice', '=', True),
+            ('state', '=', 'draft')
+        ])
+        
+        if draft_deposit_invoices:
+            # Lấy tên hóa đơn, với fallback cho draft chưa có name
+            draft_names = [inv.name or f"Draft-{inv.id}" for inv in draft_deposit_invoices]
+            _logger.warning(f"Phát hiện {len(draft_deposit_invoices)} hóa đơn cọc draft trong backup check: {draft_names}")
+            raise UserError(f"Phát hiện hóa đơn cọc chưa xác nhận!\n"
+                           f"Vui lòng xác nhận và thanh toán hóa đơn cọc:\n"
+                           f"{', '.join(draft_names)}")
+        
+        # 2. Kiểm tra hóa đơn cọc đã confirm nhưng chưa thanh toán - Backup check
+        unpaid_deposit_invoices = self.env['account.move'].search([
+            ('move_type', '=', 'out_invoice'),
+            ('invoice_origin', '=', self.name),
+            ('dac_deposit_invoice', '=', True),
+            ('payment_state', '!=', 'paid'),
+            ('state', '=', 'posted')
+        ])
+        
+        if unpaid_deposit_invoices:
+            unpaid_names = [inv.name or f"Invoice-{inv.id}" for inv in unpaid_deposit_invoices]
+            _logger.warning(f"Phát hiện {len(unpaid_deposit_invoices)} hóa đơn cọc chưa thanh toán trong backup check: {unpaid_names}")
+            raise UserError(f"Phát hiện hóa đơn cọc chưa thanh toán!\n"
+                           f"Vui lòng thanh toán hóa đơn cọc:\n"
+                           f"{', '.join(unpaid_names)}")
+        
+        # Kiểm tra đã có hóa đơn cuối chưa
+        existing_final_invoice = self.env['account.move'].search([
+            ('move_type', '=', 'out_invoice'),
+            ('invoice_origin', '=', self.name),
+            ('dac_deposit_invoice', '=', False)  # Không phải hóa đơn cọc
+        ])
+        
+        if existing_final_invoice:
+            _logger.info(f"Đã có hóa đơn thanh toán cuối: {existing_final_invoice.mapped('name')}")
+            raise UserError(f"Đơn hàng {self.name} đã có hóa đơn thanh toán!")
+        
+        # Tính toán số tiền cần thu - TÍNH ĐÚNG: chỉ lấy dòng sản phẩm dương (bỏ qua dòng cọc âm)
+        product_lines = self.order_line.filtered(lambda l: not l.display_type and l.price_unit >= 0)
+        total_amount_original = sum(line.price_unit * line.product_uom_qty for line in product_lines)
+        _logger.info(f"Tổng giá trị sản phẩm gốc (không tính cọc âm): {total_amount_original}")
+        _logger.info(f"Tổng amount_total đơn hàng hiện tại: {self.amount_total}")
+        
+        # Tìm số tiền cọc đã thanh toán
+        deposit_invoices = self.env['account.move'].search([
+            ('move_type', '=', 'out_invoice'),
+            ('invoice_origin', '=', self.name),
+            ('dac_deposit_invoice', '=', True),
+            ('payment_state', '=', 'paid')
+        ])
+        
+        deposit_paid = sum(deposit_invoices.mapped('amount_total'))
+        _logger.info(f"Tổng tiền cọc đã thanh toán: {deposit_paid}")
+        
+        # SỬA LỖI: Tính remaining_amount từ giá trị gốc, không phải amount_total đã trừ cọc
+        remaining_amount = total_amount_original - deposit_paid
+        _logger.info(f"Số tiền còn lại cần thu: {remaining_amount} = {total_amount_original} - {deposit_paid}")
+        
+        if remaining_amount <= 0:
+            _logger.info("Không cần tạo hóa đơn - đã thu đủ tiền cọc")
+            # Đánh dấu đã xác nhận thanh toán và hoàn thành đơn hàng
+            self.is_payment_confirmed = True
+            self.is_order_completed = True
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Hoàn thành!',
+                    'message': f'Đơn hàng {self.name} đã được thanh toán đủ qua tiền cọc và hoàn thành.',
+                    'type': 'success',
+                    'sticky': False,
+                }
+            }
+        
+        # Tạo hóa đơn thanh toán cuối
+        invoice_vals = {
+            'move_type': 'out_invoice',
+            'partner_id': self.partner_id.id,
+            'invoice_origin': self.name,
+            'invoice_date': fields.Date.context_today(self),
+            'dac_deposit_invoice': False,  # Không phải hóa đơn cọc
+            'invoice_line_ids': [],
+        }
+        
+        # Thêm dòng sản phẩm từ order (CHỈ LẤY DÒNG DƯƠNG - bỏ qua dòng cọc âm để tránh trừ 2 lần)
+        for line in self.order_line:
+            if line.display_type:
+                # Bỏ qua section/note liên quan đến cọc
+                if 'cọc' in (line.name or '').lower():
+                    continue
+                # Thêm section/note khác
+                invoice_vals['invoice_line_ids'].append((0, 0, {
+                    'display_type': line.display_type,
+                    'name': line.name,
+                    'sequence': line.sequence,
+                }))
+            elif line.product_id and line.price_unit >= 0:  # CHỈ LẤY DÒNG SẢN PHẨM DƯƠNG
+                invoice_vals['invoice_line_ids'].append((0, 0, {
+                    'product_id': line.product_id.id,
+                    'name': line.name,
+                    'quantity': line.product_uom_qty,
+                    'price_unit': line.price_unit,
+                    'tax_ids': [(6, 0, line.tax_id.ids)],
+                    'sequence': line.sequence,
+                }))
+        
+        # Nếu có tiền cọc đã thanh toán, thêm dòng trừ tiền cọc đơn giản
+        if deposit_paid > 0:
+            # Tìm hoặc tạo sản phẩm "Trừ tiền cọc"
+            deduct_product = self.env['product.product'].search([('default_code', '=', 'DEDUCT_DEPOSIT')], limit=1)
+            if not deduct_product:
+                deduct_product = self.env['product.product'].create({
+                    'name': 'Tiền cọc',
+                    'default_code': 'DEDUCT_DEPOSIT',
+                    'type': 'service',
+                    'sale_ok': True,
+                    'purchase_ok': False,
+                    'list_price': 0.0,
+                    'taxes_id': [(6, 0, [])],
+                })
+            
+            # Thêm dòng trừ tiền cọc đơn giản (không có section, không có note)
+            invoice_vals['invoice_line_ids'].append((0, 0, {
+                'product_id': deduct_product.id,
+                'name': 'Tiền cọc',
+                'quantity': 1,
+                'price_unit': -deposit_paid,
+                'tax_ids': [(6, 0, [])],
+                'sequence': 9999,
+            }))
+        
+        # Tạo hóa đơn
+        invoice = self.env['account.move'].create(invoice_vals)
+        _logger.info(f"Đã tạo hóa đơn thanh toán cuối: {invoice.name}")
+        _logger.info("=== HOÀN THÀNH TẠO HÓA ĐƠN THANH TOÁN CUỐI ===")
+        _logger.info(f"Hóa đơn {invoice.name} đã được tạo, chờ user xác nhận để kích hoạt tiến trình thanh toán")
+        
+        # Mở hóa đơn vừa tạo để user xác nhận
+        return {
+            'type': 'ir.actions.act_window',
+            'res_model': 'account.move',
+            'view_mode': 'form',
+            'res_id': invoice.id,
+            'target': 'current',
+        }
+
+    def debug_deposit_info(self):
+        """Debug thông tin đặt cọc"""
+        self.ensure_one()
+        _logger.info(f"=== DEBUG THÔNG TIN ĐẶT CỌC CHO ORDER {self.name} ===")
+        
+        # Thông tin cơ bản
+        _logger.info(f"Order state: {self.order_state_custom}")
+        _logger.info(f"has_deposit: {self.has_deposit}")
+        _logger.info(f"deposit_amount: {self.deposit_amount}")
+        _logger.info(f"is_deposit_confirmed: {self.is_deposit_confirmed}")
+        _logger.info(f"production_deadline: {self.production_deadline}")
+        _logger.info(f"delivery_address: {self.delivery_address}")
+        _logger.info(f"is_production_confirmed: {self.is_production_confirmed}")
+        _logger.info(f"is_delivery_confirmed: {self.is_delivery_confirmed}")
+        _logger.info(f"is_payment_confirmed: {self.is_payment_confirmed}")
+        _logger.info(f"is_order_completed: {self.is_order_completed}")
+        _logger.info(f"total_deposit_paid: {self.total_deposit_paid}")
+        _logger.info(f"remaining_amount_display: {self.remaining_amount_display}")
+        
+        # Tìm tất cả hóa đơn liên quan
+        all_invoices = self.env['account.move'].search([
+            ('move_type', '=', 'out_invoice'),
+            ('invoice_origin', '=', self.name)
+        ])
+        _logger.info(f"Tổng số hóa đơn liên quan: {len(all_invoices)}")
+        
+        # Tìm hóa đơn đặt cọc
+        deposit_invoices = self.env['account.move'].search([
+            ('move_type', '=', 'out_invoice'),
+            ('invoice_origin', '=', self.name),
+            ('dac_deposit_invoice', '=', True)
+        ])
+        _logger.info(f"Số hóa đơn đặt cọc: {len(deposit_invoices)}")
+        
+        for invoice in deposit_invoices:
+            _logger.info(f"  - {invoice.name}: state={invoice.state}, payment_state={invoice.payment_state}, amount={invoice.amount_total}")
+        
+        # Kiểm tra dòng order_line
+        _logger.info(f"Tổng số dòng order_line: {len(self.order_line)}")
+        
+        # Kiểm tra tất cả dòng có giá âm (có thể là đặt cọc)
+        deposit_lines = self.order_line.filtered(lambda l: not l.display_type and l.price_unit < 0)
+        _logger.info(f"Số dòng có giá âm (có thể là đặt cọc): {len(deposit_lines)}")
+        for line in deposit_lines:
+            _logger.info(f"  - {line.name}: sản phẩm={line.product_id.name}, qty={line.product_uom_qty}, price={line.price_unit}")
+        
+        # Kiểm tra sản phẩm DEPOSIT cụ thể (nếu có)
+        product = self.env['product.product'].search([('default_code', '=', 'DEPOSIT')], limit=1)
+        if product:
+            _logger.info(f"Sản phẩm DEPOSIT: {product.name} (ID: {product.id})")
+            product_deposit_lines = self.order_line.filtered(lambda l: l.product_id == product)
+            _logger.info(f"Số dòng có sản phẩm DEPOSIT: {len(product_deposit_lines)}")
+            for line in product_deposit_lines:
+                _logger.info(f"  - {line.name}: qty={line.product_uom_qty}, price={line.price_unit}")
+        else:
+            _logger.info("Không tìm thấy sản phẩm DEPOSIT")
+        
+        # Kiểm tra computed fields
+        _logger.info(f"deposit_invoice_count: {self.deposit_invoice_count}")
+        _logger.info(f"has_paid_deposit_invoice: {self.has_paid_deposit_invoice}")
+        
+        _logger.info("=== KẾT THÚC DEBUG ===")
+        
+        # DEBUG: Tính toán chi tiết để so sánh
+        product_lines = self.order_line.filtered(lambda l: not l.display_type and l.price_unit >= 0)
+        total_amount_original = sum(line.price_unit * line.product_uom_qty for line in product_lines)
+        _logger.info(f"DEBUG - Tổng giá trị sản phẩm gốc (dương): {total_amount_original}")
+        _logger.info(f"DEBUG - amount_total của đơn hàng: {self.amount_total}")
+        _logger.info(f"DEBUG - Chênh lệch: {total_amount_original - self.amount_total}")
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'Debug',
+                'message': f'Đã log thông tin debug cho order {self.name}. Kiểm tra log để xem chi tiết.',
+                'type': 'info',
+                'sticky': True,
+            }
+        }

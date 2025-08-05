@@ -1,85 +1,282 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <data>
-        <record id="sale_order_inherit_view_form" model="ir.ui.view">
-            <field name="name">sale.order.inherit.form</field>
+        <record id="dac_sale_order_custom_view_form" model="ir.ui.view">
+            <field name="name">sale.order.custom.form</field>
             <field name="model">sale.order</field>
-            <field name="priority">16</field> <!-- Ưu tiên view này -->
+            <field name="priority">1</field> <!-- Ưu tiên view này -->
             <field name="arch" type="xml">
-                <form>
+                <form string="Báo giá">
                     <header>
-                        <div style="display: flex; align-items: center;">
-                            <div>
-                                <field name="order_state_custom" widget="statusbar"/>
-                            </div>
-                        </div>
-                        <!-- Các nút demo sẽ tự động nằm bên phải header -->
+                        <field name="order_state_custom" widget="statusbar" statusbar_visible="quotation,deposit,production,delivery,payment"
+                            options="{'statusbar_colors': {
+                                'quotation': 'badge-info',
+                                'deposit': 'badge-warning',
+                                'production': 'badge-secondary',
+                                'delivery': 'badge-orange',
+                                'payment': 'badge-success'}}"/>
                     </header>
                     <sheet>
-                        <group col="4">
-                            <group>
-                                <h1>
-                                    <field name="name" readonly="1" string="Tạo đơn mới"/>
-                                </h1>
-                                <field name="partner_id" style="min-width: 300px;"/>
-                                <field name="date" style="min-width: 200px;"/>
-                                <field name="validity_date" style="min-width: 200px;"/>
-                                <field name="user_id" invisible="1"/>
+                        <div class="oe_button_box" name="button_box">
+                            <button name="action_view_all_invoices"
+                                    type="object"
+                                    class="oe_stat_button"
+                                    icon="fa-pencil-square-o"
+                                    invisible="total_invoice_count == 0">
+                                <field name="total_invoice_count" widget="statinfo" string="Hóa đơn"/>
+                            </button>
+                            <button name="check_and_add_deposit_line"
+                                    type="object"
+                                    class="oe_stat_button"
+                                    icon="fa-refresh"
+                                    string="Kiểm tra cọc"
+                                    help="Kiểm tra và thêm dòng đặt cọc nếu có hóa đơn cọc đã thanh toán"
+                                    invisible="deposit_invoice_count == 0"/>
+                            <button name="debug_deposit_info"
+                                    type="object"
+                                    class="oe_stat_button"
+                                    icon="fa-bug"
+                                    string="Debug cọc"
+                                    help="Debug thông tin đặt cọc và log chi tiết"
+                                    groups="base.group_system"/>
+                            <button name="check_and_update_completion_status"
+                                    type="object"
+                                    class="oe_stat_button"
+                                    icon="fa-refresh"
+                                    string="Cập nhật"
+                                    help="Kiểm tra, cập nhật trạng thái và tải lại view"
+                                    groups="base.group_system"/>
+                        </div>
+                        <div class="oe_title">
+                            <h1>
+                                <field name="name" readonly="1"/>
+                            </h1>
+                        </div>
+                        <field name="has_paid_deposit_invoice" invisible="1"/>
+                        <field name="deposit_invoice_count" invisible="1"/>
+                        <field name="has_final_invoice" invisible="1"/>
+                        <group name="sale_header">
+                            <group name="partner_details">
+                                <field name="name" invisible="1"/>
+                                <field name="partner_id" options="{'no_create_edit': True}" context="{'show_address': 1, 'show_vat': True}"/>
+                                <field name="currency_id" invisible="1"/>
+                                <field name="company_id" invisible="1"/>
+                                <field name="pricelist_id" invisible="1"/>
                                 <field name="team_id" invisible="1"/>
+                                <!-- Trường deadline sản xuất - hiện từ tiến trình đặt cọc để user nhập trước -->
+                                <field name="production_deadline" 
+                                       string="Ngày hoàn tất"
+                                       placeholder="VD: 01/09/2025"
+                                       invisible="not has_paid_deposit_invoice"
+                                       readonly="is_production_confirmed"/>
+                                
+                                <!-- Trường địa chỉ giao hàng - hiện từ tiến trình giao hàng -->
+                                <field name="delivery_address" 
+                                       string="Địa chỉ giao hàng"
+                                       invisible="order_state_custom not in ['delivery', 'payment']"
+                                       readonly="is_delivery_confirmed"
+                                       widget="text"/>
+                                <field name="has_deposit"
+                                       invisible="not is_deposit_confirmed and order_state_custom not in ['deposit', 'production', 'delivery', 'payment']"
+                                       readonly="is_deposit_confirmed"/>
+                                <div invisible="not has_deposit" style="max-width: 500px; margin-bottom: 8px;">
+                                    <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+                                        <label for="deposit_amount" style="font-weight: 600; font-size: 14px; color: #007bff; margin-bottom: 0; min-width: 70px; white-space: nowrap;">Tiền cọc</label>
+                                        <div style="display: flex; align-items: center; justify-content: center; background: #fffbe6; border-radius: 5px; border: 1px solid #ffe066; width: 180px; padding: 3px 6px;">
+                                            <div style="display: flex; align-items: center; width: 100%; justify-content: center;">
+                                                <field name="deposit_amount"
+                                                       style="font-size: 1.08rem; font-weight: 600; color: #e55353; text-align: center; border: none; background: transparent; width: 100%; min-width: 0; max-width: 100%; padding: 0; margin: 0; letter-spacing: 0.2px;"
+                                                       readonly="is_deposit_confirmed"
+                                                       widget="integer"/>
+                                                <span style="font-size: 1.08rem; font-weight: 600; color: #e55353; margin-left: 4px;">đ</span>
+                                            </div>
+                                        </div>
+                                        <button name="action_deposit_invoice"
+                                            string="Lên cọc"
+                                            type="object"
+                                            class="btn btn-success"
+                                            style="min-width: 70px; font-size: 0.98rem; font-weight: 600; padding: 7px 0; margin-left: 8px;"
+                                            invisible="not (order_state_custom == 'deposit' and has_deposit and not is_deposit_confirmed)"/>
+                                    </div>
+                                </div>
+                                <field name="pancake_order_link" invisible="1"/>
+                                    <div colspan="2">
+                                    <button name="action_open_pancake_link"
+                                        type="object"
+                                        string="Pancake"
+                                        class="btn-primary"
+                                        invisible = 'pancake_order_link == False'/>
+                                    </div>
+                            </group>
+                            <group>
+                                <!-- Hiển thị thông tin người phụ trách -->
+                                <field name="user_id" widget="many2one_avatar_user" string="Người phụ trách"/>
+                                <!-- Nút liên hệ khách hàng bên dưới-->
                             </group>
                         </group>
                         <notebook>
                             <page string="Chi tiết đơn hàng">
-                                <field name="order_line"
-                                       create="1"
-                                       delete="1"
-                                       options="{'no_open': True, 'no_create_edit': True, 'no_create': True}">
+                                <field name="order_line" widget="section_and_note_one2many" mode="list,kanban" readonly="state == 'cancel' or locked">
                                     <list editable="bottom">
-                                        <field name="product_id"/>
-                                        <field name="product_uom_qty"/>
-                                        <field name="price_unit"/>
-                                        <field name="tax_id" widget="many2many_tags"/>
-                                        <field name="price_subtotal" readonly="1"/>
+                                        <!-- Phần control để thêm ghi chú -->
+                                        <control>
+                                            <create name="add_product_control" string="Thêm sản phẩm"/>
+                                            <!-- <create name="add_section_control" string="Thêm đầu mục" context="{'default_display_type': 'line_section'}"/> -->
+                                            <create name="add_note_control" string="Thêm ghi chú" context="{'default_display_type': 'line_note'}"/>
+                                        </control>
+                                        <field name="sequence" widget="handle" optional="show"/>
+                                        <field name="product_id" string="Sản phẩm" invisible="display_type"/>
+                                        <field name="product_uom_qty" string="Số lượng" invisible="display_type"/>
+                                        <field name="price_unit" string="Đơn giá" invisible="display_type"/>
+                                        <field name="tax_id" string="Thuế" widget="many2many_tags" invisible="display_type"/>
+                                        <field name="price_subtotal" string="Thành tiền" readonly="1" invisible="display_type"/>
+                                        <!-- Hiển thị name CHỈ khi là dòng section/note và giữ cột này không trong menu tùy chọn -->
+                                         <field name="name" 
+                                               string=""
+                                               width="1px"
+                                               invisible="not display_type" 
+                                               decoration-bf="display_type == 'line_section'" 
+                                               decoration-it="display_type == 'line_note'"
+                                               required="display_type in ['line_section', 'line_note']"
+                                               widget="sol_text"/> <!-- Thêm widget này -->
                                     </list>
                                 </field>
                             </page>
                         </notebook>
-                        <div style="text-align: left; margin-top: 24px;">
+                        <!-- <div style="text-align: left; margin-top: 24px;">
                             <field name="note" placeholder="Ghi chú" nolabel="1"/>
-                        </div>
+                        </div> -->
                         <div style="text-align: right; margin-top: 16px;">
+                            <field name="currency_id" invisible="1"/>
                             <div>
-                                <label for="amount_untaxed">Số tiền trước thuế:</label>
+                                <label for="amount_untaxed_original">Số tiền trước thuế:</label>
                                 <span style="font-weight: bold; margin-left: 16px;">
-                                    <field name="amount_untaxed" readonly="1" widget="monetary"/>
-                                    <span> đ</span>
+                                    <field name="amount_untaxed_original" readonly="1" widget="monetary"/>
                                 </span>
                             </div>
                             <div>
                                 <label for="amount_tax">Thuế:</label>
                                 <span style="font-weight: bold; margin-left: 16px;">
                                     <field name="amount_tax" readonly="1" widget="monetary"/>
-                                    <span> đ</span>
+                                </span>
+                            </div>
+                            <div invisible="total_deposit_paid == 0">
+                                <label for="total_deposit_paid">Tiền cọc đã thanh toán:</label>
+                                <span style="font-weight: bold; margin-left: 16px; color: green;">
+                                    <field name="total_deposit_paid" readonly="1" widget="monetary"/>
                                 </span>
                             </div>
                             <div>
-                                <span style="font-weight: bold; font-size: 1.5em;">
+                                <span style="font-weight: bold; font-size: 1.5em;" invisible="is_order_completed">
                                     Tổng:
                                     <field name="amount_total" readonly="1" widget="monetary"/>
-                                    <span> đ</span>
+                                </span>
+                                <span style="font-weight: bold; font-size: 1.5em; color: green;" invisible="not is_order_completed">
+                                    Tổng (Đã hoàn thành):
+                                    <field name="remaining_amount_display" readonly="1" widget="monetary"/>
                                 </span>
                             </div>
-                            <div style="text-align: right; margin-top: 16px;">
+                            <div invisible="not is_order_completed" style="text-align: center; padding: 10px; background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 5px; margin: 10px 0;">
+                                <span style="font-weight: bold; color: #155724; font-size: 1.2em;">
+                                    Đơn hàng đã thanh toán
+                                </span>
+                            </div>
+                            <field name="is_order_completed" invisible="1"/>
+                            <field name="remaining_amount_display" invisible="1"/>
+                            <div style="display: flex; gap: 16px; justify-content: flex-end; margin-top: 16px;">
+                                <!-- Nút Lưu -->
                                 <button name="action_save_custom"
                                     string="Lưu" 
                                     type="object"  
-                                    class="btn-primary"
-                                    style="margin: 0 16px 0 0;"/>
-                                <button name="action_confirm_custom"
-                                    string="Xác nhận"
+                                    class="btn-primary"/>
+
+                                <!-- Nút Quay lại tiến trình trước: Đặt cọc -->
+                                <button name="action_back_custom_step"
+                                    string="Báo giá"
                                     type="object"
                                     class="btn-secondary"
-                                    style="margin-left: 12px;"/>
+                                    invisible="order_state_custom != 'deposit'"/>
+                                <!-- Nút Quay lại tiến trình trước: Sản xuất -->
+                                <button name="action_back_custom_step"
+                                    string="Đặt cọc"
+                                    type="object"
+                                    class="btn-secondary"
+                                    invisible="order_state_custom != 'production'"/>
+                                <!-- Nút Quay lại tiến trình trước: Giao hàng -->
+                                <button name="action_back_custom_step"
+                                    string="Sản xuất"
+                                    type="object"
+                                    class="btn-secondary"
+                                    invisible="order_state_custom != 'delivery'"/>
+                                <!-- Nút Quay lại tiến trình trước: Thu tiền -->
+                                <button name="action_back_custom_step"
+                                    string="Giao hàng"
+                                    type="object"
+                                    class="btn-secondary"
+                                    invisible="order_state_custom != 'payment'"/>
+
+                                <!-- Nút Xác nhận cho tiến trình báo giá -->
+                                <button name="action_confirm_info"
+                                    string="Xác nhận"
+                                    type="object"
+                                    class="btn-warning"
+                                    invisible="
+                                        order_state_custom != 'quotation'
+                                        or is_quotation_confirmed
+                                    "/>
+
+                                <!-- CHỈ dùng nút "Tiến hành sản xuất" cho trạng thái deposit -->
+                                <button name="action_proceed_to_production"
+                                    string="Tiến hành sản xuất"
+                                    type="object"
+                                    class="btn-primary"
+                                    invisible="
+                                        order_state_custom != 'deposit'
+                                        or not is_deposit_confirmed
+                                        or not has_paid_deposit_invoice
+                                        or not production_deadline
+                                    "/>
+
+                                <!-- Nút Xác nhận cho các tiến trình khác (production, delivery) -->
+                                <button name="action_confirm_info"
+                                    string="Xác nhận"
+                                    type="object"
+                                    class="btn-warning"
+                                    invisible="
+                                        order_state_custom not in ['production', 'delivery']
+                                        or (order_state_custom == 'production' and is_production_confirmed)
+                                        or (order_state_custom == 'delivery' and is_delivery_confirmed)
+                                    "/>
+
+                                <!-- Nút Tạo hóa đơn ở bước cuối cùng (payment) -->
+                                <button name="action_create_final_invoice"
+                                    string="Tạo hóa đơn"
+                                    type="object"
+                                    class="btn-success"
+                                    invisible="order_state_custom != 'payment' or is_payment_confirmed or has_final_invoice"/>
+
+                                <!-- Nút Chuyển sang tiến trình tiếp theo: Đặt cọc -->
+                                <button name="action_next_step"
+                                    string="Đặt cọc"
+                                    type="object"
+                                    class="btn-primary"
+                                    invisible="order_state_custom != 'quotation' or not is_quotation_confirmed"/>
+                                    
+                                <!-- Nút Chuyển sang tiến trình tiếp theo: Giao hàng -->
+                                <button name="action_next_step"
+                                    string="Giao hàng"
+                                    type="object"
+                                    class="btn-primary"
+                                    invisible="order_state_custom != 'production' or not is_production_confirmed"/>
+                                <!-- Nút Chuyển sang tiến trình tiếp theo: Thu tiền -->
+                                <button name="action_next_step"
+                                    string="Thu tiền"
+                                    type="object"
+                                    class="btn-primary"
+                                    invisible="order_state_custom != 'delivery' or not is_delivery_confirmed"/>
+                                <!-- Nút Chuyển sang tiến trình tiếp theo: Ẩn ở bước cuối cùng -->
+                                <!-- Không cần nút cho bước 'payment' vì không có bước tiếp theo -->
+
                             </div>
                         </div>
                         
@@ -89,40 +286,91 @@
             </field>
         </record>
 
-        <record id="sale_order_inherit_view_list" model="ir.ui.view">
-            <field name="name">sale.order.inherit.list</field>
+        <!-- View để ẩn button tự động của Odoo -->
+        <record id="dac_sale_order_hide_auto_buttons" model="ir.ui.view">
+            <field name="name">sale.order.hide.auto.buttons</field>
             <field name="model">sale.order</field>
-            <field name="priority">16</field>
+            <field name="inherit_id" ref="sale.view_order_form"/>
             <field name="arch" type="xml">
-                <list>
+                <xpath expr="//button[@name='action_view_invoice']" position="attributes">
+                    <attribute name="invisible">1</attribute>
+                </xpath>
+            </field>
+        </record>
+
+        <record id="dac_sale_order_custom_view_list" model="ir.ui.view">
+            <field name="name">sale.order.custom.list</field>
+            <field name="model">sale.order</field>
+            <field name="priority">1</field>
+            <field name="arch" type="xml">
+                <list string="Báo giá" import="1" default_order="create_date desc">
+                    <field name="latest_quotation_info" string="Báo giá mới nhất"/>
                     <field name="name"/>
                     <field name="create_date"/>
                     <field name="partner_id"/>
-                    <field name="user_id"/>
-                    <field name="activity_ids"/>
-                    <field name="amount_total"/>
-                    <field name="order_state_custom"/>
+                    <field name="user_id" widget="many2one_avatar_user"/>
+                    <field name="company_id" invisible="1" optional="hide"/>
+                    <field name="currency_id" invisible="1" optional="hide"/>
+                    <field name="pricelist_id" invisible="1" optional="hide"/>
+                    <!-- <field name="total_deposit_paid" widget="monetary" optional="hide"/>
+                    <field name="remaining_amount_display" widget="monetary" string="Còn lại"/> -->
+                    <field name="amount_total" sum="Total" widget="monetary"/>
+                    <field name="order_state_custom" widget="badge"
+                        decoration-info="order_state_custom == 'quotation' and not is_order_completed"
+                        decoration-warning="order_state_custom == 'deposit' and not is_order_completed"
+                        decoration-primary="order_state_custom == 'production' and not is_order_completed"
+                        decoration-danger="order_state_custom == 'delivery' and not is_order_completed"
+                        decoration-success="order_state_custom == 'payment' and not is_order_completed"
+                        decoration-muted="is_order_completed"/>
                 </list>
             </field>
         </record>
 
-        <record id="sale_order_inherit_action" model="ir.actions.act_window">
+        <record id="dac_sale_order_custom_search" model="ir.ui.view">
+            <field name="name">sale.order.custom.search</field>
+            <field name="model">sale.order</field>
+            <field name="arch" type="xml">
+                <search string="Tìm kiếm báo giá">
+                    <field name="name"/>
+                    <field name="partner_id"/>
+                    <field name="user_id"/>
+                    <field name="order_state_custom"/>
+                    <filter string="Báo giá" name="quotation" domain="[('order_state_custom', '=', 'quotation')]"/>
+                    <filter string="Đặt cọc" name="deposit" domain="[('order_state_custom', '=', 'deposit')]"/>
+                    <filter string="Sản xuất" name="production" domain="[('order_state_custom', '=', 'production')]"/>
+                    <filter string="Giao hàng" name="delivery" domain="[('order_state_custom', '=', 'delivery')]"/>
+                    <filter string="Thu tiền" name="payment" domain="[('order_state_custom', '=', 'payment')]"/>
+                    <separator/>
+                    <filter string="Đã hoàn thành" name="completed" domain="[('is_order_completed', '=', True)]"/>
+                    <filter string="Chưa hoàn thành" name="not_completed" domain="[('is_order_completed', '=', False)]"/>
+                    <group expand="1" string="Nhóm theo">
+                        <filter string="Trạng thái" name="group_by_state" context="{'group_by': 'order_state_custom'}"/>
+                        <filter string="Người phụ trách" name="group_by_user" context="{'group_by': 'user_id'}"/>
+                        <filter string="Khách hàng" name="group_by_partner" context="{'group_by': 'partner_id'}"/>
+                        <filter string="Ngày tạo" name="group_by_date" context="{'group_by': 'create_date:month'}"/>
+                    </group>
+                </search>
+            </field>
+        </record>
+
+        <record id="dac_sale_order_custom_action" model="ir.actions.act_window">
             <field name="name">Báo giá</field>
             <field name="res_model">sale.order</field>
             <field name="view_mode">list,form</field>
-            <field name="view_id" ref="sale.view_quotation_tree_with_onboarding"/> <!-- view list mặc định của Odoo -->
-            <field name="context">{}</field>
+            <field name="view_id" ref="dac_sale_order_custom_view_list"/>
+            <field name="search_view_id" ref="dac_sale_order_custom_search"/>
+            <field name="context">{'search_default_group_by_state': 1}</field>
         </record>
 
-        <menuitem id="sale_order_inherit_menu_root"
-            name="Sale Orders"
+        <menuitem id="dac_sale_order_menu_root"
+            name="DAC báo giá"
             parent="home_menu.home_root"
             sequence="10"/>
 
-        <menuitem id="sale_order_inherit_menu_list"
-            name="Sale Orders List"
-            parent="sale_order_inherit_menu_root"
-            action="sale_order_inherit_action"
+        <menuitem id="dac_sale_order_menu_list"
+            name="Danh sách"
+            parent="dac_sale_order_menu_root"
+            action="dac_sale_order_custom_action"
             sequence="20"/>
     </data>
 </odoo>

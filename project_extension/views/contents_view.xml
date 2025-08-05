@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Action để mở view -->
+    <record id="action_project_contents" model="ir.actions.act_window">
+        <field name="name">Quản lý Contents</field>
+        <field name="res_model">project.contents</field>
+        <field name="view_mode">tree,form,kanban</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Thêm nội dung mô tả cho các Task trong dự án.
+            </p>
+        </field>
+    </record>
+
+    <!-- Tree view -->
+    <record id="view_project_contents_tree" model="ir.ui.view">
+        <field name="name">project.contents.tree</field>
+        <field name="model">project.contents</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="title"/>
+                <field name="description"/>
+                <!-- <field name="content_id"/> -->
+                <field name="state"/>
+                <field name="executor_id"/>
+                <field name="responsible_id"/>
+                <field name="main_keyword"/>
+                <field name="sub_keywords"/>
+                <field name="article_link"/>
+                <field name="post_link"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Form view -->
+    <record id="view_project_contents_form" model="ir.ui.view">
+        <field name="name">project.contents.form</field>
+        <field name="model">project.contents</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <field name="title"/>
+                        <field name="description"/>
+                        <field name="content_id"/>
+                        <field name="state"/>
+                        <field name="executor_id"/>
+                        <field name="responsible_id"/>
+                        <field name="main_keyword"/>
+                        <field name="sub_keywords"/>
+                        <field name="article_link"/>
+                        <field name="post_link"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Kanban view -->
+    <record id="view_project_contents_kanban" model="ir.ui.view">
+        <field name="name">project.contents.kanban</field>
+        <field name="model">project.contents</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="state">
+                <field name="title"/>
+                <field name="state"/>
+                <field name="executor_id"/>
+                <field name="responsible_id"/>
+                <field name="main_keyword"/>
+                <field name="article_link"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_global_click">
+                            <strong><field name="title"/></strong><br/>
+                            <span>Người thực hiện: <field name="executor_id"/></span><br/>
+                            <span>Người chịu trách nhiệm: <field name="responsible_id"/></span><br/>
+                            <span>Từ khóa chính: <field name="main_keyword"/></span><br/>
+                            <a t-if="record.article_link.raw_value" t-att-href="record.article_link.raw_value" target="_blank">Bài viết</a><br/>
+                            <a t-if="record.post_link.raw_value" t-att-href="record.post_link.raw_value" target="_blank">Bài đăng</a>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+</odoo>
+
+

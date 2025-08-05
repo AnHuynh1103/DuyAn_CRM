@@ -1,7 +1,7 @@
 {
     # Tên module
     'name': 'DAC ERP',
-    'version': '1.0',
+    'version': '1.0.30',
     
     # Loại module
     'category': '1. Duy An ERP',
@@ -21,9 +21,9 @@
     # Module dựa trên các category nào
     # Khi hoạt động, category trong 'depends' phải được install
     ### rồi module này mới đc install
-    'depends': ['base','web','home_menu','sale','account','product'],
-    
-    
+    'depends': ['base','web','home_menu','Chameleon','sale','sale_management','account','product'],
+
+
     # Module có được phép install hay không
     # Nếu bạn thắc mắc nếu tắt thì làm sao để install
     # Bạn có thể dùng 'auto_install'
@@ -37,7 +37,13 @@
     'data': [
         'security/user_access.xml',
         'security/ir.model.access.csv',
+        'data/currency_data.xml',  # Thêm file cấu hình tiền tệ
+        'data/cron_data.xml',  # Thêm cron job
         'views/sale_order_view.xml',
+        'views/deposit_confirm_wizard_view.xml',
+        'views/account_move_deposit_view.xml',
+        'views/pancake_conversation_views.xml',  # Thêm view cho Pancake conversation
+        'views/page_fm_views.xml',  # Thêm view cho Page.fm integration
     ],
 
     # Import các file cấu hình (chỉ gọi từ folder 'static')
@@ -47,7 +53,10 @@
     ## + t
     'assets': {  
         'web.assets_backend': [
-            'dac_erp/static/src/css/row_form_order_custom.css',
+            #'dac_erp/static/src/js/deposit_popup.js',
+            #'dac_erp/static/src/js/backend/**/*',
+            #'dac_erp/static/src/xml/backend/**/*',
+            #'dac_erp/static/src/css/backend/**/*',
         ],
     },
     'license': 'LGPL-3',
