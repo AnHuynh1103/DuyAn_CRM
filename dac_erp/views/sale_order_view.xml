@@ -70,13 +70,16 @@
                                 <field name="company_id" invisible="1"/>
                                 <field name="pricelist_id" invisible="1"/>
                                 <field name="team_id" invisible="1"/>
-                                <!-- Trường deadline sản xuất - hiện từ tiến trình đặt cọc để user nhập trước -->
-                                <field name="production_deadline" 
-                                       string="Ngày hoàn tất"
-                                       placeholder="VD: 01/09/2025"
-                                       invisible="order_state_custom not in ['deposit', 'production', 'delivery', 'payment']"
-                                       readonly="is_production_confirmed"/>
-                                
+                                <!-- Trường deadline sản xuất - thiết kế lại: luôn nằm trên, điều kiện invisible gốc, giao diện hài hòa -->
+                                <div invisible="order_state_custom not in ['deposit', 'production', 'delivery', 'payment']"
+                                     style="margin-bottom: 8px; display: flex; align-items: center; gap: 6px; background: #fffbe6; border: 1px solid #ffc107; border-radius: 5px; padding: 4px 10px; width: fit-content;">
+                                    <i class="fa fa-calendar" style="color: #ffc107;"></i>
+                                    <span class="o_form_label" style="font-weight: 600; color: #e55353; font-size: 13px;">Ngày hoàn tất sản xuất</span>
+                                    <field name="production_deadline"
+                                           placeholder="VD: 01/09/2025"
+                                           readonly="is_production_confirmed"
+                                           style="font-size: 1em; font-weight: 600; color: #007bff; width: 120px; background: #fff; border: 1px solid #007bff; border-radius: 3px; padding: 2px 8px; margin-left: 6px;"/>
+                                </div>
                                 <!-- Trường địa chỉ giao hàng - hiện từ tiến trình giao hàng -->
                                 <field name="delivery_address" 
                                        string="Địa chỉ giao hàng"
@@ -84,10 +87,10 @@
                                        readonly="is_delivery_confirmed"
                                        widget="text"/>
                                 <field name="has_deposit"
-                                       invisible="order_state_custom != 'deposit'"
-                                       readonly="is_deposit_confirmed"/>
-                                <!-- Div tiền cọc: ĐƠN GIẢN - Chỉ hiện khi has_deposit=True và ở đúng các tiến trình cần thiết -->
-                                <div invisible="not has_deposit or order_state_custom == 'quotation'" style="max-width: 500px; margin-bottom: 8px;">
+                                       invisible="order_state_custom == 'quotation'"
+                                       readonly="is_deposit_confirmed or order_state_custom != 'deposit'"/>
+                                <!-- Div tiền cọc: Luôn hiện ở mọi tiến trình trừ báo giá đầu tiên, chỉ ẩn nếu không có cọc hoặc đang ở quotation -->
+                                <div invisible="order_state_custom == 'quotation' or not has_deposit" style="max-width: 500px; margin-bottom: 8px;">
                                     <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
                                         <label for="deposit_amount" style="font-weight: 600; font-size: 14px; color: #007bff; margin-bottom: 0; min-width: 70px; white-space: nowrap;">Tiền cọc</label>
                                         <div style="display: flex; align-items: center; justify-content: center; background: #fffbe6; border-radius: 5px; border: 1px solid #ffe066; width: 180px; padding: 3px 6px;">
@@ -107,14 +110,6 @@
                                             invisible="not (order_state_custom == 'deposit' and has_deposit and not is_deposit_confirmed)"/>
                                     </div>
                                 </div>
-                                <field name="pancake_order_link" invisible="1"/>
-                                    <div colspan="2">
-                                    <button name="action_open_pancake_link"
-                                        type="object"
-                                        string="Pancake"
-                                        class="btn-primary"
-                                        invisible = 'pancake_order_link == False'/>
-                                    </div>
                             </group>
                             <group>
                                 <!-- Hiển thị thông tin người phụ trách - chỉ manager được chỉnh sửa -->
@@ -131,6 +126,14 @@
                                        readonly="1"
                                        groups="dac_erp.group_dac_erp_sale"/>  <!-- Sale users chỉ được xem -->
                                 <!-- Nút liên hệ khách hàng bên dưới-->
+                                <field name="pancake_order_link" invisible="1"/>
+                                    <div colspan="2">
+                                    <button name="action_open_pancake_link"
+                                        type="object"
+                                        string="Pancake"
+                                        class="btn-primary"
+                                        invisible = 'pancake_order_link == False'/>
+                                    </div>
                             </group>
                         </group>
                         <notebook>
@@ -209,30 +212,12 @@
                                     type="object"  
                                     class="btn-primary"/>
 
-                                <!-- Nút Quay lại tiến trình trước: Đặt cọc -->
+                                <!-- Nút Quay lại tiến trình trước: Dùng chung cho mọi tiến trình (trừ báo giá) -->
                                 <button name="action_back_custom_step"
-                                    string="Báo giá"
+                                    string="Quay lại"
                                     type="object"
                                     class="btn-secondary"
-                                    invisible="order_state_custom != 'deposit'"/>
-                                <!-- Nút Quay lại tiến trình trước: Sản xuất -->
-                                <button name="action_back_custom_step"
-                                    string="Đặt cọc"
-                                    type="object"
-                                    class="btn-secondary"
-                                    invisible="order_state_custom != 'production'"/>
-                                <!-- Nút Quay lại tiến trình trước: Giao hàng -->
-                                <button name="action_back_custom_step"
-                                    string="Sản xuất"
-                                    type="object"
-                                    class="btn-secondary"
-                                    invisible="order_state_custom != 'delivery'"/>
-                                <!-- Nút Quay lại tiến trình trước: Thu tiền -->
-                                <button name="action_back_custom_step"
-                                    string="Giao hàng"
-                                    type="object"
-                                    class="btn-secondary"
-                                    invisible="order_state_custom != 'payment'"/>
+                                    invisible="order_state_custom == 'quotation'"/>
 
                                 <!-- Nút Xác nhận cho tiến trình báo giá -->
                                 <button name="action_confirm_info"
@@ -377,18 +362,13 @@
             <field name="view_mode">list,form</field>
             <field name="view_id" ref="dac_sale_order_custom_view_list"/>
             <field name="search_view_id" ref="dac_sale_order_custom_search"/>
-            <field name="context">{'search_default_group_by_state': 1}</field>
+            <field name="context">{}</field>
         </record>
 
         <menuitem id="dac_sale_order_menu_root"
-            name="DAC báo giá"
+            name="Đơn hàng"
             parent="home_menu.home_root"
-            sequence="10"/>
-
-        <menuitem id="dac_sale_order_menu_list"
-            name="Danh sách"
-            parent="dac_sale_order_menu_root"
             action="dac_sale_order_custom_action"
-            sequence="20"/>
+            sequence="10"/>
     </data>
 </odoo>
