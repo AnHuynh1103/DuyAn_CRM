@@ -1,5 +1,5 @@
 from odoo import models, fields, api
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, AccessError
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ class SaleOrder(models.Model):
     is_payment_confirmed = fields.Boolean(string="Đã xác nhận thanh toán", default=False)
 
     # Đặt cọc
-    has_deposit = fields.Boolean(string="Có đặt cọc?", default=False)
+    has_deposit = fields.Boolean(string="Có đặt cọc?", default=True)
     deposit_amount = fields.Float(string="Tiền cọc", default=0.0)
     
     # Tiến trình sản xuất
@@ -236,9 +236,24 @@ class SaleOrder(models.Model):
 
     @api.model
     def default_get(self, fields_list):
-        """Override để trigger kiểm tra deposit khi tạo mới hoặc load form"""
+        """Override để trigger kiểm tra deposit khi tạo mới hoặc load form và gán người phụ trách"""
         result = super().default_get(fields_list)
+        
+        # Đảm bảo người tạo đơn hàng sẽ là người phụ trách (user_id)
+        if 'user_id' in fields_list and not result.get('user_id'):
+            result['user_id'] = self.env.user.id
+            
         return result
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        """Override create để đảm bảo người tạo đơn hàng sẽ là người phụ trách"""
+        for vals in vals_list:
+            # Nếu không có user_id được set, gán người tạo làm người phụ trách
+            if not vals.get('user_id'):
+                vals['user_id'] = self.env.user.id
+        
+        return super().create(vals_list)
 
     def _check_auto_deposit_on_load(self):
         """Kiểm tra tự động khi load record"""
@@ -309,15 +324,25 @@ class SaleOrder(models.Model):
         return True
 
     def action_proceed_to_production(self):
-        """Tiến hành sản xuất với 3 bước ràng buộc:
-        1. Đã lên cọc và thanh toán
-        2. Đã nhập ngày hoàn tất
-        3. Kiểm tra lại 2 điều kiện trên
+        """Tiến hành sản xuất với logic mới:
+        - Nếu KHÔNG có đặt cọc (has_deposit=False): Chỉ cần nhập deadline sản xuất
+        - Nếu CÓ đặt cọc (has_deposit=True): Cần đầy đủ 3 bước như cũ
         """
         for order in self:
             if order.order_state_custom != 'deposit':
                 raise UserError("Chỉ có thể tiến hành sản xuất từ trạng thái đặt cọc!")
             
+            # TRƯỜNG HỢP 1: KHÔNG cần đặt cọc
+            if not order.has_deposit:
+                # Chỉ cần kiểm tra deadline sản xuất
+                if not order.production_deadline:
+                    raise UserError("Vui lòng nhập 'Ngày hoàn tất' trước khi tiến hành sản xuất!")
+                
+                # Chuyển sang trạng thái sản xuất ngay
+                order.order_state_custom = 'production'
+                return True
+            
+            # TRƯỜNG HỢP 2: CÓ đặt cọc - giữ nguyên logic cũ
             if not order.is_deposit_confirmed:
                 raise UserError("Vui lòng xác nhận đặt cọc trước khi tiến hành sản xuất!")
             
@@ -995,9 +1020,14 @@ class SaleOrder(models.Model):
         }
 
     def debug_deposit_info(self):
-        """Debug thông tin đặt cọc"""
+        """Debug thông tin đặt cọc và user"""
         self.ensure_one()
-        _logger.info(f"=== DEBUG THÔNG TIN ĐẶT CỌC CHO ORDER {self.name} ===")
+        _logger.info(f"=== DEBUG THÔNG TIN CHO ORDER {self.name} ===")
+        
+        # Thông tin user
+        _logger.info(f"Current user: {self.env.user.name} (ID: {self.env.user.id})")
+        _logger.info(f"Order user_id: {self.user_id.name} (ID: {self.user_id.id})")
+        _logger.info(f"User groups: {[g.name for g in self.env.user.groups_id]}")
         
         # Thông tin cơ bản
         _logger.info(f"Order state: {self.order_state_custom}")
@@ -1069,8 +1099,67 @@ class SaleOrder(models.Model):
             'tag': 'display_notification',
             'params': {
                 'title': 'Debug',
-                'message': f'Đã log thông tin debug cho order {self.name}. Kiểm tra log để xem chi tiết.',
+                'message': f'Đã log thông tin debug cho order {self.name}. Current user: {self.env.user.name}, Order user: {self.user_id.name}',
                 'type': 'info',
+                'sticky': True,
+            }
+        }
+    
+    def test_user_assignment(self):
+        """Test logic gán user khi tạo đơn hàng mới"""
+        # Debug: kiểm tra users và groups
+        _logger.info("=== DEBUG USERS AND GROUPS ===")
+        
+        # Liệt kê tất cả users
+        all_users = self.env['res.users'].search([('share', '=', False)])
+        _logger.info(f"All internal users: {[(u.id, u.name, u.login) for u in all_users]}")
+        
+        # Liệt kê DAC groups
+        dac_manager_group = self.env.ref('dac_erp.group_dac_erp_manager', raise_if_not_found=False)
+        dac_sale_group = self.env.ref('dac_erp.group_dac_erp_sale', raise_if_not_found=False)
+        
+        if dac_manager_group:
+            _logger.info(f"DAC Manager group users: {[(u.id, u.name) for u in dac_manager_group.users]}")
+        else:
+            _logger.error("DAC Manager group not found!")
+            
+        if dac_sale_group:
+            _logger.info(f"DAC Sale group users: {[(u.id, u.name) for u in dac_sale_group.users]}")
+        else:
+            _logger.error("DAC Sale group not found!")
+        
+        # Tạo đơn hàng test để kiểm tra user assignment
+        partner = self.env['res.partner'].search([('is_company', '=', False)], limit=1)
+        if not partner:
+            partner = self.env['res.partner'].create({
+                'name': 'Test Customer',
+                'phone': '0123456789',
+                'email': 'test@example.com'
+            })
+        
+        # Tạo đơn hàng mới
+        new_order = self.env['sale.order'].create({
+            'partner_id': partner.id,
+            'order_line': [(0, 0, {
+                'product_id': self.env['product.product'].search([], limit=1).id,
+                'product_uom_qty': 1,
+                'price_unit': 100000,
+            })]
+        })
+        
+        _logger.info(f"=== TEST USER ASSIGNMENT ===")
+        _logger.info(f"Current user: {self.env.user.name} (ID: {self.env.user.id})")
+        _logger.info(f"New order user_id: {new_order.user_id.name} (ID: {new_order.user_id.id})")
+        _logger.info(f"User groups: {[g.name for g in self.env.user.groups_id]}")
+        _logger.info(f"Assignment successful: {new_order.user_id.id == self.env.user.id}")
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'Test User Assignment',
+                'message': f'Created order {new_order.name} assigned to: {new_order.user_id.name}. Current user: {self.env.user.name}. Check logs for detailed debug info.',
+                'type': 'success' if new_order.user_id.id == self.env.user.id else 'warning',
                 'sticky': True,
             }
         }

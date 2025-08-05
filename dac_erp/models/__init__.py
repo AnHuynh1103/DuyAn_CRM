@@ -5,6 +5,3 @@ from . import product_template_inherit
 from . import deposit_confirm_wizard
 from . import account_move_ext
 from . import account_payment_register
-from . import pancake_conversation
-from . import page_fm_integration
-from . import page_fm_conversation

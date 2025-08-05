@@ -380,6 +380,10 @@ class SaleOrderInherit(models.Model):
                     if creator_email:
                         odoo_creator = ResUsers.sudo().search([('login', '=', creator_email)], limit=1)
                     
+                    if not odoo_creator and creator_name:
+                        # Tìm theo tên nếu không tìm thấy bằng email
+                        odoo_creator = ResUsers.sudo().search([('name', '=ilike', creator_name), ('share', '=', False)], limit=1)
+                    
                     if not odoo_creator and creator_name: # Tạo user nếu không tìm thấy và có tên
                         _logger.info(f"Creating new Odoo user for Pancake creator: {creator_name} ({creator_email})")
                         try:
@@ -407,7 +411,11 @@ class SaleOrderInherit(models.Model):
                 p_assigning_seller_email = (assigning_seller_info.get('email')
                                              if isinstance(assigning_seller_info, dict) else None)
                 
+                # Ưu tiên 1: Người được gán bán hàng từ Pancake
+                # Ưu tiên 2: Người tạo đơn trên Pancake  
+                # Ưu tiên 3: Người đồng bộ hiện tại
                 user_id_val = self.env.user.id # Default to current user's ID
+                salesperson = False
 
                 if p_assigning_seller_name:
                     salesperson = ResUsers.search([
@@ -449,8 +457,14 @@ class SaleOrderInherit(models.Model):
                     if salesperson:
                         user_id_val = salesperson.id
                     else:
-                        _logger.warning(f"Could not find or create salesperson for Pancake Order ID: {p_order_id}. Using current user.")
-                        user_id_val = self.env.user.id # Nếu không tìm/tạo được, dùng user hiện tại
+                        _logger.warning(f"Could not find or create salesperson for Pancake Order ID: {p_order_id}. Checking creator.")
+                        
+                # Nếu không có salesperson, ưu tiên người tạo đơn trên Pancake (nếu khác với user hiện tại)
+                if not salesperson and odoo_creator and odoo_creator.id != self.env.user.id:
+                    user_id_val = odoo_creator.id
+                    _logger.info(f"Assigning creator '{odoo_creator.name}' as salesperson for Pancake order {p_order_id}")
+                elif not salesperson:
+                    user_id_val = self.env.user.id # Nếu không tìm/tạo được, dùng user hiện tại
 
                 # TÌM HOẶC TẠO SALES TEAM dựa trên Salesperson nếu có
                 final_team_id_val = False
@@ -894,12 +908,20 @@ class SaleOrderInherit(models.Model):
                     odoo_creator = ResUsers.sudo().search([('login', '=', creator_email)], limit=1)
                 
                 if not odoo_creator and creator_name:
-                    # Logic để tạo người dùng mới có thể được thêm ở đây nếu cần
-                    _logger.warning(f"Creator '{creator_name}' with email '{creator_email}' not found. Defaulting to current user.")
+                    # Tìm theo tên nếu không tìm thấy bằng email
+                    odoo_creator = ResUsers.sudo().search([('name', '=ilike', creator_name), ('share', '=', False)], limit=1)
+                    
+                if not odoo_creator:
+                    _logger.warning(f"Creator '{creator_name}' with email '{creator_email}' not found. Using current user.")
+                    odoo_creator = self.env.user
 
             # --- 2. Find or Create Salesperson (user_id) & Sales Team (team_id) ---
             assigning_seller_info = order_data.get('assigning_seller', {})
             p_assigning_seller_name = assigning_seller_info.get('name')
+            
+            # Ưu tiên 1: Người được gán bán hàng từ Pancake
+            # Ưu tiên 2: Người tạo đơn trên Pancake  
+            # Ưu tiên 3: Người đồng bộ hiện tại
             user_id_val = self.env.user.id # Default
             salesperson = False
             
@@ -908,6 +930,10 @@ class SaleOrderInherit(models.Model):
 
             if salesperson:
                 user_id_val = salesperson.id
+            elif odoo_creator and odoo_creator.id != self.env.user.id:
+                # Nếu không có người bán được gán, ưu tiên người tạo đơn trên Pancake
+                user_id_val = odoo_creator.id
+                _logger.info(f"Assigning creator '{odoo_creator.name}' as salesperson for Pancake order {p_order_id}")
 
             final_team_id_val = self.env['crm.team']._get_default_team_id(user_id=user_id_val)
 

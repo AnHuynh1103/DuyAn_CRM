@@ -39,6 +39,13 @@
                                     string="Debug cọc"
                                     help="Debug thông tin đặt cọc và log chi tiết"
                                     groups="base.group_system"/>
+                            <button name="test_user_assignment"
+                                    type="object"
+                                    class="oe_stat_button"
+                                    icon="fa-user"
+                                    string="Test User"
+                                    help="Test logic gán user khi tạo đơn hàng mới"
+                                    groups="base.group_system"/>
                             <button name="check_and_update_completion_status"
                                     type="object"
                                     class="oe_stat_button"
@@ -67,7 +74,7 @@
                                 <field name="production_deadline" 
                                        string="Ngày hoàn tất"
                                        placeholder="VD: 01/09/2025"
-                                       invisible="not has_paid_deposit_invoice"
+                                       invisible="order_state_custom not in ['deposit', 'production', 'delivery', 'payment']"
                                        readonly="is_production_confirmed"/>
                                 
                                 <!-- Trường địa chỉ giao hàng - hiện từ tiến trình giao hàng -->
@@ -77,9 +84,10 @@
                                        readonly="is_delivery_confirmed"
                                        widget="text"/>
                                 <field name="has_deposit"
-                                       invisible="not is_deposit_confirmed and order_state_custom not in ['deposit', 'production', 'delivery', 'payment']"
+                                       invisible="order_state_custom != 'deposit'"
                                        readonly="is_deposit_confirmed"/>
-                                <div invisible="not has_deposit" style="max-width: 500px; margin-bottom: 8px;">
+                                <!-- Div tiền cọc: ĐƠN GIẢN - Chỉ hiện khi has_deposit=True và ở đúng các tiến trình cần thiết -->
+                                <div invisible="not has_deposit or order_state_custom == 'quotation'" style="max-width: 500px; margin-bottom: 8px;">
                                     <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
                                         <label for="deposit_amount" style="font-weight: 600; font-size: 14px; color: #007bff; margin-bottom: 0; min-width: 70px; white-space: nowrap;">Tiền cọc</label>
                                         <div style="display: flex; align-items: center; justify-content: center; background: #fffbe6; border-radius: 5px; border: 1px solid #ffe066; width: 180px; padding: 3px 6px;">
@@ -109,8 +117,19 @@
                                     </div>
                             </group>
                             <group>
-                                <!-- Hiển thị thông tin người phụ trách -->
-                                <field name="user_id" widget="many2one_avatar_user" string="Người phụ trách"/>
+                                <!-- Hiển thị thông tin người phụ trách - chỉ manager được chỉnh sửa -->
+                                <field name="user_id" 
+                                       widget="many2one_avatar_user" 
+                                       string="Người phụ trách"
+                                       domain="[('share', '=', False)]"
+                                       context="{'default_groups_ref': ['dac_erp.group_dac_erp_manager', 'dac_erp.group_dac_erp_sale']}"
+                                       groups="dac_erp.group_dac_erp_manager"/>  <!-- Chỉ manager được chỉnh sửa -->
+                                <!-- Hiển thị read-only cho sale users -->
+                                <field name="user_id" 
+                                       widget="many2one_avatar_user" 
+                                       string="Người phụ trách"
+                                       readonly="1"
+                                       groups="dac_erp.group_dac_erp_sale"/>  <!-- Sale users chỉ được xem -->
                                 <!-- Nút liên hệ khách hàng bên dưới-->
                             </group>
                         </group>
@@ -225,16 +244,15 @@
                                         or is_quotation_confirmed
                                     "/>
 
-                                <!-- CHỈ dùng nút "Tiến hành sản xuất" cho trạng thái deposit -->
+                                <!-- Nút "Tiến hành sản xuất" cho trạng thái deposit với logic mới -->
                                 <button name="action_proceed_to_production"
                                     string="Tiến hành sản xuất"
                                     type="object"
                                     class="btn-primary"
                                     invisible="
                                         order_state_custom != 'deposit'
-                                        or not is_deposit_confirmed
-                                        or not has_paid_deposit_invoice
                                         or not production_deadline
+                                        or (has_deposit and (not is_deposit_confirmed or not has_paid_deposit_invoice))
                                     "/>
 
                                 <!-- Nút Xác nhận cho các tiến trình khác (production, delivery) -->

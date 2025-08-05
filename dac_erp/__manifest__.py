@@ -37,13 +37,12 @@
     'data': [
         'security/user_access.xml',
         'security/ir.model.access.csv',
-        'data/currency_data.xml',  # Thêm file cấu hình tiền tệ
-        'data/cron_data.xml',  # Thêm cron job
+        'security/sale_order_access_rules.xml',  
+        'data/currency_data.xml',
+        'data/cron_data.xml',  
         'views/sale_order_view.xml',
         'views/deposit_confirm_wizard_view.xml',
         'views/account_move_deposit_view.xml',
-        'views/pancake_conversation_views.xml',  # Thêm view cho Pancake conversation
-        'views/page_fm_views.xml',  # Thêm view cho Page.fm integration
     ],
 
     # Import các file cấu hình (chỉ gọi từ folder 'static')
