@@ -148,7 +148,7 @@
                                         <field name="product_id" string="Sản phẩm" invisible="display_type"/>
                                         <field name="description" string="Nội dung" invisible="display_type"/>
                                         <field name="height" string="Chiều cao" invisible="display_type"/>
-                                        <field name="immediately" string="Giao ngay" invisible="display_type"/>
+                                        <field name="width" string="Chiều ngang" invisible="display_type"/>
                                         <field name="product_uom_qty" string="Số lượng" invisible="display_type"/>
                                         <field name="price_unit" string="Đơn giá" invisible="display_type"/>
                                         <field name="tax_id" string="Thuế" widget="many2many_tags" invisible="display_type"/>

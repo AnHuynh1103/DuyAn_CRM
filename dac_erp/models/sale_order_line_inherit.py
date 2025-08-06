@@ -9,7 +9,7 @@ class SaleOrderLine(models.Model):
     
     description = fields.Text(string='Nội dung')
     height = fields.Float(string='Chiều cao')
-    immediately = fields.Boolean(string='Giao ngay', default=True)
+    width = fields.Float(string='Chiều ngang')
 
     def unlink(self):
         """Kiểm tra quyền xóa dòng sản phẩm"""
