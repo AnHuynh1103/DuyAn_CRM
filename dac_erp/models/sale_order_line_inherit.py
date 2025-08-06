@@ -7,6 +7,10 @@ _logger = logging.getLogger(__name__)
 class SaleOrderLine(models.Model):
     _inherit = 'sale.order.line'
     
+    description = fields.Text(string='Nội dung')
+    height = fields.Float(string='Chiều cao')
+    immediately = fields.Boolean(string='Giao ngay', default=True)
+
     def unlink(self):
         """Kiểm tra quyền xóa dòng sản phẩm"""
         for line in self:
