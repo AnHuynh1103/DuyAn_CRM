@@ -1,7 +1,58 @@
 from odoo import models, fields, api
+from odoo.exceptions import UserError, AccessError
 import logging
 
 _logger = logging.getLogger(__name__)
+
+
+class AccountPayment(models.Model):
+    _inherit = 'account.payment'
+
+    # Thêm field người phụ trách để phân quyền
+    dac_user_id = fields.Many2one('res.users', string='Người phụ trách', default=lambda self: self.env.user)
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        """Override create để gán người tạo phiếu thu làm người phụ trách"""
+        for vals in vals_list:
+            if not vals.get('dac_user_id'):
+                vals['dac_user_id'] = self.env.user.id
+        return super().create(vals_list)
+
+    def write(self, vals):
+        """Override write để hạn chế chỉnh sửa khi đã thanh toán - CHỈ ÁP DỤNG CHO SALES USERS"""
+        # Nếu user là DAC sale và phiếu thu đã posted
+        if (self.env.user.has_group('dac_erp.group_dac_erp_sale') and 
+            not self.env.user.has_group('dac_erp.group_dac_erp_manager') and
+            not self.env.user.has_group('base.group_system')):
+            
+            for record in self:
+                if record.state == 'posted':
+                    # Chỉ cho phép một số field cụ thể
+                    allowed_fields = {'dac_user_id', 'message_follower_ids', 'message_ids'}
+                    restricted_fields = set(vals.keys()) - allowed_fields
+                    
+                    if restricted_fields:
+                        raise AccessError(
+                            f"Không thể chỉnh sửa phiếu thu {record.name} đã xác nhận!\n"
+                            f"Liên hệ quản lý để được hỗ trợ."
+                        )
+        
+        return super().write(vals)
+
+    def unlink(self):
+        """Kiểm tra quyền xóa phiếu thu - CHỈ ÁP DỤNG CHO SALES USERS"""
+        for payment in self:
+            # Nếu user là DAC sale (không phải manager hoặc admin) -> không cho xóa
+            if (self.env.user.has_group('dac_erp.group_dac_erp_sale') and 
+                not self.env.user.has_group('dac_erp.group_dac_erp_manager') and
+                not self.env.user.has_group('base.group_system')):
+                raise AccessError(
+                    f"Bạn không có quyền xóa phiếu thu {payment.name}!\n"
+                    "Liên hệ quản lý để được hỗ trợ."
+                )
+        
+        return super().unlink()
 
 
 class AccountPaymentRegister(models.TransientModel):

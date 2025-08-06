@@ -1,0 +1,41 @@
+<odoo>
+    <data>
+        <!-- Menuitem cho menu Đơn hàng -->
+        <menuitem id="dac_sale_order_menu_root"
+            name="Đơn hàng"
+            parent="home_menu.home_root"
+            action="dac_sale_order_custom_action"
+            sequence="10"/>
+
+
+        <!-- Menuitem cho Khách hàng -->
+        <menuitem id="dac_sale_order_customer_menu_root"
+            name="Khách hàng"
+            parent="home_menu.home_root"
+            sequence="20"/>
+        
+        <!-- Menu cho Hóa đơn -->
+        <menuitem id="dac_account_move_menu"
+            name="Hóa đơn"
+            parent="dac_sale_order_customer_menu_root"
+            action="dac_account_move_custom_action"
+            sequence="20"/>
+
+        <!-- Menu cho Phiếu thu -->
+        <menuitem id="dac_account_payment_menu"
+            name="Phiếu thu"
+            parent="dac_sale_order_customer_menu_root"
+            action="dac_account_payment_custom_action"
+            sequence="30"/>
+        
+        <!-- Menu cho Phiếu chi -->
+        <menuitem id="dac_account_payment_outbound_menu"
+            name="Phiếu chi"
+            parent="dac_sale_order_customer_menu_root"
+            action="dac_account_payment_outbound_action"
+            sequence="31"/>
+
+        <!-- Menu cho Khách hàng -->    
+
+    </data>
+</odoo>

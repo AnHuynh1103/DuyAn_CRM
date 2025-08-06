@@ -1,10 +1,29 @@
 from odoo import models, fields, api
+from odoo.exceptions import UserError, AccessError
 import logging
 
 _logger = logging.getLogger(__name__)
 
 class SaleOrderLine(models.Model):
     _inherit = 'sale.order.line'
+    
+    def unlink(self):
+        """Kiểm tra quyền xóa dòng sản phẩm"""
+        for line in self:
+            # Chỉ kiểm tra với dòng sản phẩm thực (không phải section/note)
+            if not line.display_type and line.product_id and line.order_id:
+                order = line.order_id
+                
+                # Nếu user là sale và đơn hàng đã xác nhận báo giá -> không cho xóa
+                if (self.env.user.has_group('sales_team.group_sale_salesman') and 
+                    not self.env.user.has_group('sales_team.group_sale_manager') and
+                    order.is_quotation_confirmed):
+                    raise AccessError(
+                        "Không thể xóa sản phẩm sau khi đã xác nhận báo giá!\n"
+                        "Liên hệ quản lý để được hỗ trợ."
+                    )
+        
+        return super().unlink()
     
     @api.model_create_multi
     def create(self, vals_list):

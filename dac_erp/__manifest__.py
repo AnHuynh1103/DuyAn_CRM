@@ -37,12 +37,16 @@
     'data': [
         'security/user_access.xml',
         'security/ir.model.access.csv',
-        'security/sale_order_access_rules.xml',  
+        'security/sale_order_access_rules.xml',
+        'security/account_access_rules.xml',
         'data/currency_data.xml',
         'data/cron_data.xml',  
         'views/sale_order_view.xml',
         'views/deposit_confirm_wizard_view.xml',
         'views/account_move_deposit_view.xml',
+        'views/account_move_view.xml',
+        'views/account_payment_view.xml',
+        'views/menuitem.xml'
     ],
 
     # Import các file cấu hình (chỉ gọi từ folder 'static')
@@ -52,10 +56,7 @@
     ## + t
     'assets': {  
         'web.assets_backend': [
-            #'dac_erp/static/src/js/deposit_popup.js',
-            #'dac_erp/static/src/js/backend/**/*',
-            #'dac_erp/static/src/xml/backend/**/*',
-            #'dac_erp/static/src/css/backend/**/*',
+            
         ],
     },
     'license': 'LGPL-3',

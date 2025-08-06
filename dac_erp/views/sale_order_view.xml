@@ -62,6 +62,7 @@
                         <field name="has_paid_deposit_invoice" invisible="1"/>
                         <field name="deposit_invoice_count" invisible="1"/>
                         <field name="has_final_invoice" invisible="1"/>
+                        <field name="can_delete_products" invisible="1"/>
                         <group name="sale_header">
                             <group name="partner_details">
                                 <field name="name" invisible="1"/>
@@ -138,7 +139,9 @@
                         </group>
                         <notebook>
                             <page string="Chi tiết đơn hàng">
-                                <field name="order_line" widget="section_and_note_one2many" mode="list,kanban" readonly="state == 'cancel' or locked">
+                                <field name="order_line" widget="section_and_note_one2many" mode="list,kanban" 
+                                       readonly="state == 'cancel' or locked"
+                                       context="{'list_view_ref': 'dac_erp.sale_order_line_tree_view'}">
                                     <list editable="bottom">
                                         <!-- Phần control để thêm ghi chú -->
                                         <control>
@@ -240,15 +243,21 @@
                                         or (has_deposit and (not is_deposit_confirmed or not has_paid_deposit_invoice))
                                     "/>
 
-                                <!-- Nút Xác nhận cho các tiến trình khác (production, delivery) -->
+                                <!-- Nút "Tiến hành giao hàng" cho trạng thái production -->
+                                <button name="action_proceed_to_delivery"
+                                    string="Tiến hành giao hàng"
+                                    type="object"
+                                    class="btn-primary"
+                                    invisible="order_state_custom != 'production' or not is_production_confirmed"/>
+
+                                <!-- Nút Xác nhận cho các tiến trình khác (chỉ delivery) -->
                                 <button name="action_confirm_info"
                                     string="Xác nhận"
                                     type="object"
                                     class="btn-warning"
                                     invisible="
-                                        order_state_custom not in ['production', 'delivery']
-                                        or (order_state_custom == 'production' and is_production_confirmed)
-                                        or (order_state_custom == 'delivery' and is_delivery_confirmed)
+                                        order_state_custom != 'delivery'
+                                        or is_delivery_confirmed
                                     "/>
 
                                 <!-- Nút Tạo hóa đơn ở bước cuối cùng (payment) -->
@@ -265,13 +274,8 @@
                                     class="btn-primary"
                                     invisible="order_state_custom != 'quotation' or not is_quotation_confirmed"/>
                                     
-                                <!-- Nút Chuyển sang tiến trình tiếp theo: Giao hàng -->
-                                <button name="action_next_step"
-                                    string="Giao hàng"
-                                    type="object"
-                                    class="btn-primary"
-                                    invisible="order_state_custom != 'production' or not is_production_confirmed"/>
                                 <!-- Nút Chuyển sang tiến trình tiếp theo: Thu tiền -->
+                                <!-- Bỏ nút Giao hàng vì đã có nút "Tiến hành giao hàng" riêng -->
                                 <button name="action_next_step"
                                     string="Thu tiền"
                                     type="object"
@@ -365,10 +369,33 @@
             <field name="context">{}</field>
         </record>
 
-        <menuitem id="dac_sale_order_menu_root"
-            name="Đơn hàng"
-            parent="home_menu.home_root"
-            action="dac_sale_order_custom_action"
-            sequence="10"/>
+        
+        <!-- List view riêng cho order_line với logic ẩn nút xóa -->
+        <record id="sale_order_line_tree_view" model="ir.ui.view">
+            <field name="name">sale.order.line.list.secure</field>
+            <field name="model">sale.order.line</field>
+            <field name="arch" type="xml">
+                <list editable="bottom">
+                    <control>
+                        <create name="add_product_control" string="Thêm sản phẩm"/>
+                        <create name="add_note_control" string="Thêm ghi chú" context="{'default_display_type': 'line_note'}"/>
+                    </control>
+                    <field name="sequence" widget="handle" optional="show"/>
+                    <field name="product_id" string="Sản phẩm" invisible="display_type"/>
+                    <field name="product_uom_qty" string="Số lượng" invisible="display_type"/>
+                    <field name="price_unit" string="Đơn giá" invisible="display_type"/>
+                    <field name="tax_id" string="Thuế" widget="many2many_tags" invisible="display_type"/>
+                    <field name="price_subtotal" string="Thành tiền" readonly="1" invisible="display_type"/>
+                    <field name="name" 
+                           string=""
+                           width="1px"
+                           invisible="not display_type" 
+                           decoration-bf="display_type == 'line_section'" 
+                           decoration-it="display_type == 'line_note'"
+                           required="display_type in ['line_section', 'line_note']"
+                           widget="sol_text"/>
+                </list>
+            </field>
+        </record>
     </data>
 </odoo>

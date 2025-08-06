@@ -77,6 +77,9 @@ class SaleOrder(models.Model):
 
     # Computed field để tự động kiểm tra và thêm dòng đặt cọc
     auto_check_deposit = fields.Boolean(string="Auto Check Deposit", compute="_compute_auto_check_deposit", store=False)
+    
+    # Field để kiểm tra có được phép xóa sản phẩm không (cho sale user)
+    can_delete_products = fields.Boolean(string="Can Delete Products", compute="_compute_can_delete_products", store=False)
 
     @api.onchange('partner_id')
     def _onchange_partner_id_address(self):
@@ -179,6 +182,19 @@ class SaleOrder(models.Model):
                         order.add_deposit_order_line(deposit_amount, invoice=deposit_invoices[0])
             
             order.auto_check_deposit = True
+
+    @api.depends('is_quotation_confirmed')
+    def _compute_can_delete_products(self):
+        """Kiểm tra user có được phép xóa sản phẩm không"""
+        for order in self:
+            # Manager luôn được phép xóa
+            if self.env.user.has_group('sales_team.group_sale_manager'):
+                order.can_delete_products = True
+            # Sale user chỉ được xóa khi chưa xác nhận báo giá
+            elif self.env.user.has_group('sales_team.group_sale_salesman'):
+                order.can_delete_products = not order.is_quotation_confirmed
+            else:
+                order.can_delete_products = True
 
     def read(self, fields=None, load='_classic_read'):
         """Override read để kiểm tra và thêm dòng đặt cọc khi cần thiết"""
@@ -338,8 +354,9 @@ class SaleOrder(models.Model):
                 if not order.production_deadline:
                     raise UserError("Vui lòng nhập 'Ngày hoàn tất' trước khi tiến hành sản xuất!")
                 
-                # Chuyển sang trạng thái sản xuất ngay
+                # Chuyển sang trạng thái sản xuất ngay và set confirmed
                 order.order_state_custom = 'production'
+                order.is_production_confirmed = True
                 return True
             
             # TRƯỜNG HỢP 2: CÓ đặt cọc - giữ nguyên logic cũ
@@ -365,8 +382,25 @@ class SaleOrder(models.Model):
             if not deposit_invoices:
                 raise UserError("Không tìm thấy hóa đơn cọc đã thanh toán!")
             
-            # Chuyển sang trạng thái sản xuất
+            # Chuyển sang trạng thái sản xuất và set confirmed
             order.order_state_custom = 'production'
+            order.is_production_confirmed = True
+            
+            
+        return True
+
+    def action_proceed_to_delivery(self):
+        """Tiến hành giao hàng từ trạng thái sản xuất"""
+        for order in self:
+            if order.order_state_custom != 'production':
+                raise UserError("Chỉ có thể tiến hành giao hàng từ trạng thái sản xuất!")
+            
+            # Kiểm tra đã xác nhận sản xuất chưa
+            if not order.is_production_confirmed:
+                raise UserError("Vui lòng xác nhận sản xuất trước khi tiến hành giao hàng!")
+            
+            # Chuyển sang trạng thái giao hàng
+            order.order_state_custom = 'delivery'
             
         return True
 
@@ -650,6 +684,7 @@ class SaleOrder(models.Model):
                     _logger.info(f"Tự động set is_order_completed = True cho order {order.name} - có hóa đơn cuối đã thanh toán")
                 else:
                     # Chỉ có hóa đơn cọc -> KHÔNG set hoàn thành
+                    _logger.info(f"Order {order.name}: Chỉ có hóa đơn cọc đã thanh toán, chưa set hoàn thành")
                     _logger.info(f"Order {order.name} chỉ có hóa đơn cọc đã thanh toán, không set hoàn thành")
 
     def check_and_update_completion_status(self):

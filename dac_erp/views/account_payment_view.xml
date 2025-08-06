@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Custom List View cho Phiếu thu -->
+        <record id="dac_account_payment_custom_view_list" model="ir.ui.view">
+            <field name="name">account.payment.custom.list</field>
+            <field name="model">account.payment</field>
+            <field name="priority">1</field>
+            <field name="arch" type="xml">
+                <list string="Phiếu thu" default_order="create_date desc" create="0" edit="0">
+                    <field name="name"/>
+                    <field name="create_date"/>
+                    <field name="date"/>
+                    <field name="partner_id"/>
+                    <field name="journal_id"/>
+                    <field name="dac_user_id" string="Người phụ trách" widget="many2one_avatar_user"/>
+                    <field name="amount" sum="Tổng" widget="monetary"/>
+                    <field name="currency_id" invisible="1" optional="hide"/>
+                    <field name="state" string="Trạng thái" widget="badge"
+                        decoration-info="state == 'draft'"
+                        decoration-success="state == 'paid'"
+                        decoration-danger="state == 'cancelled' or state == 'rejected'"/>
+                    <field name="payment_method_line_id"/>
+                </list>
+            </field>
+        </record>
+
+        <!-- Custom Search View cho Phiếu thu -->
+        <record id="dac_account_payment_custom_search" model="ir.ui.view">
+            <field name="name">account.payment.custom.search</field>
+            <field name="model">account.payment</field>
+            <field name="arch" type="xml">
+                <search string="Tìm kiếm phiếu thu">
+                    <field name="name"/>
+                    <field name="partner_id"/>
+                    <field name="journal_id"/>
+                    <field name="dac_user_id"/>
+                    <filter string="Của tôi" name="my_payments" domain="[('dac_user_id', '=', uid)]"/>
+                    <separator/>
+                    <filter string="Nháp" name="draft" domain="[('state', '=', 'draft')]"/>
+                    <filter string="Đã xác nhận" name="paid" domain="[('state', '=', 'paid')]"/>
+                    <filter string="Đã hủy" name="cancelled" domain="[('state', '=', 'cancelled')]"/>
+                    <separator/>
+                    <filter string="Hôm nay" name="today" domain="[('date', '=', context_today().strftime('%Y-%m-%d'))]"/>
+                    <filter string="Tuần này" name="this_week" domain="[('date', '&gt;=', (context_today() - datetime.timedelta(days=context_today().weekday())).strftime('%Y-%m-%d'))]"/>
+                    <filter string="Tháng này" name="this_month" domain="[('date', '&gt;=', context_today().strftime('%Y-%m-01'))]"/>
+                    <group expand="1" string="Nhóm theo">
+                        <filter string="Trạng thái" name="group_by_state" context="{'group_by': 'state'}"/>
+                        <filter string="Sổ nhật ký" name="group_by_journal" context="{'group_by': 'journal_id'}"/>
+                        <filter string="Khách hàng" name="group_by_partner" context="{'group_by': 'partner_id'}"/>
+                        <filter string="Ngày thanh toán" name="group_by_date" context="{'group_by': 'date:month'}"/>
+                    </group>
+                </search>
+            </field>
+        </record>
+
+        <!-- Action Window cho Phiếu thu -->
+        <record id="dac_account_payment_custom_action" model="ir.actions.act_window">
+            <field name="name">Phiếu thu</field>
+            <field name="res_model">account.payment</field>
+            <field name="view_mode">list,form</field>
+            <field name="view_id" ref="dac_account_payment_custom_view_list"/>
+            <field name="search_view_id" ref="dac_account_payment_custom_search"/>
+            <field name="domain">[('payment_type', '=', 'inbound')]</field>
+            <field name="context">{
+                'default_payment_type': 'inbound',
+                'default_dac_user_id': uid
+            }</field>
+        </record>
+
+
+        <!-- Custom List View cho Phiếu chi -->
+        <record id="dac_account_payment_outbound_view_list" model="ir.ui.view">
+            <field name="name">account.payment.outbound.list</field>
+            <field name="model">account.payment</field>
+            <field name="priority">1</field>
+            <field name="arch" type="xml">
+                <list string="Phiếu chi" default_order="create_date desc" create="0" edit="0">
+                    <field name="name"/>
+                    <field name="create_date"/>
+                    <field name="date"/>
+                    <field name="partner_id"/>
+                    <field name="journal_id"/>
+                    <field name="dac_user_id" string="Người phụ trách" widget="many2one_avatar_user"/>
+                    <field name="amount" sum="Tổng" widget="monetary"/>
+                    <field name="currency_id" invisible="1" optional="hide"/>
+                    <field name="state" string="Trạng thái" widget="badge"
+                        decoration-info="state == 'draft'"
+                        decoration-success="state == 'paid'"
+                        decoration-danger="state == 'cancelled' or state == 'rejected'"/>
+                    <field name="payment_method_line_id"/>
+                </list>
+            </field>
+        </record>
+
+        <!-- Custom Search View cho Phiếu chi -->
+        <record id="dac_account_payment_outbound_search" model="ir.ui.view">
+            <field name="name">account.payment.outbound.search</field>
+            <field name="model">account.payment</field>
+            <field name="arch" type="xml">
+                <search string="Tìm kiếm phiếu chi">
+                    <field name="name"/>
+                    <field name="partner_id"/>
+                    <field name="journal_id"/>
+                    <field name="dac_user_id"/>
+                    <filter string="Của tôi" name="my_payments" domain="[('dac_user_id', '=', uid)]"/>
+                    <separator/>
+                    <filter string="Nháp" name="draft" domain="[('state', '=', 'draft')]"/>
+                    <filter string="Đã xác nhận" name="paid" domain="[('state', '=', 'paid')]"/>
+                    <filter string="Đã hủy" name="cancelled" domain="[('state', '=', 'cancelled')]"/>
+                    <separator/>
+                    <filter string="Hôm nay" name="today" domain="[('date', '=', context_today().strftime('%Y-%m-%d'))]"/>
+                    <filter string="Tuần này" name="this_week" domain="[('date', '&gt;=', (context_today() - datetime.timedelta(days=context_today().weekday())).strftime('%Y-%m-%d'))]"/>
+                    <filter string="Tháng này" name="this_month" domain="[('date', '&gt;=', context_today().strftime('%Y-%m-01'))]"/>
+                    <group expand="1" string="Nhóm theo">
+                        <filter string="Trạng thái" name="group_by_state" context="{'group_by': 'state'}"/>
+                        <filter string="Sổ nhật ký" name="group_by_journal" context="{'group_by': 'journal_id'}"/>
+                        <filter string="Đối tác" name="group_by_partner" context="{'group_by': 'partner_id'}"/>
+                        <filter string="Ngày thanh toán" name="group_by_date" context="{'group_by': 'date:month'}"/>
+                    </group>
+                </search>
+            </field>
+        </record>
+
+        <!-- Action Window cho Phiếu chi -->
+        <record id="dac_account_payment_outbound_action" model="ir.actions.act_window">
+            <field name="name">Phiếu chi</field>
+            <field name="res_model">account.payment</field>
+            <field name="view_mode">list,form</field>
+            <field name="view_id" ref="dac_account_payment_outbound_view_list"/>
+            <field name="search_view_id" ref="dac_account_payment_outbound_search"/>
+            <field name="domain">[('payment_type', '=', 'outbound')]</field>
+            <field name="context">{
+                'default_payment_type': 'outbound',
+                'default_dac_user_id': uid
+            }</field>
+        </record>
+    </data>
+</odoo>
