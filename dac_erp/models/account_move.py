@@ -37,89 +37,47 @@ class AccountMove(models.Model):
 
     @api.model
     def search_read(self, domain=None, fields=None, offset=0, limit=None, order=None):
-        """Override search_read để lọc hóa đơn cho sales user"""
-        # Chỉ áp dụng filter cho DAC sales users (không phải manager hoặc admin)
+        """Override search_read để lọc hóa đơn cho sales user - BACKUP cho Security Rules"""
+        # CHỈ ÁP DỤNG CHO SALES USERS, KHÔNG ÁP DỤNG CHO MANAGER/ADMIN
         if (self.env.user.has_group('dac_erp.group_dac_erp_sale') and 
             not self.env.user.has_group('dac_erp.group_dac_erp_manager') and
             not self.env.user.has_group('base.group_system')):
             
-            # AUTO-UPDATE missing dac_user_id nếu cần thiết (chỉ chạy 1 lần)
-            if not hasattr(self.env.registry, '_dac_updated_missing_users'):
-                try:
-                    # Temporarily bypass filtering to update missing users
-                    original_search = super().search
-                    result = original_search([('dac_user_id', '=', False), ('move_type', '=', 'out_invoice')])
-                    if result:
-                        _logger.info(f"Found {len(result)} invoices without dac_user_id, updating...")
-                        default_user = self.env.ref('base.user_admin', raise_if_not_found=False)
-                        if not default_user:
-                            default_user = self.env['res.users'].search([('active', '=', True)], limit=1)
-                        if default_user:
-                            result.write({'dac_user_id': default_user.id})
-                            self.env.cr.commit()
-                    self.env.registry._dac_updated_missing_users = True
-                    _logger.info("Auto-updated missing dac_user_id for invoices")
-                except Exception as e:
-                    _logger.error(f"Error auto-updating missing dac_user_id: {e}")
+            _logger.info(f"PYTHON FILTER: Sales user {self.env.user.name} - applying invoice filter")
             
-            # Kết hợp domain với AND logic rõ ràng
-            user_domain = [
-                ('dac_user_id', '=', self.env.user.id),
-                ('move_type', '=', 'out_invoice')
-            ]
+            # Domain để chỉ thấy hóa đơn của user hiện tại
+            user_domain = [('dac_user_id', '=', self.env.user.id)]
             
-            # Kết hợp với domain gốc - CÁCH ĐÚNG cho Odoo
+            # Kết hợp với domain gốc
             if domain:
-                # Wrap cả hai domain trong AND
-                domain = ['&'] * (len(user_domain) - 1) + user_domain + domain
+                domain = ['&'] + user_domain + domain
             else:
                 domain = user_domain
                 
-            _logger.info(f"DAC Sales user {self.env.user.name} search_read with domain: {domain}")
+            _logger.info(f"PYTHON FILTER: Final domain for {self.env.user.name}: {domain}")
             
         return super().search_read(domain=domain, fields=fields, offset=offset, limit=limit, order=order)
 
     @api.model
     def search(self, args, offset=0, limit=None, order=None):
-        """Override search để lọc hóa đơn cho sales user - BẮT BUỘC"""
-        # Chỉ áp dụng filter cho DAC sales users (không phải manager hoặc admin)
+        """Override search để lọc hóa đơn cho sales user - BACKUP cho Security Rules"""
+        # CHỈ ÁP DỤNG CHO SALES USERS, KHÔNG ÁP DỤNG CHO MANAGER/ADMIN
         if (self.env.user.has_group('dac_erp.group_dac_erp_sale') and 
             not self.env.user.has_group('dac_erp.group_dac_erp_manager') and
             not self.env.user.has_group('base.group_system')):
             
-            # AUTO-UPDATE missing dac_user_id nếu cần thiết (chỉ chạy 1 lần)
-            if not hasattr(self.env.registry, '_dac_updated_missing_users'):
-                try:
-                    # Temporarily bypass filtering to update missing users
-                    original_search = super().search
-                    result = original_search([('dac_user_id', '=', False), ('move_type', '=', 'out_invoice')])
-                    if result:
-                        _logger.info(f"Found {len(result)} invoices without dac_user_id, updating...")
-                        default_user = self.env.ref('base.user_admin', raise_if_not_found=False)
-                        if not default_user:
-                            default_user = self.env['res.users'].search([('active', '=', True)], limit=1)
-                        if default_user:
-                            result.write({'dac_user_id': default_user.id})
-                            self.env.cr.commit()
-                    self.env.registry._dac_updated_missing_users = True
-                    _logger.info("Auto-updated missing dac_user_id for invoices")
-                except Exception as e:
-                    _logger.error(f"Error auto-updating missing dac_user_id: {e}")
+            _logger.info(f"PYTHON FILTER: Sales user {self.env.user.name} - applying invoice filter")
             
-            # Kết hợp domain với AND logic rõ ràng
-            user_domain = [
-                ('dac_user_id', '=', self.env.user.id),
-                ('move_type', '=', 'out_invoice')
-            ]
+            # Domain để chỉ thấy hóa đơn của user hiện tại
+            user_domain = [('dac_user_id', '=', self.env.user.id)]
             
-            # Kết hợp với domain gốc - CÁCH ĐÚNG cho Odoo
+            # Kết hợp với domain gốc
             if args:
-                # Wrap cả hai domain trong AND
-                args = ['&'] * (len(user_domain) - 1) + user_domain + args
+                args = ['&'] + user_domain + args
             else:
                 args = user_domain
                 
-            _logger.info(f"DAC Sales user {self.env.user.name} search with domain: {args}")
+            _logger.info(f"PYTHON FILTER: Final args for {self.env.user.name}: {args}")
             
         return super().search(args, offset=offset, limit=limit, order=order)
 
@@ -157,25 +115,7 @@ class AccountMove(models.Model):
         }
 
     def write(self, vals):
-        """Override write để hạn chế chỉnh sửa khi đã thanh toán và hook vào khi payment_state thay đổi"""
-        # Nếu user là DAC sale và hóa đơn đã vào sổ (posted) và đã thanh toán - CHỈ ÁP DỤNG CHO SALES USERS
-        if (self.env.user.has_group('dac_erp.group_dac_erp_sale') and 
-            not self.env.user.has_group('dac_erp.group_dac_erp_manager') and
-            not self.env.user.has_group('base.group_system')):
-            
-            for record in self:
-                if record.state == 'posted' and record.payment_state == 'paid':
-                    # Chỉ cho phép một số field cụ thể
-                    allowed_fields = {'dac_user_id', 'message_follower_ids', 'message_ids', 'payment_state'}
-                    restricted_fields = set(vals.keys()) - allowed_fields
-                    
-                    if restricted_fields:
-                        raise AccessError(
-                            f"Không thể chỉnh sửa hóa đơn {record.name} đã thanh toán!\n"
-                            f"Liên hệ quản lý để được hỗ trợ."
-                        )
-        
-        # Gọi method gốc và hook vào payment_state changes
+        """Override write để hook vào khi payment_state thay đổi"""
         result = super().write(vals)
         
         # CHỈ XỬ LÝ KHI payment_state THAY ĐỔI THÀNH 'paid' - tối ưu performance

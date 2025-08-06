@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <data noupdate="1">
-        
         <!-- Rule đơn giản: Sale users chỉ thấy đơn hàng của mình -->
         <record id="sale_order_rule_own_orders" model="ir.rule">
             <field name="name">Sale Orders: Own Orders Only</field>
