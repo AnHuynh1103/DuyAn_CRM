@@ -14,19 +14,29 @@
             parent="home_menu.home_root"
             sequence="20"/> -->
         
-        <!-- Menu cho Hóa đơn -->
-        <menuitem id="dac_account_move_menu"
+        <!-- Menu cho manager Hóa đơn -->
+        <menuitem id="dac_account_move_menu_root"
             name="Hóa đơn"
             parent="home_menu.home_root"
             action="dac_account_move_custom_action"
-            sequence="20"/>
+            sequence="20"
+            groups="dac_erp.group_dac_erp_manager,base.group_system"/>
+
+        <!-- Menu cho Sale Hóa đơn -->
+        <menuitem id="dac_account_move_sale_menu"
+            name="Hóa đơn"
+            parent="home_menu.home_root"
+            action="dac_account_move_custom_action_sale"
+            sequence="30"
+            groups="dac_erp.group_dac_erp_sale"/>
+
 
         <!-- Menu cho Phiếu thu -->
         <menuitem id="dac_account_payment_menu"
             name="Phiếu thu"
             parent="home_menu.home_root"
             action="dac_account_payment_custom_action"
-            sequence="30"/>
+            sequence="40"/>
         
         <!-- Menu cho Phiếu chi -->
         <!-- <menuitem id="dac_account_payment_outbound_menu"
