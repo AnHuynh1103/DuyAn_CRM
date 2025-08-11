@@ -5,8 +5,15 @@
       <field name="name">Khách hàng</field>
       <field name="res_model">res.partner</field>
       <field name="view_mode">kanban,list,form</field>
-      <field name="domain">[('customer_rank','&gt;',0)]</field>
-      <field name="context">{'default_customer_rank': 1}</field>
+      <field name="domain"
+       eval="['|',
+               ('customer_rank','>',0),
+               '|','|',
+               ('email','!=',False),
+               ('phone','!=',False),
+               ('mobile','!=',False)
+       ]"/>
     </record>
+
   </data>
 </odoo>
