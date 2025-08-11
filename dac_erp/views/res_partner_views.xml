@@ -1,0 +1,12 @@
+<odoo>
+  <data>
+    <!-- Action cho Khách hàng -->
+    <record id="dac_res_partner_customer_action" model="ir.actions.act_window">
+      <field name="name">Khách hàng</field>
+      <field name="res_model">res.partner</field>
+      <field name="view_mode">kanban,list,form</field>
+      <field name="domain">[('customer_rank','&gt;',0)]</field>
+      <field name="context">{'default_customer_rank': 1}</field>
+    </record>
+  </data>
+</odoo>

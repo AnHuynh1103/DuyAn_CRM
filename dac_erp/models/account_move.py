@@ -35,29 +35,6 @@ class AccountMove(models.Model):
                 vals['dac_user_id'] = self.env.user.id
         return super().create(vals_list)
 
-    @api.model
-    def search_read(self, domain=None, fields=None, offset=0, limit=None, order=None):
-        """Override search_read để lọc hóa đơn cho sales user - BACKUP cho Security Rules"""
-        # CHỈ ÁP DỤNG CHO SALES USERS, KHÔNG ÁP DỤNG CHO MANAGER/ADMIN
-        if (self.env.user.has_group('dac_erp.group_dac_erp_sale') and 
-            not self.env.user.has_group('dac_erp.group_dac_erp_manager') and
-            not self.env.user.has_group('base.group_system')):
-            
-            _logger.info(f"PYTHON FILTER: Sales user {self.env.user.name} - applying invoice filter")
-            
-            # Domain để chỉ thấy hóa đơn của user hiện tại
-            user_domain = [('dac_user_id', '=', self.env.user.id)]
-            
-            # Kết hợp với domain gốc
-            if domain:
-                domain = ['&'] + user_domain + domain
-            else:
-                domain = user_domain
-                
-            _logger.info(f"PYTHON FILTER: Final domain for {self.env.user.name}: {domain}")
-            
-        return super().search_read(domain=domain, fields=fields, offset=offset, limit=limit, order=order)
-
 
     @api.model
     def _update_missing_dac_user_id(self):

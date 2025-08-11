@@ -67,7 +67,7 @@
                                 <field name="pricelist_id" invisible="1"/>
                                 <field name="team_id" invisible="1"/>
                                 <!-- Trường deadline sản xuất - thiết kế lại: luôn nằm trên, điều kiện invisible gốc, giao diện hài hòa -->
-                                <div invisible="order_state_custom not in ['deposit', 'production', 'delivery', 'payment']"
+                                <div invisible="order_state_custom == 'quotation' and not is_deposit_confirmed"
                                      style="margin-bottom: 8px; display: flex; align-items: center; gap: 6px; background: #fffbe6; border: 1px solid #ffc107; border-radius: 5px; padding: 4px 10px; width: fit-content;">
                                     <i class="fa fa-calendar" style="color: #ffc107;"></i>
                                     <span class="o_form_label" style="font-weight: 600; color: #e55353; font-size: 13px;">Ngày hoàn tất sản xuất</span>
@@ -83,10 +83,11 @@
                                        readonly="is_delivery_confirmed"
                                        widget="text"/>
                                 <field name="has_deposit"
-                                       invisible="order_state_custom == 'quotation'"
-                                       readonly="is_deposit_confirmed or order_state_custom != 'deposit'"/>
+                                       invisible="order_state_custom == 'quotation' and not is_deposit_confirmed"
+                                       readonly="is_deposit_confirmed or order_state_custom != 'deposit' or is_production_confirmed"/>
                                 <!-- Div tiền cọc: Luôn hiện ở mọi tiến trình trừ báo giá đầu tiên, chỉ ẩn nếu không có cọc hoặc đang ở quotation -->
-                                <div invisible="order_state_custom == 'quotation' or not has_deposit" style="max-width: 500px; margin-bottom: 8px;">
+                                <div invisible="(order_state_custom == 'quotation' and not is_deposit_confirmed) or not has_deposit" 
+                                style="max-width: 500px; margin-bottom: 8px;">
                                     <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
                                         <label for="deposit_amount" style="font-weight: 600; font-size: 14px; color: #007bff; margin-bottom: 0; min-width: 70px; white-space: nowrap;">Tiền cọc</label>
                                         <div style="display: flex; align-items: center; justify-content: center; background: #fffbe6; border-radius: 5px; border: 1px solid #ffe066; width: 180px; padding: 3px 6px;">
@@ -136,7 +137,8 @@
                             <page string="Chi tiết đơn hàng">
                                 <field name="order_line" widget="section_and_note_one2many" mode="list,kanban" 
                                        readonly="state == 'cancel' or locked"
-                                       context="{'list_view_ref': 'dac_erp.sale_order_line_tree_view'}">
+                                       can_delete="can_delete_products"
+                                       context="{'list_view_ref': 'dac_erp.sale_order_line_list_view'}">
                                     <list editable="bottom">
                                         <!-- Phần control để thêm ghi chú -->
                                         <control>
@@ -145,7 +147,8 @@
                                             <create name="add_note_control" string="Thêm ghi chú" context="{'default_display_type': 'line_note'}"/>
                                         </control>
                                         <field name="sequence" widget="handle" optional="show"/>
-                                        <field name="product_id" string="Sản phẩm" invisible="display_type"/>
+                                        <field name="product_id" string="Sản phẩm" invisible="display_type" 
+                                               options="{'no_create_edit': False, 'can_create': True, 'can_write': True}"/>
                                         <field name="description" string="Nội dung" invisible="display_type"/>
                                         <field name="height" string="Chiều cao" invisible="display_type"/>
                                         <field name="width" string="Chiều ngang" invisible="display_type"/>
@@ -369,7 +372,7 @@
 
         
         <!-- List view riêng cho order_line với logic ẩn nút xóa -->
-        <record id="sale_order_line_tree_view" model="ir.ui.view">
+        <record id="sale_order_line_list_view" model="ir.ui.view">
             <field name="name">sale.order.line.list.secure</field>
             <field name="model">sale.order.line</field>
             <field name="arch" type="xml">
@@ -379,7 +382,8 @@
                         <create name="add_note_control" string="Thêm ghi chú" context="{'default_display_type': 'line_note'}"/>
                     </control>
                     <field name="sequence" widget="handle" optional="show"/>
-                    <field name="product_id" string="Sản phẩm" invisible="display_type"/>
+                    <field name="product_id" string="Sản phẩm" invisible="display_type" 
+                           options="{'no_create_edit': False, 'can_create': True, 'can_write': True}"/>
                     <field name="product_uom_qty" string="Số lượng" invisible="display_type"/>
                     <field name="price_unit" string="Đơn giá" invisible="display_type"/>
                     <field name="tax_id" string="Thuế" widget="many2many_tags" invisible="display_type"/>

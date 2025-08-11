@@ -13,33 +13,41 @@ patch(WebClient.prototype, {
 
   async _loadDefaultApp() {
     // Selects the first root menu if any
-    // let root;
-    // let firstApp;
+    let root;
+    let firstApp;
     if (await user.hasGroup("base.group_system"))
       return super._loadDefaultApp();
 
-    // if (await user.hasGroup("investor_vnpay_odoo.seller")) {
-    //   const filteredArray = this.menuService
-    //     .getApps()
-    //     .filter(
-    //       (item) => item.xmlid === "investor_vnpay_odoo.menu_seller_root"
-    //     );
-    //   root = filteredArray[0];
-    //   firstApp = root?.appID;
-    // } else {
-    //   const filteredArray = this.menuService
-    //     .getApps()
-    //     .filter((item) => item.xmlid === "home_menu.home_root");
-    //   root = filteredArray[0];
-    //   firstApp = root?.appID;
-    // }
-    const filteredArray = this.menuService
-      .getApps()
-      .filter((item) => item.xmlid === "home_menu.home_root");
-    const root = filteredArray[0];
-    const firstApp = root?.appID;
+    if (await user.hasGroup("dac_erp.group_dac_erp_manager")) {
+      const filteredArray = this.menuService
+        .getApps()
+        .filter((item) => item.xmlid === "dac_report.dac_report_menu_root");
+      root = filteredArray[0];
+      firstApp = root?.appID;
+    } else if (await user.hasGroup("dac_erp.group_dac_erp_sale")) {
+      const filteredArray = this.menuService
+        .getApps()
+        .filter((item) => item.xmlid === "dac_report.dac_report_menu_root");
+      root = filteredArray[0];
+      firstApp = root?.appID;
+    } else {
+      const filteredArray = this.menuService
+        .getApps()
+        .filter((item) => item.xmlid === "home_menu.home_root");
+      root = filteredArray[0];
+      firstApp = root?.appID;
+    }
+    
     if (firstApp) {
       return this.menuService.selectMenu(firstApp);
     }
+    // const filteredArray = this.menuService
+    //   .getApps()
+    //   .filter((item) => item.xmlid === "home_menu.home_root");
+    // const root = filteredArray[0];
+    // const firstApp = root?.appID;
+    // if (firstApp) {
+    //   return this.menuService.selectMenu(firstApp);
+    // }
   },
 });

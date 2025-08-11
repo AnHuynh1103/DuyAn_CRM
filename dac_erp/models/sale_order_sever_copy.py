@@ -46,8 +46,6 @@ class SaleOrderInherit(models.Model):
     #name = fields.Char(string='Số đơn', default='Tạo đơn mới')
 
     
-
-
     #Được copy từ trong code trên sever
     # --- Pancake Integration Fields ---
     pancake_order_id = fields.Char(string='Pancake Order ID', index=True, copy=False, readonly=True)

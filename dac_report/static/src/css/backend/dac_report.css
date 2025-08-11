@@ -1,0 +1,44 @@
+.dac-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 6px;
+}
+.dac-card {
+  border: 1px solid var(--gray-300, #dfe3e7);
+  border-radius: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  text-align: left;
+  background: #fff;
+}
+.dac-card:hover {
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.06);
+}
+.dac-card-title {
+  font-weight: 600;
+  opacity: 0.9;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.dac-card-value {
+  font-size: 20px;
+  font-weight: 700;
+  margin-top: 6px;
+}
+.dac-card-sub {
+  font-size: 12px;
+  opacity: 0.8;
+  margin-top: 2px;
+}
+
+.dac-info {
+  border-left: 4px solid #0d6dfd;
+}
+.dac-warning {
+  border-left: 4px solid #ffc107;
+}
+.dac-success {
+  border-left: 4px solid #198754;
+}

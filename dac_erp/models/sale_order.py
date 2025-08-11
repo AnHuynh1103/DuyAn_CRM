@@ -188,13 +188,17 @@ class SaleOrder(models.Model):
         """Kiểm tra user có được phép xóa sản phẩm không"""
         for order in self:
             # Manager luôn được phép xóa
-            if self.env.user.has_group('sales_team.group_sale_manager'):
+            if self.env.user.has_group('dac_erp.group_dac_erp_manager'):
                 order.can_delete_products = True
+                #_logger.info(f"[DEBUG] Order {order.name}: Manager can delete = True")
             # Sale user chỉ được xóa khi chưa xác nhận báo giá
-            elif self.env.user.has_group('sales_team.group_sale_salesman'):
+            elif self.env.user.has_group('dac_erp.group_dac_erp_sale'):
                 order.can_delete_products = not order.is_quotation_confirmed
+                #_logger.info(f"[DEBUG] Order {order.name}: Sale user can delete = {not order.is_quotation_confirmed} (is_quotation_confirmed = {order.is_quotation_confirmed})")
             else:
                 order.can_delete_products = True
+                #_logger.info(f"[DEBUG] Order {order.name}: Other user can delete = True")
+            #_logger.info(f"[DEBUG] User groups: {self.env.user.groups_id.mapped('name')}")
 
     def read(self, fields=None, load='_classic_read'):
         """Override read để kiểm tra và thêm dòng đặt cọc khi cần thiết"""
@@ -214,7 +218,7 @@ class SaleOrder(models.Model):
                     # Kiểm tra đã có dòng đặt cọc chưa
                     deposit_line = record.order_line.filtered(lambda l: not l.display_type and l.price_unit < 0)
                     if not deposit_line:
-                        _logger.info(f"Auto-sync: Thêm dòng đặt cọc cho order {record.name} khi đọc dữ liệu")
+                        #_logger.info(f"Auto-sync: Thêm dòng đặt cọc cho order {record.name} khi đọc dữ liệu")
                         deposit_amount = abs(deposit_invoices[0].amount_total)
                         record.add_deposit_order_line(deposit_amount, invoice=deposit_invoices[0])
                         
@@ -246,7 +250,7 @@ class SaleOrder(models.Model):
         if deposit_invoices:
             existing_deposit_line = self.order_line.filtered(lambda l: not l.display_type and l.price_unit < 0)
             if not existing_deposit_line:
-                _logger.info(f"Auto-sync: Thêm dòng đặt cọc cho order {self.name}")
+                #_logger.info(f"Auto-sync: Thêm dòng đặt cọc cho order {self.name}")
                 deposit_amount = abs(deposit_invoices[0].amount_total)
                 self.add_deposit_order_line(deposit_amount, invoice=deposit_invoices[0])
 
@@ -282,7 +286,11 @@ class SaleOrder(models.Model):
     def action_back_custom_step(self):
         """Quay lại xem tiến trình trước đó - CHỈ ĐỂ XEM, KHÔNG THAY ĐỔI TRẠNG THÁI XÁC NHẬN"""
         state_order = ['quotation', 'deposit', 'production', 'delivery', 'payment']
+        allowed_groups = [self.env.ref('dac_erp.group_dac_erp_manager'), 
+                          self.env.ref('base.group_system')]
         for order in self:
+            if not any(g in self.env.user.groups_id for g in allowed_groups):
+                raise UserError("Bạn không có quyền quay lại tiến trình trước. Vui lòng liên hệ quản lý!")
             if order.order_state_custom in state_order:
                 idx = state_order.index(order.order_state_custom)
                 if idx > 0:
@@ -491,9 +499,9 @@ class SaleOrder(models.Model):
         Thêm section 'Khoản cọc', note chi tiết hóa đơn, và dòng sản phẩm đặt cọc âm đúng chuẩn Odoo.
         """
         self.ensure_one()
-        _logger.info(f"=== BẮT ĐẦU THÊM DÒNG ĐẶT CỌC cho order {self.name} ===")
-        _logger.info(f"Số tiền cọc: {deposit_amount}")
-        _logger.info(f"Hóa đơn: {invoice.name if invoice else 'Không có'}")
+        #_logger.info(f"=== BẮT ĐẦU THÊM DÒNG ĐẶT CỌC cho order {self.name} ===")
+        #_logger.info(f"Số tiền cọc: {deposit_amount}")
+        #_logger.info(f"Hóa đơn: {invoice.name if invoice else 'Không có'}")
         
         # Tìm hoặc tạo product đặt cọc
         product = None
@@ -502,13 +510,13 @@ class SaleOrder(models.Model):
             invoice_lines = invoice.invoice_line_ids.filtered(lambda l: not l.display_type and l.product_id)
             if invoice_lines:
                 product = invoice_lines[0].product_id
-                _logger.info(f"Sử dụng sản phẩm từ hóa đơn: {product.name} (ID: {product.id})")
+                #_logger.info(f"Sử dụng sản phẩm từ hóa đơn: {product.name} (ID: {product.id})")
         
         if not product:
             # Fallback: tìm hoặc tạo sản phẩm DEPOSIT
             product = self.env['product.product'].search([('default_code', '=', 'DEPOSIT')], limit=1)
             if not product:
-                _logger.info("Tạo sản phẩm DEPOSIT mới")
+                #_logger.info("Tạo sản phẩm DEPOSIT mới")
                 product = self.env['product.product'].create({
                     'name': 'Đặt cọc',
                     'default_code': 'DEPOSIT',
@@ -518,7 +526,7 @@ class SaleOrder(models.Model):
                     'list_price': 0.0,
                     'taxes_id': [(6, 0, [])],
                 })
-                _logger.info(f"Đã tạo sản phẩm DEPOSIT: {product.id}")
+                #_logger.info(f"Đã tạo sản phẩm DEPOSIT: {product.id}")
             else:
                 _logger.info(f"Sử dụng sản phẩm DEPOSIT có sẵn: {product.id} - {product.name}")
         
@@ -527,26 +535,26 @@ class SaleOrder(models.Model):
             lambda l: not l.display_type and l.price_unit < 0
         )
         if existing_deposit_line:
-            _logger.info(f"Đã có dòng đặt cọc trong order {self.name}, không thêm nữa")
+            #_logger.info(f"Đã có dòng đặt cọc trong order {self.name}, không thêm nữa")
             for line in existing_deposit_line:
                 _logger.info(f"  - Dòng hiện có: {line.name}, Sản phẩm: {line.product_id.name}, Giá: {line.price_unit}")
             return True
         
-        _logger.info("Bắt đầu tạo các dòng order_line...")
+        #_logger.info("Bắt đầu tạo các dòng order_line...")
         
         # Kiểm tra đã có section 'Khoản cọc' chưa
         section_line = self.order_line.filtered(
             lambda l: l.display_type == 'line_section' and 'cọc' in (l.name or '').lower()
         )
         if not section_line:
-            _logger.info("Tạo section 'Khoản cọc'")
+            #_logger.info("Tạo section 'Khoản cọc'")
             section_line = self.order_line.create({
                 'order_id': self.id,
                 'display_type': 'line_section',
                 'name': 'Khoản cọc',
                 'sequence': 9999,  # Đặt cuối, Odoo sẽ tự sắp xếp lại
             })
-            _logger.info(f"Đã tạo section: {section_line.id}")
+            #_logger.info(f"Đã tạo section: {section_line.id}")
         else:
             _logger.info("Section 'Khoản cọc' đã tồn tại")
         
@@ -555,25 +563,25 @@ class SaleOrder(models.Model):
         if invoice:
             note_content += f" (hóa đơn: {invoice.name} ngày {invoice.invoice_date.strftime('%d/%m/%Y') if invoice.invoice_date else ''})"
         
-        _logger.info(f"Nội dung note: {note_content}")
+        #_logger.info(f"Nội dung note: {note_content}")
         
         note_line = self.order_line.filtered(
             lambda l: l.display_type == 'line_note' and note_content in (l.name or '')
         )
         if not note_line:
-            _logger.info("Tạo dòng note")
+            #_logger.info("Tạo dòng note")
             note_line = self.order_line.create({
                 'order_id': self.id,
                 'display_type': 'line_note',
                 'name': note_content,
                 'sequence': 10000,
             })
-            _logger.info(f"Đã tạo note: {note_line.id}")
+            #_logger.info(f"Đã tạo note: {note_line.id}")
         else:
             _logger.info("Dòng note đã tồn tại")
         
         # Thêm dòng sản phẩm đặt cọc âm
-        _logger.info(f"Tạo dòng sản phẩm đặt cọc với giá: -{abs(deposit_amount)}")
+        #_logger.info(f"Tạo dòng sản phẩm đặt cọc với giá: -{abs(deposit_amount)}")
         deposit_line = self.order_line.create({
             'order_id': self.id,
             'product_id': product.id,
@@ -585,8 +593,8 @@ class SaleOrder(models.Model):
             'sequence': 10001,
         })
         
-        _logger.info(f"Đã tạo dòng sản phẩm đặt cọc: {deposit_line.id}")
-        _logger.info(f"=== HOÀN THÀNH THÊM DÒNG ĐẶT CỌC {deposit_amount} vào order {self.name} ===")
+        #_logger.info(f"Đã tạo dòng sản phẩm đặt cọc: {deposit_line.id}")
+        #_logger.info(f"=== HOÀN THÀNH THÊM DÒNG ĐẶT CỌC {deposit_amount} vào order {self.name} ===")
         return True
     
     
@@ -620,7 +628,7 @@ class SaleOrder(models.Model):
                 ('payment_state', '=', 'paid')
             ])
             order.has_paid_deposit_invoice = paid_count > 0
-            _logger.info(f"Order {order.name}: has_paid_deposit_invoice = {order.has_paid_deposit_invoice} (paid_count = {paid_count})")
+            #_logger.info(f"Order {order.name}: has_paid_deposit_invoice = {order.has_paid_deposit_invoice} (paid_count = {paid_count})")
             
             # BỎ LOGIC TỰ ĐỘNG SET is_order_completed TẠI ĐÂY - đã chuyển vào action_post của account.move
 
@@ -633,7 +641,7 @@ class SaleOrder(models.Model):
                 ('dac_deposit_invoice', '=', False)  # Không phải hóa đơn cọc
             ])
             order.has_final_invoice = final_invoice_count > 0
-            _logger.info(f"Order {order.name}: has_final_invoice = {order.has_final_invoice} (count = {final_invoice_count})")
+            #_logger.info(f"Order {order.name}: has_final_invoice = {order.has_final_invoice} (count = {final_invoice_count})")
 
     def _compute_has_paid_final_invoice(self):
         """Kiểm tra xem đã có hóa đơn thanh toán cuối đã thanh toán chưa"""
@@ -645,7 +653,7 @@ class SaleOrder(models.Model):
                 ('payment_state', '=', 'paid')
             ])
             order.has_paid_final_invoice = paid_final_invoice_count > 0
-            _logger.info(f"Order {order.name}: has_paid_final_invoice = {order.has_paid_final_invoice} (count = {paid_final_invoice_count})")
+            #_logger.info(f"Order {order.name}: has_paid_final_invoice = {order.has_paid_final_invoice} (count = {paid_final_invoice_count})")
 
     @api.depends('invoice_ids', 'invoice_ids.payment_state', 'name')
     def _compute_all_invoices_paid(self):
@@ -681,16 +689,15 @@ class SaleOrder(models.Model):
                 if final_invoices:
                     # Có hóa đơn cuối -> có thể set hoàn thành
                     order.is_order_completed = True
-                    _logger.info(f"Tự động set is_order_completed = True cho order {order.name} - có hóa đơn cuối đã thanh toán")
+                    #_logger.info(f"Tự động set is_order_completed = True cho order {order.name} - có hóa đơn cuối đã thanh toán")
                 else:
                     # Chỉ có hóa đơn cọc -> KHÔNG set hoàn thành
                     _logger.info(f"Order {order.name}: Chỉ có hóa đơn cọc đã thanh toán, chưa set hoàn thành")
-                    _logger.info(f"Order {order.name} chỉ có hóa đơn cọc đã thanh toán, không set hoàn thành")
 
     def check_and_update_completion_status(self):
         """OPTIMIZED: Kiểm tra và cập nhật trạng thái hoàn thành với minimal compute calls"""
         for order in self:
-            _logger.info(f"OPTIMIZED CHECK: Processing order {order.name}")
+            #_logger.info(f"OPTIMIZED CHECK: Processing order {order.name}")
             
             # SINGLE SEARCH: Tìm tất cả invoices của order cùng lúc
             order_invoices = self.env['account.move'].search([
@@ -712,8 +719,8 @@ class SaleOrder(models.Model):
             # CHỈ UPDATE KHI CẦN THIẾT
             if final_paid_invoices and not order.is_order_completed:
                 order.is_order_completed = True
-                _logger.info(f"OPTIMIZED CHECK: Set completed cho order {order.name}")
-            
+                #_logger.info(f"OPTIMIZED CHECK: Set completed cho order {order.name}")
+
             # CHỈ INVALIDATE MỘT LẦN
             order.invalidate_recordset()
             
@@ -737,7 +744,7 @@ class SaleOrder(models.Model):
         # Kiểm tra và cập nhật trạng thái hoàn thành
         self.check_and_update_completion_status()
         
-        _logger.info(f"Force refresh view cho đơn hàng {self.name}")
+        #_logger.info(f"Force refresh view cho đơn hàng {self.name}")
         
         return {
             'type': 'ir.actions.client',
@@ -760,7 +767,7 @@ class SaleOrder(models.Model):
                 if order.has_paid_final_invoice and not order.is_order_completed:
                     order.is_order_completed = True
                     order.invalidate_recordset()
-                    _logger.info(f"POLLING: Auto set is_order_completed = True cho order {order.name}")
+                    #_logger.info(f"POLLING: Auto set is_order_completed = True cho order {order.name}")
                 
                 return {
                     'success': True,
@@ -784,10 +791,10 @@ class SaleOrder(models.Model):
             if invoice.exists() and invoice.invoice_origin and invoice.payment_state == 'paid':
                 sale_order = self.search([('name', '=', invoice.invoice_origin)], limit=1)
                 if sale_order and not invoice.dac_deposit_invoice:  # Chỉ hóa đơn cuối
-                    _logger.info(f"FORCE CHECK: Checking completion for order {sale_order.name} after invoice {invoice.name} payment")
+                    #_logger.info(f"FORCE CHECK: Checking completion for order {sale_order.name} after invoice {invoice.name} payment")
                     result = sale_order.check_and_update_completion_status()
                     sale_order.env.cr.commit()
-                    _logger.info(f"FORCE CHECK: Completed with result {result}")
+                    #_logger.info(f"FORCE CHECK: Completed with result {result}")
                     return True
         except Exception as e:
             _logger.error(f"FORCE CHECK: Error {e}")
@@ -795,10 +802,10 @@ class SaleOrder(models.Model):
 
     def check_and_add_deposit_line(self):
         """Phương thức thủ công để kiểm tra và thêm dòng đặt cọc"""
-        _logger.info("=== BẮT ĐẦU KIỂM TRA VÀ THÊM DÒNG ĐẶT CỌC ===")
+        #_logger.info("=== BẮT ĐẦU KIỂM TRA VÀ THÊM DÒNG ĐẶT CỌC ===")
         
         for order in self:
-            _logger.info(f"Đang kiểm tra order: {order.name}")
+            #_logger.info(f"Đang kiểm tra order: {order.name}")
             
             # Tìm hóa đơn đặt cọc
             deposit_invoices = self.env['account.move'].search([
@@ -808,7 +815,7 @@ class SaleOrder(models.Model):
                 ('payment_state', '=', 'paid')
             ])
             
-            _logger.info(f"Tìm thấy {len(deposit_invoices)} hóa đơn cọc đã thanh toán cho order {order.name}")
+            #_logger.info(f"Tìm thấy {len(deposit_invoices)} hóa đơn cọc đã thanh toán cho order {order.name}")
             
             if deposit_invoices:
                 for invoice in deposit_invoices:
@@ -818,12 +825,12 @@ class SaleOrder(models.Model):
                 invoice_lines = deposit_invoices[0].invoice_line_ids.filtered(lambda l: not l.display_type and l.product_id)
                 if invoice_lines:
                     product = invoice_lines[0].product_id
-                    _logger.info(f"Sử dụng sản phẩm từ hóa đơn cọc: {product.name} (ID: {product.id})")
+                    #_logger.info(f"Sử dụng sản phẩm từ hóa đơn cọc: {product.name} (ID: {product.id})")
                 else:
                     # Fallback: tìm hoặc tạo sản phẩm DEPOSIT
                     product = self.env['product.product'].search([('default_code', '=', 'DEPOSIT')], limit=1)
                     if not product:
-                        _logger.info("Tạo sản phẩm DEPOSIT mới làm fallback")
+                        #_logger.info("Tạo sản phẩm DEPOSIT mới làm fallback")
                         product = self.env['product.product'].create({
                             'name': 'Đặt cọc',
                             'default_code': 'DEPOSIT',
@@ -833,15 +840,15 @@ class SaleOrder(models.Model):
                             'list_price': 0.0,
                             'taxes_id': [(6, 0, [])],
                         })
-                        _logger.info(f"Đã tạo sản phẩm DEPOSIT: {product.id}")
+                        #_logger.info(f"Đã tạo sản phẩm DEPOSIT: {product.id}")
                     else:
                         _logger.info(f"Sử dụng sản phẩm DEPOSIT có sẵn: {product.id} - {product.name}")
                 
-                _logger.info(f"Sản phẩm sử dụng: {product.name} (ID: {product.id})")
+                #_logger.info(f"Sản phẩm sử dụng: {product.name} (ID: {product.id})")
                 
                 # Kiểm tra đã có dòng đặt cọc chưa (linh hoạt với bất kỳ sản phẩm nào có giá âm)
                 deposit_line = order.order_line.filtered(lambda l: not l.display_type and l.price_unit < 0)
-                _logger.info(f"Dòng đặt cọc hiện có: {len(deposit_line)} dòng")
+                #_logger.info(f"Dòng đặt cọc hiện có: {len(deposit_line)} dòng")
                 
                 if deposit_line:
                     for line in deposit_line:
@@ -849,11 +856,11 @@ class SaleOrder(models.Model):
                 
                 if not deposit_line:
                     deposit_amount = abs(deposit_invoices[0].amount_total)
-                    _logger.info(f"SẼ THÊM dòng đặt cọc với số tiền: {deposit_amount}")
+                    #_logger.info(f"SẼ THÊM dòng đặt cọc với số tiền: {deposit_amount}")
                     
                     # Gọi hàm thêm dòng đặt cọc
                     result = order.add_deposit_order_line(deposit_amount, invoice=deposit_invoices[0])
-                    _logger.info(f"Kết quả thêm dòng đặt cọc: {result}")
+                    #_logger.info(f"Kết quả thêm dòng đặt cọc: {result}")
                     
                     # Hiển thị thông báo cho user
                     return {
@@ -867,7 +874,7 @@ class SaleOrder(models.Model):
                         }
                     }
                 else:
-                    _logger.info("KHÔNG THÊM - Đã có dòng đặt cọc")
+                    #_logger.info("KHÔNG THÊM - Đã có dòng đặt cọc")
                     return {
                         'type': 'ir.actions.client',
                         'tag': 'display_notification',
@@ -879,7 +886,7 @@ class SaleOrder(models.Model):
                         }
                     }
             else:
-                _logger.info("KHÔNG CÓ hóa đơn cọc đã thanh toán")
+                #_logger.info("KHÔNG CÓ hóa đơn cọc đã thanh toán")
                 return {
                     'type': 'ir.actions.client',
                     'tag': 'display_notification',
@@ -891,13 +898,13 @@ class SaleOrder(models.Model):
                     }
                 }
         
-        _logger.info("=== KẾT THÚC KIỂM TRA ===")
+        #_logger.info("=== KẾT THÚC KIỂM TRA ===")
         return True
 
     def action_create_final_invoice(self):
         """Tạo hóa đơn thanh toán cuối cùng (đã trừ tiền cọc)"""
         self.ensure_one()
-        _logger.info(f"=== TẠO HÓA ĐƠN THANH TOÁN CUỐI CHO ORDER {self.name} ===")
+        #_logger.info(f"=== TẠO HÓA ĐƠN THANH TOÁN CUỐI CHO ORDER {self.name} ===")
         
         # KIỂM TRA TIỀN CỌC TRƯỚC: Đảm bảo double-check (defense in depth)
         # Logic chính đã được kiểm tra ở nút "Lên cọc", đây chỉ là backup check
@@ -942,14 +949,14 @@ class SaleOrder(models.Model):
         ])
         
         if existing_final_invoice:
-            _logger.info(f"Đã có hóa đơn thanh toán cuối: {existing_final_invoice.mapped('name')}")
+            #_logger.info(f"Đã có hóa đơn thanh toán cuối: {existing_final_invoice.mapped('name')}")
             raise UserError(f"Đơn hàng {self.name} đã có hóa đơn thanh toán!")
         
         # Tính toán số tiền cần thu - TÍNH ĐÚNG: chỉ lấy dòng sản phẩm dương (bỏ qua dòng cọc âm)
         product_lines = self.order_line.filtered(lambda l: not l.display_type and l.price_unit >= 0)
         total_amount_original = sum(line.price_unit * line.product_uom_qty for line in product_lines)
-        _logger.info(f"Tổng giá trị sản phẩm gốc (không tính cọc âm): {total_amount_original}")
-        _logger.info(f"Tổng amount_total đơn hàng hiện tại: {self.amount_total}")
+        #_logger.info(f"Tổng giá trị sản phẩm gốc (không tính cọc âm): {total_amount_original}")
+        #_logger.info(f"Tổng amount_total đơn hàng hiện tại: {self.amount_total}")
         
         # Tìm số tiền cọc đã thanh toán
         deposit_invoices = self.env['account.move'].search([
@@ -960,14 +967,14 @@ class SaleOrder(models.Model):
         ])
         
         deposit_paid = sum(deposit_invoices.mapped('amount_total'))
-        _logger.info(f"Tổng tiền cọc đã thanh toán: {deposit_paid}")
+        #_logger.info(f"Tổng tiền cọc đã thanh toán: {deposit_paid}")
         
         # SỬA LỖI: Tính remaining_amount từ giá trị gốc, không phải amount_total đã trừ cọc
         remaining_amount = total_amount_original - deposit_paid
-        _logger.info(f"Số tiền còn lại cần thu: {remaining_amount} = {total_amount_original} - {deposit_paid}")
+        #_logger.info(f"Số tiền còn lại cần thu: {remaining_amount} = {total_amount_original} - {deposit_paid}")
         
         if remaining_amount <= 0:
-            _logger.info("Không cần tạo hóa đơn - đã thu đủ tiền cọc")
+            #_logger.info("Không cần tạo hóa đơn - đã thu đủ tiền cọc")
             # Đánh dấu đã xác nhận thanh toán và hoàn thành đơn hàng
             self.is_payment_confirmed = True
             self.is_order_completed = True
@@ -1041,9 +1048,9 @@ class SaleOrder(models.Model):
         
         # Tạo hóa đơn
         invoice = self.env['account.move'].create(invoice_vals)
-        _logger.info(f"Đã tạo hóa đơn thanh toán cuối: {invoice.name}")
-        _logger.info("=== HOÀN THÀNH TẠO HÓA ĐƠN THANH TOÁN CUỐI ===")
-        _logger.info(f"Hóa đơn {invoice.name} đã được tạo, chờ user xác nhận để kích hoạt tiến trình thanh toán")
+        #_logger.info(f"Đã tạo hóa đơn thanh toán cuối: {invoice.name}")
+        #_logger.info("=== HOÀN THÀNH TẠO HÓA ĐƠN THANH TOÁN CUỐI ===")
+        #_logger.info(f"Hóa đơn {invoice.name} đã được tạo, chờ user xác nhận để kích hoạt tiến trình thanh toán")
         
         # Mở hóa đơn vừa tạo để user xác nhận
         return {
@@ -1057,33 +1064,33 @@ class SaleOrder(models.Model):
     def debug_deposit_info(self):
         """Debug thông tin đặt cọc và user"""
         self.ensure_one()
-        _logger.info(f"=== DEBUG THÔNG TIN CHO ORDER {self.name} ===")
+        #_logger.info(f"=== DEBUG THÔNG TIN CHO ORDER {self.name} ===")
         
         # Thông tin user
-        _logger.info(f"Current user: {self.env.user.name} (ID: {self.env.user.id})")
-        _logger.info(f"Order user_id: {self.user_id.name} (ID: {self.user_id.id})")
-        _logger.info(f"User groups: {[g.name for g in self.env.user.groups_id]}")
+        #_logger.info(f"Current user: {self.env.user.name} (ID: {self.env.user.id})")
+        #_logger.info(f"Order user_id: {self.user_id.name} (ID: {self.user_id.id})")
+        #_logger.info(f"User groups: {[g.name for g in self.env.user.groups_id]}")
         
         # Thông tin cơ bản
-        _logger.info(f"Order state: {self.order_state_custom}")
-        _logger.info(f"has_deposit: {self.has_deposit}")
-        _logger.info(f"deposit_amount: {self.deposit_amount}")
-        _logger.info(f"is_deposit_confirmed: {self.is_deposit_confirmed}")
-        _logger.info(f"production_deadline: {self.production_deadline}")
-        _logger.info(f"delivery_address: {self.delivery_address}")
-        _logger.info(f"is_production_confirmed: {self.is_production_confirmed}")
-        _logger.info(f"is_delivery_confirmed: {self.is_delivery_confirmed}")
-        _logger.info(f"is_payment_confirmed: {self.is_payment_confirmed}")
-        _logger.info(f"is_order_completed: {self.is_order_completed}")
-        _logger.info(f"total_deposit_paid: {self.total_deposit_paid}")
-        _logger.info(f"remaining_amount_display: {self.remaining_amount_display}")
+        #_logger.info(f"Order state: {self.order_state_custom}")
+        #_logger.info(f"has_deposit: {self.has_deposit}")
+        #_logger.info(f"deposit_amount: {self.deposit_amount}")
+        #_logger.info(f"is_deposit_confirmed: {self.is_deposit_confirmed}")
+        #_logger.info(f"production_deadline: {self.production_deadline}")
+        #_logger.info(f"delivery_address: {self.delivery_address}")
+        #_logger.info(f"is_production_confirmed: {self.is_production_confirmed}")
+        #_logger.info(f"is_delivery_confirmed: {self.is_delivery_confirmed}")
+        #_logger.info(f"is_payment_confirmed: {self.is_payment_confirmed}")
+        #_logger.info(f"is_order_completed: {self.is_order_completed}")
+        #_logger.info(f"total_deposit_paid: {self.total_deposit_paid}")
+        #_logger.info(f"remaining_amount_display: {self.remaining_amount_display}")
         
         # Tìm tất cả hóa đơn liên quan
         all_invoices = self.env['account.move'].search([
             ('move_type', '=', 'out_invoice'),
             ('invoice_origin', '=', self.name)
         ])
-        _logger.info(f"Tổng số hóa đơn liên quan: {len(all_invoices)}")
+        #_logger.info(f"Tổng số hóa đơn liên quan: {len(all_invoices)}")
         
         # Tìm hóa đơn đặt cọc
         deposit_invoices = self.env['account.move'].search([
@@ -1091,43 +1098,43 @@ class SaleOrder(models.Model):
             ('invoice_origin', '=', self.name),
             ('dac_deposit_invoice', '=', True)
         ])
-        _logger.info(f"Số hóa đơn đặt cọc: {len(deposit_invoices)}")
+        #_logger.info(f"Số hóa đơn đặt cọc: {len(deposit_invoices)}")
         
         for invoice in deposit_invoices:
             _logger.info(f"  - {invoice.name}: state={invoice.state}, payment_state={invoice.payment_state}, amount={invoice.amount_total}")
         
         # Kiểm tra dòng order_line
-        _logger.info(f"Tổng số dòng order_line: {len(self.order_line)}")
+        #_logger.info(f"Tổng số dòng order_line: {len(self.order_line)}")
         
         # Kiểm tra tất cả dòng có giá âm (có thể là đặt cọc)
         deposit_lines = self.order_line.filtered(lambda l: not l.display_type and l.price_unit < 0)
-        _logger.info(f"Số dòng có giá âm (có thể là đặt cọc): {len(deposit_lines)}")
+        #_logger.info(f"Số dòng có giá âm (có thể là đặt cọc): {len(deposit_lines)}")
         for line in deposit_lines:
             _logger.info(f"  - {line.name}: sản phẩm={line.product_id.name}, qty={line.product_uom_qty}, price={line.price_unit}")
         
         # Kiểm tra sản phẩm DEPOSIT cụ thể (nếu có)
         product = self.env['product.product'].search([('default_code', '=', 'DEPOSIT')], limit=1)
         if product:
-            _logger.info(f"Sản phẩm DEPOSIT: {product.name} (ID: {product.id})")
+            #_logger.info(f"Sản phẩm DEPOSIT: {product.name} (ID: {product.id})")
             product_deposit_lines = self.order_line.filtered(lambda l: l.product_id == product)
-            _logger.info(f"Số dòng có sản phẩm DEPOSIT: {len(product_deposit_lines)}")
+            #_logger.info(f"Số dòng có sản phẩm DEPOSIT: {len(product_deposit_lines)}")
             for line in product_deposit_lines:
                 _logger.info(f"  - {line.name}: qty={line.product_uom_qty}, price={line.price_unit}")
         else:
             _logger.info("Không tìm thấy sản phẩm DEPOSIT")
         
         # Kiểm tra computed fields
-        _logger.info(f"deposit_invoice_count: {self.deposit_invoice_count}")
-        _logger.info(f"has_paid_deposit_invoice: {self.has_paid_deposit_invoice}")
+        #_logger.info(f"deposit_invoice_count: {self.deposit_invoice_count}")
+        #_logger.info(f"has_paid_deposit_invoice: {self.has_paid_deposit_invoice}")
         
-        _logger.info("=== KẾT THÚC DEBUG ===")
+        #_logger.info("=== KẾT THÚC DEBUG ===")
         
         # DEBUG: Tính toán chi tiết để so sánh
         product_lines = self.order_line.filtered(lambda l: not l.display_type and l.price_unit >= 0)
         total_amount_original = sum(line.price_unit * line.product_uom_qty for line in product_lines)
-        _logger.info(f"DEBUG - Tổng giá trị sản phẩm gốc (dương): {total_amount_original}")
-        _logger.info(f"DEBUG - amount_total của đơn hàng: {self.amount_total}")
-        _logger.info(f"DEBUG - Chênh lệch: {total_amount_original - self.amount_total}")
+        #_logger.info(f"DEBUG - Tổng giá trị sản phẩm gốc (dương): {total_amount_original}")
+        #_logger.info(f"DEBUG - amount_total của đơn hàng: {self.amount_total}")
+        #_logger.info(f"DEBUG - Chênh lệch: {total_amount_original - self.amount_total}")
         
         return {
             'type': 'ir.actions.client',
@@ -1143,11 +1150,11 @@ class SaleOrder(models.Model):
     def test_user_assignment(self):
         """Test logic gán user khi tạo đơn hàng mới"""
         # Debug: kiểm tra users và groups
-        _logger.info("=== DEBUG USERS AND GROUPS ===")
+        #_logger.info("=== DEBUG USERS AND GROUPS ===")
         
         # Liệt kê tất cả users
         all_users = self.env['res.users'].search([('share', '=', False)])
-        _logger.info(f"All internal users: {[(u.id, u.name, u.login) for u in all_users]}")
+        #_logger.info(f"All internal users: {[(u.id, u.name, u.login) for u in all_users]}")
         
         # Liệt kê DAC groups
         dac_manager_group = self.env.ref('dac_erp.group_dac_erp_manager', raise_if_not_found=False)
@@ -1182,11 +1189,11 @@ class SaleOrder(models.Model):
             })]
         })
         
-        _logger.info(f"=== TEST USER ASSIGNMENT ===")
-        _logger.info(f"Current user: {self.env.user.name} (ID: {self.env.user.id})")
-        _logger.info(f"New order user_id: {new_order.user_id.name} (ID: {new_order.user_id.id})")
-        _logger.info(f"User groups: {[g.name for g in self.env.user.groups_id]}")
-        _logger.info(f"Assignment successful: {new_order.user_id.id == self.env.user.id}")
+        #_logger.info(f"=== TEST USER ASSIGNMENT ===")
+        #_logger.info(f"Current user: {self.env.user.name} (ID: {self.env.user.id})")
+        #_logger.info(f"New order user_id: {new_order.user_id.name} (ID: {new_order.user_id.id})")
+        #_logger.info(f"User groups: {[g.name for g in self.env.user.groups_id]}")
+        #_logger.info(f"Assignment successful: {new_order.user_id.id == self.env.user.id}")
         
         return {
             'type': 'ir.actions.client',

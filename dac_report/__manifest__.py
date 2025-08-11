@@ -1,6 +1,6 @@
 {
     # Tên module
-    'name': 'DAC ERP',
+    'name': 'DAC ERP Report',
     'version': '1.0',
     
     # Loại module
@@ -15,13 +15,13 @@
     'sequence': -1,
     
     # Mô tả module
-    'summary': 'Module này để quản lý hệ thống ERP của Duy An Company',
+    'summary': 'Module này để hiện báo cáo doanh thu ERP của Duy An Company',
     'description': '',
     
     # Module dựa trên các category nào
     # Khi hoạt động, category trong 'depends' phải được install
     ### rồi module này mới đc install
-    'depends': ['base','web','home_menu','Chameleon','sale','sale_management','account','product'],
+    'depends': ['base','web','dac_erp','sale','account','sale_management','product'],
 
 
     # Module có được phép install hay không
@@ -35,19 +35,9 @@
     # Những file ảnh hưởng trực tiếp đến giao diện (không phải file để chỉnh sửa giao diện)
     ## hoặc hệ thống (file group, phân quyền)
     'data': [
-        'security/user_access.xml',
         'security/ir.model.access.csv',
-        'security/sale_order_access_rules.xml',
-        'security/account_access_rules.xml',
-        'data/currency_data.xml',
-        'data/cron_data.xml',  
-        'views/sale_order_view.xml',
-        'views/deposit_confirm_wizard_view.xml',
-        'views/account_move_deposit_view.xml',
-        'views/account_move_view.xml',
-        'views/account_payment_view.xml',
-        'views/res_partner_views.xml',
-        'views/menuitem.xml'
+        'views/dac_report_dashboard_view.xml',
+        'views/menuitem.xml',
     ],
 
     # Import các file cấu hình (chỉ gọi từ folder 'static')
@@ -57,7 +47,7 @@
     ## + t
     'assets': {  
         'web.assets_backend': [
-            'dac_erp/static/src/css/**/*'
+            'dac_report/static/src/css/**/*',
         ],
     },
     'license': 'LGPL-3',

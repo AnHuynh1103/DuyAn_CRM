@@ -21,24 +21,25 @@ patch(NavBar.prototype, {
       console.log("menuItems", menuItems);
 
       if (await user.hasGroup("base.group_system")) return;
-      // if (await user.hasGroup("investor_vnpay_odoo.seller")) {
-      //   const rootMenuItem = menuItems.find(
-      //     (item) => item.xmlid === "investor_vnpay_odoo.menu_seller_root"
-      //   );
-      //   this.state.isMenuBlocked = true;
-      //   this.state.rootMenuActionID = rootMenuItem?.actionID;
-      // } else {
-      //   const rootMenuItem = menuItems.find(
-      //     (item) => item.xmlid === "home_menu.home_root"
-      //   );
-      //   this.state.isMenuBlocked = true;
-      //   this.state.rootMenuActionID = rootMenuItem?.actionID;
-      // }
-      const rootMenuItem = menuItems.find(
-        (item) => item.xmlid === "home_menu.home_root"
-      );
-      this.state.isMenuBlocked = true;
-      this.state.rootMenuActionID = rootMenuItem?.actionID;
+      if (await user.hasGroup("dac_erp.group_dac_erp_manager")) {
+        const rootMenuItem = menuItems.find(
+          (item) => item.xmlid === "dac_report.dac_report_menu_root"
+        );
+        this.state.isMenuBlocked = true;
+        this.state.rootMenuActionID = rootMenuItem?.actionID;
+      } else if (await user.hasGroup("dac_erp.group_dac_erp_sale")) {
+        const rootMenuItem = menuItems.find(
+          (item) => item.xmlid === "dac_report.dac_report_menu_root"
+        );
+        this.state.isMenuBlocked = true;
+        this.state.rootMenuActionID = rootMenuItem?.actionID;
+      } else {
+        const rootMenuItem = menuItems.find(
+          (item) => item.xmlid === "home_menu.home_root"
+        );
+        this.state.isMenuBlocked = true;
+        this.state.rootMenuActionID = rootMenuItem?.actionID;
+      }
     });
   },
 
