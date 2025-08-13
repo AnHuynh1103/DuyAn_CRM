@@ -75,17 +75,22 @@ class DataExportController(http.Controller):
         
         return result
 
-    @http.route('/dac_erp/api/test', type='json', auth='public', csrf=False)
+    @http.route('/dac_erp/api/test', type='http', auth='public', csrf=False, methods=['GET', 'POST'])
     def test_api(self, **kwargs):
         """Test endpoint để kiểm tra API hoạt động"""
         _logger.info("API Test endpoint được gọi")
-        return {
+        data = {
             'message': 'API hoạt động tốt!',
             'timestamp': datetime.now().isoformat(),
             'controller': 'DataExportController'
         }
+        return http.Response(
+            json.dumps(data, ensure_ascii=False),
+            content_type='application/json',
+            status=200
+        )
 
-    @http.route('/dac_erp/api/export/all', type='json', auth='public', csrf=False)
+    @http.route('/dac_erp/api/export/all', type='http', auth='public', csrf=False, methods=['GET', 'POST'])
     def export_all_data(self, **kwargs):
         """API endpoint để get tất cả dữ liệu"""
         try:
@@ -101,11 +106,21 @@ class DataExportController(http.Controller):
             }
             
             _logger.info(f"API Export All Data - Total records: {sum(len(v) if isinstance(v, list) else 0 for v in data.values())}")
-            return data
+            
+            # Trả về HTTP response thay vì JSON response
+            return http.Response(
+                json.dumps(data, ensure_ascii=False, default=str),
+                content_type='application/json',
+                status=200
+            )
             
         except Exception as e:
             _logger.error(f"Error in export_all_data: {str(e)}", exc_info=True)
-            return {'error': f"Lỗi khi export dữ liệu: {str(e)}"}
+            return http.Response(
+                json.dumps({'error': f"Lỗi khi export dữ liệu: {str(e)}"}),
+                content_type='application/json',
+                status=500
+            )
 
     @http.route('/dac_erp/api/export/sales', type='json', auth='public', csrf=False)
     def export_sales_data(self, **kwargs):
