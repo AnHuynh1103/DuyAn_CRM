@@ -57,7 +57,8 @@
     ## + t
     'assets': {  
         'web.assets_backend': [
-            'dac_erp/static/src/css/**/*'
+            'dac_erp/static/src/css/**/*',
+            'dac_erp/static/src/js/**/*'
         ],
     },
     'license': 'LGPL-3',

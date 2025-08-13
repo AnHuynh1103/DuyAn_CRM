@@ -17,12 +17,12 @@
                     </header>
                     <field name="name"/>
                     <field name="create_date"/>
-                    <field name="invoice_date"/>
+                    <field name="invoice_date" optional="hide"/>
                     <field name="partner_id"/>
                     <field name="invoice_origin"/>
                     <field name="dac_user_id" string="Người phụ trách" widget="many2one_avatar_user"/>
                     <field name="amount_total" sum="Tổng" widget="monetary"/>
-                    <field name="currency_id" invisible="1"/>
+                    <field name="currency_id" optional="hide"/>
                     <field name="state" widget="badge"
                         decoration-info="state == 'draft'"
                         decoration-success="state == 'posted'"

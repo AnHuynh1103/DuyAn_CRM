@@ -7,7 +7,7 @@
                 <form string="Xác nhận đặt cọc">
                     <group>
                         <div class="o_form_label" style="color: red; font-weight: bold;">
-                            Đây là hành động không thể thay đổi, vui lòng đọc kỹ
+                            Đây là hành động không thể thay đổi, vui lòng xác nhận lại các thông tin
                         </div>
                         <field name="confirm_read"/>
                     </group>

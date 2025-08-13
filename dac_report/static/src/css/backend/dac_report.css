@@ -1,44 +1,184 @@
-.dac-cards {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(240px, 1fr));
-  gap: 12px;
-  margin-top: 6px;
+/* =========================================================
+   DAC Dashboard – chỉ cuộn DỌC, 3 KPI cùng chiều cao gọn
+   ========================================================= */
+
+/* Chiều cao list KPI (mặc định cho màn 1366x768) */
+:root {
+  --kpi-list-h: 250px; /* <--- hạ/nhấc con số này theo ý bạn chiều cao của 3 cột */
 }
-.dac-card {
-  border: 1px solid var(--gray-300, #dfe3e7);
-  border-radius: 10px;
-  padding: 14px 16px;
-  cursor: pointer;
-  text-align: left;
-  background: #fff;
+
+/* Tự co giãn theo chiều cao màn hình */
+@media (max-height: 750px) {
+  :root {
+    --kpi-list-h: 320px;
+  }
 }
-.dac-card:hover {
-  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.06);
+@media (max-height: 700px) {
+  :root {
+    --kpi-list-h: 300px;
+  }
 }
-.dac-card-title {
+@media (min-height: 900px) {
+  :root {
+    --kpi-list-h: 420px;
+  }
+}
+
+/* Khi dashboard mở: bỏ padding/overflow của vùng action */
+.dac-dashboard-open .o_action .o_content {
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+.dac-dashboard-open .o_action .o_controller_with_control_panel,
+.dac-dashboard-open .o_action .o_view_controller {
+  padding: 0 !important;
+}
+
+/* Viewport ngoài cùng: cuộn DỌC, ẩn NGANG, sát mép */
+.dac-dashboard-open .o_action .dac-viewport {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto !important;
+  overflow-x: hidden !important; /* KHÔNG cuộn ngang */
+  scrollbar-gutter: stable both-edges;
+  overscroll-behavior: contain;
+}
+
+/* Bỏ gutter trái/phải để scrollbar sát mép; GIỮ max-width của Bootstrap */
+.dac-dashboard-open .o_action .dac-viewport > .container-xxl {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  margin: 0 !important;
+  /* không đụng tới max-width -> không còn “phình” layout */
+}
+
+/* Nội dung dashboard: compact nhẹ */
+.o_dac_dashboard {
+  padding: 12px 16px;
+}
+
+.o_dac_dashboard .dac-card {
+  background: var(--o-view-background, #fff);
+  border-radius: 12px;
+  padding: 10px 12px; /* gọn hơn */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+/* Typography gọn lại để nhìn thoáng */
+.o_dac_dashboard .k-label {
   font-weight: 600;
-  opacity: 0.9;
-  display: flex;
-  gap: 8px;
-  align-items: center;
+  color: #6b7280;
+  font-size: 12px;
 }
-.dac-card-value {
-  font-size: 20px;
+.o_dac_dashboard .k-value {
+  font-size: 22px;
   font-weight: 700;
   margin-top: 6px;
 }
-.dac-card-sub {
+.o_dac_dashboard .k-sub {
   font-size: 12px;
-  opacity: 0.8;
-  margin-top: 2px;
+  color: #6b7280;
+}
+.o_dac_dashboard .sec-title {
+  font-weight: 700;
+  margin-bottom: 6px;
 }
 
-.dac-info {
-  border-left: 4px solid #0d6dfd;
+.o_dac_dashboard .ticket {
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 10px;
+  padding: 8px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: transform 0.05s ease;
 }
-.dac-warning {
-  border-left: 4px solid #ffc107;
+.o_dac_dashboard .ticket:hover {
+  background: rgba(0, 0, 0, 0.02);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
-.dac-success {
-  border-left: 4px solid #198754;
+.o_dac_dashboard .ticket-title,
+.o_dac_dashboard .ticket-amount {
+  font-size: 0.95rem;
+}
+
+/* 3 list KPI: cùng 1 chiều cao, cuộn nội bộ */
+.o_dac_dashboard .dac-card .list-scroll {
+  max-height: var(--kpi-list-h);
+  overflow: auto;
+  padding-right: 2px; /* chừa rãnh cho scrollbar nội bộ */
+}
+.o_dac_dashboard .dac-card .no-data {
+  min-height: var(--kpi-list-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9aa0a6;
+  text-align: center;
+}
+
+/* Scrollbar mini cho list nội bộ */
+.o_dac_dashboard .dac-card .list-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.o_dac_dashboard .dac-card .list-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+}
+
+/* (Tuỳ chọn) Nếu một ngày muốn bật cuộn ngang:
+   chỉ cần thêm class "dac-wide--force" cho wrapper trong XML */
+.o_dac_dashboard .dac-wide--force {
+  min-width: 1600px;
+}
+
+/* ====== Hai bảng cuối: card có chiều cao cố định + thân cuộn ====== */
+:root {
+  /* tổng chiều cao của mỗi card phía dưới (điều chỉnh theo ý bạn) */
+  --bottom-card-h: 200px; /* ví dụ 240/260/280… */
+}
+
+/* card phía dưới dùng flex để chia: header cố định, body chiếm phần còn lại */
+.o_dac_dashboard .dac-card.bottom-card {
+  display: flex;
+  flex-direction: column;
+  height: var(--bottom-card-h);
+}
+
+/* tiêu đề + hàng header giữ cố định */
+.o_dac_dashboard .dac-card.bottom-card .sec-title,
+.o_dac_dashboard .dac-card.bottom-card .bottom-head {
+  flex: 0 0 auto;
+}
+
+/* phần thân cuộn trong phần còn lại của card */
+.o_dac_dashboard .dac-card.bottom-card .bottom-scroll {
+  flex: 1 1 auto;
+  min-height: 0; /* QUAN TRỌNG: để con flex được cuộn */
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
+}
+
+/* không có dữ liệu vẫn căn giữa trong khung cố định */
+.o_dac_dashboard .dac-card.bottom-card .bottom-scroll .no-data {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9aa0a6;
+}
+
+/* (tuỳ chọn) scrollbar nhỏ gọn */
+.o_dac_dashboard .dac-card.bottom-card .bottom-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.o_dac_dashboard .dac-card.bottom-card .bottom-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+}
+
+/* (tuỳ chọn) nếu đang bật .dac-compact thì có thể hạ nhẹ chiều cao */
+.dac-compact {
+  --bottom-card-h: 240px;
 }

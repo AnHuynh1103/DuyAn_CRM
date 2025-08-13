@@ -23,13 +23,13 @@ patch(NavBar.prototype, {
       if (await user.hasGroup("base.group_system")) return;
       if (await user.hasGroup("dac_erp.group_dac_erp_manager")) {
         const rootMenuItem = menuItems.find(
-          (item) => item.xmlid === "dac_report.dac_report_menu_root"
+          (item) => item.xmlid === "dac_report.dac_sale_dashboard_menu_root"
         );
         this.state.isMenuBlocked = true;
         this.state.rootMenuActionID = rootMenuItem?.actionID;
       } else if (await user.hasGroup("dac_erp.group_dac_erp_sale")) {
         const rootMenuItem = menuItems.find(
-          (item) => item.xmlid === "dac_report.dac_report_menu_root"
+          (item) => item.xmlid === "dac_report.dac_sale_dashboard_menu_root"
         );
         this.state.isMenuBlocked = true;
         this.state.rootMenuActionID = rootMenuItem?.actionID;

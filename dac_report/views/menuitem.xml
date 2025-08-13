@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
   <data>
-    <menuitem id="dac_report_menu_root"
+    <menuitem id="dac_sale_dashboard_menu_root"
               name="Dashboard"
-              action="dac_report_dashboard_action"
+              action="dac_sale_dashboard_action"
               sequence="-100"/>
   </data>
 </odoo>

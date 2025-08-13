@@ -13,13 +13,6 @@
                     </header>
                     <sheet>
                         <div class="oe_button_box" name="button_box">
-                            <button name="action_view_all_invoices"
-                                    type="object"
-                                    class="oe_stat_button"
-                                    icon="fa-pencil-square-o"
-                                    invisible="total_invoice_count == 0">
-                                <field name="total_invoice_count" widget="statinfo" string="Hóa đơn"/>
-                            </button>
                             <button name="check_and_add_deposit_line"
                                     type="object"
                                     class="oe_stat_button"
@@ -56,6 +49,7 @@
                         </div>
                         <field name="has_paid_deposit_invoice" invisible="1"/>
                         <field name="deposit_invoice_count" invisible="1"/>
+                        <field name="total_invoice_count" invisible="1"/>
                         <field name="has_final_invoice" invisible="1"/>
                         <field name="can_delete_products" invisible="1"/>
                         <group name="sale_header">
@@ -105,7 +99,22 @@
                                             class="btn btn-success"
                                             style="min-width: 70px; font-size: 0.98rem; font-weight: 600; padding: 7px 0; margin-left: 8px;"
                                             invisible="not (order_state_custom == 'deposit' and has_deposit and not is_deposit_confirmed)"/>
+                                        <!-- Nút Xem hóa đơn cho đơn CÓ cọc - nằm cùng hàng -->
+                                        <button name="action_view_all_invoices"
+                                            string="Xem hóa đơn"
+                                            type="object"
+                                            class="btn btn-success"
+                                            style="min-width: 80px; font-size: 0.98rem; font-weight: 600; padding: 7px 0; margin-left: 8px;"
+                                            invisible="total_invoice_count == 0"/>
                                     </div>
+                                </div>
+                                <!-- Nút Xem hóa đơn cho đơn KHÔNG cọc - hiện riêng lẻ và đẹp hơn -->
+                                <div style="margin-bottom: 8px;" invisible="has_deposit or total_invoice_count == 0">
+                                    <button name="action_view_all_invoices"
+                                        string="Xem hóa đơn"
+                                        type="object"
+                                        class="btn btn-success"
+                                        style="min-width: 80px; font-size: 0.98rem; font-weight: 600; padding: 7px 0;"/>
                                 </div>
                             </group>
                             <group>
@@ -174,24 +183,35 @@
                         </div> -->
                         <div style="text-align: right; margin-top: 16px;">
                             <field name="currency_id" invisible="1"/>
+                            <!-- Thành tiền (bắt buộc có) -->
                             <div>
-                                <label for="amount_untaxed_original">Số tiền trước thuế:</label>
+                                <label for="amount_untaxed_original">Thành tiền:</label>
                                 <span style="font-weight: bold; margin-left: 16px;">
                                     <field name="amount_untaxed_original" readonly="1" widget="monetary"/>
                                 </span>
                             </div>
+                            <!-- Thuế (bắt buộc có) -->
                             <div>
                                 <label for="amount_tax">Thuế:</label>
                                 <span style="font-weight: bold; margin-left: 16px;">
                                     <field name="amount_tax" readonly="1" widget="monetary"/>
                                 </span>
                             </div>
+                            <!-- Tiền cọc (tùy đơn hàng có cọc hay không) -->
                             <div invisible="total_deposit_paid == 0">
                                 <label for="total_deposit_paid">Tiền cọc đã thanh toán:</label>
                                 <span style="font-weight: bold; margin-left: 16px; color: green;">
                                     <field name="total_deposit_paid" readonly="1" widget="monetary"/>
                                 </span>
                             </div>
+                            <!-- Số tiền còn lại cần thu (phụ thuộc vào tổng và cọc) -->
+                            <div invisible="is_order_completed or remaining_amount_display == 0">
+                                <label for="remaining_amount_display">Còn lại cần thu:</label>
+                                <span style="font-weight: bold; margin-left: 16px; color: #e55353;">
+                                    <field name="remaining_amount_display" readonly="1" widget="monetary"/>
+                                </span>
+                            </div>
+                            <!-- Tổng (bắt buộc có, không thay đổi) -->
                             <div>
                                 <span style="font-weight: bold; font-size: 1.5em;" invisible="is_order_completed">
                                     Tổng:
@@ -199,7 +219,7 @@
                                 </span>
                                 <span style="font-weight: bold; font-size: 1.5em; color: green;" invisible="not is_order_completed">
                                     Tổng (Đã hoàn thành):
-                                    <field name="remaining_amount_display" readonly="1" widget="monetary"/>
+                                    <field name="amount_total" readonly="1" widget="monetary"/>
                                 </span>
                             </div>
                             <div invisible="not is_order_completed" style="text-align: center; padding: 10px; background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 5px; margin: 10px 0;">

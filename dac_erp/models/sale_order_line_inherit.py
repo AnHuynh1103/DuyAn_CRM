@@ -18,12 +18,12 @@ class SaleOrderLine(models.Model):
             if not line.display_type and line.product_id and line.order_id:
                 order = line.order_id
                 
-                # Nếu user là sale và đơn hàng đã xác nhận báo giá -> không cho xóa
+                # Nếu user là sale và đơn hàng đã xác nhận đặt cọc -> không cho xóa
                 if (self.env.user.has_group('dac_erp.group_dac_erp_sale') and 
                     not self.env.user.has_group('dac_erp.group_dac_erp_manager') and
-                    order.is_quotation_confirmed):
+                    order.is_deposit_confirmed):
                     raise AccessError(
-                        "Không thể xóa sản phẩm sau khi đã xác nhận báo giá!\n"
+                        "Không thể xóa sản phẩm sau khi đã lên cọc!\n"
                         "Liên hệ quản lý để được hỗ trợ."
                     )
         

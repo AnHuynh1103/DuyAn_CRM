@@ -75,6 +75,22 @@ class SaleOrder(models.Model):
         store=False
     )
 
+    # Override amount_tax để chỉ tính từ dòng có giá dương
+    amount_tax = fields.Monetary(
+        string="Thuế",
+        compute="_compute_amount_tax_positive_lines",
+        currency_field='currency_id',
+        store=False
+    )
+
+    # Override amount_total để tính đúng từ dòng có giá dương
+    amount_total = fields.Monetary(
+        string="Tổng",
+        compute="_compute_amount_total_positive_lines",
+        currency_field='currency_id',
+        store=False
+    )
+
     # Computed field để tự động kiểm tra và thêm dòng đặt cọc
     auto_check_deposit = fields.Boolean(string="Auto Check Deposit", compute="_compute_auto_check_deposit", store=False)
     
@@ -124,7 +140,7 @@ class SaleOrder(models.Model):
 
     @api.depends('order_line', 'order_line.price_unit', 'order_line.product_uom_qty')
     def _compute_amount_untaxed_original(self):
-        """Tính số tiền sản phẩm gốc (chỉ dòng dương, bỏ qua dòng cọc âm)"""
+        """Tính số tiền sản phẩm gốc (Thành tiền - chỉ dòng dương, bỏ qua dòng cọc âm)"""
         for order in self:
             # Chỉ lấy dòng sản phẩm có giá dương (bỏ qua dòng cọc âm)
             product_lines = order.order_line.filtered(lambda l: not l.display_type and l.price_unit >= 0)
@@ -137,7 +153,21 @@ class SaleOrder(models.Model):
                 total += line_total
             order.amount_untaxed_original = total
 
-    @api.depends('order_line', 'order_line.price_unit', 'order_line.product_uom_qty', 'total_deposit_paid', 'is_payment_confirmed', 'amount_untaxed_original')
+    @api.depends('order_line', 'order_line.price_tax')
+    def _compute_amount_tax_positive_lines(self):
+        """Tính thuế chỉ từ dòng có giá dương (bỏ qua dòng cọc âm)"""
+        for order in self:
+            # Chỉ lấy dòng sản phẩm có giá dương (bỏ qua dòng cọc âm)
+            product_lines = order.order_line.filtered(lambda l: not l.display_type and l.price_unit >= 0)
+            order.amount_tax = sum(product_lines.mapped('price_tax'))
+
+    @api.depends('amount_untaxed_original', 'amount_tax')
+    def _compute_amount_total_positive_lines(self):
+        """Tính tổng tiền từ dòng có giá dương (Thành tiền + Thuế)"""
+        for order in self:
+            order.amount_total = order.amount_untaxed_original + order.amount_tax
+
+    @api.depends('amount_untaxed_original', 'amount_tax', 'total_deposit_paid', 'is_payment_confirmed', 'is_order_completed')
     def _compute_remaining_amount_display(self):
         """Tính số tiền còn lại cần thu để hiển thị cho user"""
         for order in self:
@@ -145,8 +175,9 @@ class SaleOrder(models.Model):
                 # Đã hoàn thành -> hiển thị 0
                 order.remaining_amount_display = 0.0
             else:
-                # Sử dụng amount_untaxed_original thay vì tính lại
-                remaining = order.amount_untaxed_original - order.total_deposit_paid
+                # Số tiền còn lại = (Thành tiền + Thuế) - Tiền cọc đã thanh toán
+                total_with_tax = order.amount_untaxed_original + order.amount_tax
+                remaining = total_with_tax - order.total_deposit_paid
                 order.remaining_amount_display = max(remaining, 0.0)  # Không để âm
 
     @api.depends('name', 'create_date', 'order_state_custom', 'partner_id')
@@ -183,7 +214,7 @@ class SaleOrder(models.Model):
             
             order.auto_check_deposit = True
 
-    @api.depends('is_quotation_confirmed')
+    @api.depends('is_deposit_confirmed')
     def _compute_can_delete_products(self):
         """Kiểm tra user có được phép xóa sản phẩm không"""
         for order in self:
@@ -191,10 +222,10 @@ class SaleOrder(models.Model):
             if self.env.user.has_group('dac_erp.group_dac_erp_manager'):
                 order.can_delete_products = True
                 #_logger.info(f"[DEBUG] Order {order.name}: Manager can delete = True")
-            # Sale user chỉ được xóa khi chưa xác nhận báo giá
+            # Sale user chỉ được xóa khi chưa lên cọc
             elif self.env.user.has_group('dac_erp.group_dac_erp_sale'):
-                order.can_delete_products = not order.is_quotation_confirmed
-                #_logger.info(f"[DEBUG] Order {order.name}: Sale user can delete = {not order.is_quotation_confirmed} (is_quotation_confirmed = {order.is_quotation_confirmed})")
+                order.can_delete_products = not order.is_deposit_confirmed
+                #_logger.info(f"[DEBUG] Order {order.name}: Sale user can delete = {not order.is_deposit_confirmed} (is_deposit_confirmed = {order.is_deposit_confirmed})")
             else:
                 order.can_delete_products = True
                 #_logger.info(f"[DEBUG] Order {order.name}: Other user can delete = True")
@@ -418,6 +449,8 @@ class SaleOrder(models.Model):
                 raise UserError("Đặt cọc đã được xác nhận, không thể xác nhận lại!")
             if order.deposit_amount <= 0:
                 raise UserError("Vui lòng nhập số tiền đặt cọc!")
+            if order.deposit_amount > order.amount_total:
+                raise UserError(f"Số tiền đặt cọc ({order.deposit_amount:,.0f} đ) không được lớn hơn tổng tiền đơn hàng ({order.amount_total:,.0f} đ)!")
             
             # KIỂM TRA HÓA ĐƠN CỌC ĐÃ TỒN TẠI TRƯỚC KHI TẠO MỚI
             existing_deposit_invoices = self.env['account.move'].search([
@@ -641,7 +674,6 @@ class SaleOrder(models.Model):
                 ('dac_deposit_invoice', '=', False)  # Không phải hóa đơn cọc
             ])
             order.has_final_invoice = final_invoice_count > 0
-            #_logger.info(f"Order {order.name}: has_final_invoice = {order.has_final_invoice} (count = {final_invoice_count})")
 
     def _compute_has_paid_final_invoice(self):
         """Kiểm tra xem đã có hóa đơn thanh toán cuối đã thanh toán chưa"""
@@ -1051,6 +1083,10 @@ class SaleOrder(models.Model):
         #_logger.info(f"Đã tạo hóa đơn thanh toán cuối: {invoice.name}")
         #_logger.info("=== HOÀN THÀNH TẠO HÓA ĐƠN THANH TOÁN CUỐI ===")
         #_logger.info(f"Hóa đơn {invoice.name} đã được tạo, chờ user xác nhận để kích hoạt tiến trình thanh toán")
+        
+        # QUAN TRỌNG: Refresh computed fields để UI cập nhật ngay
+        self._compute_total_invoice_count()
+        self._compute_has_final_invoice()
         
         # Mở hóa đơn vừa tạo để user xác nhận
         return {

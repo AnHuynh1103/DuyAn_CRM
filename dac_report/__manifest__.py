@@ -1,6 +1,6 @@
 {
     # Tên module
-    'name': 'DAC ERP Report',
+    'name': 'DAC ERP Dashboard Report',
     'version': '1.0',
     
     # Loại module
@@ -15,7 +15,7 @@
     'sequence': -1,
     
     # Mô tả module
-    'summary': 'Module này để hiện báo cáo doanh thu ERP của Duy An Company',
+    'summary': 'Module này để hiện báo cáo doanh thu bán hàng của Duy An Company',
     'description': '',
     
     # Module dựa trên các category nào
@@ -36,7 +36,9 @@
     ## hoặc hệ thống (file group, phân quyền)
     'data': [
         'security/ir.model.access.csv',
-        'views/dac_report_dashboard_view.xml',
+        'views/action.xml',
+        # Bật lên khi dùng mục tiêu theo tháng:
+        'views/sales_goal_views.xml',
         'views/menuitem.xml',
     ],
 
@@ -47,7 +49,10 @@
     ## + t
     'assets': {  
         'web.assets_backend': [
+            'dac_report/static/src/js/**/*',
+            'dac_report/static/src/xml/**/*',
             'dac_report/static/src/css/**/*',
+
         ],
     },
     'license': 'LGPL-3',

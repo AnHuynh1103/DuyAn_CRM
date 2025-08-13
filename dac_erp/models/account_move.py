@@ -152,7 +152,7 @@ class AccountMove(models.Model):
         # Sau khi wizard payment hiển thị, lên lịch kiểm tra để refresh view khi payment hoàn tất
         if related_order:
             # Trigger cron job để kiểm tra và cập nhật trạng thái
-            self.env.ref('dac_erp.ir_cron_check_all_order_payment').sudo().method_direct_trigger()
+            self.env.ref('dac_erp.ir_cron_check_all_orders_payment').sudo().method_direct_trigger()
             
             # Thêm callback để refresh view sau khi payment hoàn tất
             if isinstance(result, dict) and result.get('type') == 'ir.actions.act_window':

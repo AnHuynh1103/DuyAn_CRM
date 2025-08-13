@@ -21,13 +21,17 @@ patch(WebClient.prototype, {
     if (await user.hasGroup("dac_erp.group_dac_erp_manager")) {
       const filteredArray = this.menuService
         .getApps()
-        .filter((item) => item.xmlid === "dac_report.dac_report_menu_root");
+        .filter(
+          (item) => item.xmlid === "dac_report.dac_sale_dashboard_menu_root"
+        );
       root = filteredArray[0];
       firstApp = root?.appID;
     } else if (await user.hasGroup("dac_erp.group_dac_erp_sale")) {
       const filteredArray = this.menuService
         .getApps()
-        .filter((item) => item.xmlid === "dac_report.dac_report_menu_root");
+        .filter(
+          (item) => item.xmlid === "dac_report.dac_sale_dashboard_menu_root"
+        );
       root = filteredArray[0];
       firstApp = root?.appID;
     } else {
@@ -37,7 +41,7 @@ patch(WebClient.prototype, {
       root = filteredArray[0];
       firstApp = root?.appID;
     }
-    
+
     if (firstApp) {
       return this.menuService.selectMenu(firstApp);
     }
