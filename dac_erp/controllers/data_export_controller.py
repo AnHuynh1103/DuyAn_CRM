@@ -122,55 +122,95 @@ class DataExportController(http.Controller):
                 status=500
             )
 
-    @http.route('/dac_erp/api/export/sales', type='json', auth='public', csrf=False)
+    @http.route('/dac_erp/api/export/sales', type='http', auth='public', csrf=False, methods=['GET', 'POST'])
     def export_sales_data(self, **kwargs):
         """API endpoint để get dữ liệu đơn hàng"""
         try:
             data = self._get_sales_data(**kwargs)
-            return data
+            return http.Response(
+                json.dumps(data, ensure_ascii=False, default=str),
+                content_type='application/json',
+                status=200
+            )
         except Exception as e:
             _logger.error(f"Error in export_sales_data: {str(e)}", exc_info=True)
-            return {'error': f"Lỗi khi export đơn hàng: {str(e)}"}
+            return http.Response(
+                json.dumps({'error': f"Lỗi khi export đơn hàng: {str(e)}"}),
+                content_type='application/json',
+                status=500
+            )
 
-    @http.route('/dac_erp/api/export/customers', type='json', auth='public', csrf=False)
+    @http.route('/dac_erp/api/export/customers', type='http', auth='public', csrf=False, methods=['GET', 'POST'])
     def export_customers_data(self, **kwargs):
         """API endpoint để get dữ liệu khách hàng"""
         try:
             data = self._get_customers_data(**kwargs)
-            return data
+            return http.Response(
+                json.dumps(data, ensure_ascii=False, default=str),
+                content_type='application/json',
+                status=200
+            )
         except Exception as e:
             _logger.error(f"Error in export_customers_data: {str(e)}", exc_info=True)
-            return {'error': f"Lỗi khi export khách hàng: {str(e)}"}
+            return http.Response(
+                json.dumps({'error': f"Lỗi khi export khách hàng: {str(e)}"}),
+                content_type='application/json',
+                status=500
+            )
 
-    @http.route('/dac_erp/api/export/invoices', type='json', auth='public', csrf=False)
+    @http.route('/dac_erp/api/export/invoices', type='http', auth='public', csrf=False, methods=['GET', 'POST'])
     def export_invoices_data(self, **kwargs):
         """API endpoint để get dữ liệu hóa đơn"""
         try:
             data = self._get_invoices_data(**kwargs)
-            return data
+            return http.Response(
+                json.dumps(data, ensure_ascii=False, default=str),
+                content_type='application/json',
+                status=200
+            )
         except Exception as e:
             _logger.error(f"Error in export_invoices_data: {str(e)}", exc_info=True)
-            return {'error': f"Lỗi khi export hóa đơn: {str(e)}"}
+            return http.Response(
+                json.dumps({'error': f"Lỗi khi export hóa đơn: {str(e)}"}),
+                content_type='application/json',
+                status=500
+            )
 
-    @http.route('/dac_erp/api/export/payments', type='json', auth='public', csrf=False)
+    @http.route('/dac_erp/api/export/payments', type='http', auth='public', csrf=False, methods=['GET', 'POST'])
     def export_payments_data(self, **kwargs):
         """API endpoint để get dữ liệu phiếu thu"""
         try:
             data = self._get_payments_data(**kwargs)
-            return data
+            return http.Response(
+                json.dumps(data, ensure_ascii=False, default=str),
+                content_type='application/json',
+                status=200
+            )
         except Exception as e:
             _logger.error(f"Error in export_payments_data: {str(e)}", exc_info=True)
-            return {'error': f"Lỗi khi export phiếu thu: {str(e)}"}
+            return http.Response(
+                json.dumps({'error': f"Lỗi khi export phiếu thu: {str(e)}"}),
+                content_type='application/json',
+                status=500
+            )
 
-    @http.route('/dac_erp/api/export/employees', type='json', auth='public', csrf=False)
+    @http.route('/dac_erp/api/export/employees', type='http', auth='public', csrf=False, methods=['GET', 'POST'])
     def export_employees_data(self, **kwargs):
         """API endpoint để get dữ liệu nhân viên"""
         try:
             data = self._get_employees_data(**kwargs)
-            return data
+            return http.Response(
+                json.dumps(data, ensure_ascii=False, default=str),
+                content_type='application/json',
+                status=200
+            )
         except Exception as e:
             _logger.error(f"Error in export_employees_data: {str(e)}", exc_info=True)
-            return {'error': f"Lỗi khi export nhân viên: {str(e)}"}
+            return http.Response(
+                json.dumps({'error': f"Lỗi khi export nhân viên: {str(e)}"}),
+                content_type='application/json',
+                status=500
+            )
 
     def _get_sales_data(self, limit=None, date_from=None, date_to=None, **kwargs):
         """Get dữ liệu đơn hàng"""
