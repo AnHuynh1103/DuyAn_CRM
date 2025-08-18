@@ -100,7 +100,7 @@ class PageFmPage(models.Model):
 
         processed_conversations = []
         last_conversation_id = None
-        fetch_limit = 60  # API always returns up to 60
+        fetch_limit = 25  # API always returns up to 25
 
         con = True
         while con:
@@ -236,9 +236,11 @@ class PageFmPage(models.Model):
                     existing_page.write(page_values)
                 _logger.debug(f"Page processed: {page_name} (OdooID: {existing_page.id}, FMID: {page_fm_id})")
             else:
-                page_values['page_fm_id_str'] = page_fm_id
-                existing_page = self.create(page_values)
-                _logger.info(f"Page created: {page_name} (OdooID: {existing_page.id}, FMID: {page_fm_id})")
+                dup_check = self.sudo().search([('page_fm_id_str', '=', page_fm_id_str)], limit=1)
+                if not dup_check:
+                    page_values['page_fm_id_str'] = str(page_fm_id).strip()
+                    existing_page = self.create(page_values)
+                    _logger.info(f"Page created: {page_name} (OdooID: {existing_page.id}, FMID: {page_fm_id})")
             return existing_page
         except Exception as e:
             _logger.error(f"Error C/U page FM ID {page_fm_id}: {e}", exc_info=True)

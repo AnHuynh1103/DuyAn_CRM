@@ -232,6 +232,7 @@ class PageFmConversation(models.Model):
     
 
     def action_sync_messages(self):
+        _logger.info("------------------------------------------->Hello")
         main_access_token = self.env['ir.config_parameter'].sudo().get_param('page_fm.access_token')
         if not main_access_token:
             _logger.error("Thiếu main_access_token trong system parameters.")
