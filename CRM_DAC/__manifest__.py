@@ -10,7 +10,7 @@
         # 'security/ir.model.access.csv',
         # 'views/contents_view.xml',
         # 'views/menu.xml',
-        'data/ir_config_parameter_data.xml',
+        # 'data/ir_config_parameter_data.xml',
         'security/ir.model.access.csv', # Đảm bảo file này được khai báo TRƯỚC views
         'views/page_fm_views.xml',
         'views/pancake_order_views.xml',
