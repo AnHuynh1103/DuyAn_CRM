@@ -62,7 +62,8 @@
                   <div class="list-scroll">
                     <t t-if="(state.data.lists.consulting||[]).length">
                       <t t-foreach="state.data.lists.consulting" t-as="it" t-key="it.id">
-                        <div class="ticket" t-on-click.stop.prevent="(ev)=>this.openForm('sale.order', it.id)">
+                        <div class="ticket"
+                              t-on-click.stop.prevent="(ev)=>this.openForm(it.model || 'page.fm.conversation', it.id)">
                           <div class="d-flex justify-content-between">
                             <div class="ticket-title text-truncate"><t t-esc="it.title"/></div>
                             <t t-if="it.has_unread"><span class="badge bg-danger">Tin mới</span></t>

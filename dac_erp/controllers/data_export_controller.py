@@ -534,3 +534,150 @@ class DataExportController(http.Controller):
                 result['custom_states'][state] = count
         
         return result
+
+    # --- MESSAGES EXPORT -------------------------------------------------
+    @http.route('/dac_erp/api/export/messages', type='http', auth='public', csrf=False, methods=['GET'])
+    def export_messages_data(self,
+                            conversation_id=None,
+                            conversation_fm_id=None,
+                            date=None,            # YYYY-MM-DD (lấy đúng 1 ngày)
+                            date_from=None,       # YYYY-MM-DD hoặc YYYY-MM-DD HH:MM:SS
+                            date_to=None,
+                            limit=None,
+                            offset=0,
+                            asc='1',              # '1' = ASC, '0' = DESC
+                            include_raw='0',      # '1' để gửi cả raw_json_message
+                            **kwargs):
+        """
+        Trả về danh sách message của 1 conversation, có lọc theo ngày.
+        BẮT BUỘC truyền 1 trong 2: conversation_id (Odoo ID) hoặc conversation_fm_id (ID từ Pages/Pancake).
+        """
+        try:
+            data = self._get_messages_data(
+                conversation_id=conversation_id,
+                conversation_fm_id=conversation_fm_id,
+                date=date,
+                date_from=date_from,
+                date_to=date_to,
+                limit=limit,
+                offset=offset,
+                asc=asc,
+                include_raw=include_raw,
+            )
+            return http.Response(
+                json.dumps(data, ensure_ascii=False, default=str),
+                content_type='application/json',
+                status=200
+            )
+        except Exception as e:
+            _logger.error(f"Error in export_messages_data: {e}", exc_info=True)
+            return http.Response(
+                json.dumps({'error': f'Lỗi khi export messages: {e}'}),
+                content_type='application/json',
+                status=500
+            )
+
+    def _get_messages_data(self,
+                        conversation_id=None,
+                        conversation_fm_id=None,
+                        date=None,
+                        date_from=None,
+                        date_to=None,
+                        limit=None,
+                        offset=0,
+                        asc='1',
+                        include_raw='0',
+                        **kwargs):
+        """Lấy dữ liệu message theo conversation + ngày."""
+        domain = []
+
+        # --- bắt buộc: xác định conversation ---
+        if conversation_id:
+            try:
+                conversation_id = int(conversation_id)
+            except Exception:
+                raise ValueError("conversation_id phải là số nguyên.")
+            domain.append(('conversation_id', '=', conversation_id))
+        elif conversation_fm_id:
+            domain.append(('conversation_id.conversation_fm_id', '=', conversation_fm_id))
+        else:
+            raise ValueError("Thiếu conversation_id hoặc conversation_fm_id.")
+
+        # --- chuẩn hoá ngày ---
+        # Nếu có 'date' => lấy trọn ngày đó
+        if date and (not date_from and not date_to):
+            date_from = f"{date} 00:00:00"
+            date_to   = f"{date} 23:59:59"
+
+        if date_from:
+            domain.append(('inserted_at_fm', '>=', date_from))
+        if date_to:
+            domain.append(('inserted_at_fm', '<=', date_to))
+
+        # --- paging & sort ---
+        limit = int(limit) if limit else 200
+        offset = int(offset) if offset else 0
+        order = 'inserted_at_fm asc' if str(asc) in ('1', 'true', 'True') else 'inserted_at_fm desc'
+
+        Message = request.env['page.fm.message'].sudo()
+        messages = Message.search(domain, limit=limit, offset=offset, order=order)
+
+        rows = []
+        for m in messages:
+            # attachments_json có thể là str; parse an toàn
+            try:
+                attachments = json.loads(m.attachments_json) if m.attachments_json else None
+            except Exception:
+                attachments = m.attachments_json
+
+            row = {
+                # khóa chính
+                'id': m.id,
+                'message_fm_id': getattr(m, 'message_fm_id', None),
+
+                # thông tin conversation (đủ để đối soát)
+                'conversation': {
+                    'id': m.conversation_id.id if m.conversation_id else None,
+                    'name': m.conversation_id.display_name if m.conversation_id else None,
+                    'conversation_fm_id': getattr(m.conversation_id, 'conversation_fm_id', None),
+                    'page': {
+                        'id': m.conversation_id.page_fm_page_id.id if m.conversation_id and m.conversation_id.page_fm_page_id else None,
+                        'name': m.conversation_id.page_fm_page_id.name if m.conversation_id and m.conversation_id.page_fm_page_id else None,
+                        'page_fm_id_str': getattr(m.conversation_id.page_fm_page_id, 'page_fm_id_str', None),
+                    } if m.conversation_id else None,
+                },
+
+                # mốc thời gian
+                'inserted_at_fm': m.inserted_at_fm.isoformat() if getattr(m, 'inserted_at_fm', None) else None,
+                'previous_time':  m.previous_time.isoformat()  if getattr(m, 'previous_time', None)  else None,
+
+                # người gửi / staff
+                'sender_name_fm': getattr(m, 'sender_name_fm', None),
+                'staff_name_fm':  getattr(m, 'staff_name_fm', None),
+                'staff_id_fm':    getattr(m, 'staff_id_fm', None),
+                'staff_user': ({
+                    'id': m.staff.id,
+                    'name': m.staff.display_name
+                } if getattr(m, 'staff', False) else None),
+
+                # nội dung
+                'content_html': getattr(m, 'content_html', None),
+                'type_content': getattr(m, 'type_content', None),
+                'url_content':  getattr(m, 'url_content', None),
+                'attachments':  attachments,
+            }
+
+            if str(include_raw) in ('1', 'true', 'True'):
+                row['raw_json_message'] = getattr(m, 'raw_json_message', None)
+
+            rows.append(row)
+
+        return {
+            'count': len(rows),
+            'limit': limit,
+            'offset': offset,
+            'order': order,
+            'items': rows,
+        }
+    # --- /MESSAGES EXPORT ------------------------------------------------
+
