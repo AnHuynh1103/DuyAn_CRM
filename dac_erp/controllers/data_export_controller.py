@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-
+import pytz
 import json
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timedelta, time
 from odoo import http, fields, models
 from odoo.http import request
 
@@ -681,3 +681,236 @@ class DataExportController(http.Controller):
         }
     # --- /MESSAGES EXPORT ------------------------------------------------
 
+
+    # --- CONVERSATIONS EXPORT -------------------------------------------------
+
+    @http.route('/dac_erp/api/export/conversations', type='http', auth='public', csrf=False, methods=['GET'])
+    def export_conversations_data(self,
+                                page_id=None,                # lọc theo page Odoo id 
+                                page_fm_id_str=None,         # lọc theo page_fm_id_str
+                                unread_only='0',             # '1' chỉ lấy cuộc chưa đọc
+                                days=2,                      # nếu không truyền date_from/to -> mặc định 2 ngày gần nhất
+                                date=None,                   # YYYY-MM-DD (lấy đúng 1 ngày)
+                                date_from=None,              # YYYY-MM-DD hoặc YYYY-MM-DD HH:MM:SS
+                                date_to=None,
+                                limit=None,
+                                offset=0,
+                                asc='0',                     # '1' = ASC, '0' = DESC theo mốc thời gian
+                                include_last_message='1',    # '1' trả kèm last message rút gọn
+                                include_message_count='0',   # '1' đếm tổng số message của cuộc
+                                **kwargs):
+        """
+        Trả về danh sách conversations theo bộ lọc thời gian & điều kiện khác.
+        Dùng để liệt kê các cuộc cần chăm sóc.
+        """
+        try:
+            data = self._get_conversations_data(
+                page_id=page_id,
+                page_fm_id_str=page_fm_id_str,
+                unread_only=unread_only,
+                days=days,
+                date=date,
+                date_from=date_from,
+                date_to=date_to,
+                limit=limit,
+                offset=offset,
+                asc=asc,
+                include_last_message=include_last_message,
+                include_message_count=include_message_count,
+            )
+            return http.Response(
+                json.dumps(data, ensure_ascii=False, default=str),
+                content_type='application/json',
+                status=200
+            )
+        except Exception as e:
+            _logger.error(f"Error in export_conversations_data: {e}", exc_info=True)
+            return http.Response(
+                json.dumps({'error': f'Lỗi khi export conversations: {e}'}),
+                content_type='application/json',
+                status=500
+            )
+
+    def _get_conversations_data(self,
+                            page_id=None,
+                            page_fm_id_str=None,
+                            unread_only='0',
+                            days=2,
+                            date=None,
+                            date_from=None,
+                            date_to=None,
+                            limit=None,
+                            offset=0,
+                            asc='0',
+                            include_last_message='1',
+                            include_message_count='0',
+                            **kwargs):
+        """Lấy dữ liệu conversations theo bộ lọc thời gian & điều kiện khác."""
+        Conv = request.env['page.fm.conversation'].sudo()
+        Message = request.env['page.fm.message'].sudo()
+
+        # Chọn field mốc thời gian ưu tiên
+        if 'last_updated_fm' in Conv._fields:
+            dt_field = 'last_updated_fm'
+        elif 'last_message_sync_fm' in Conv._fields:
+            dt_field = 'last_message_sync_fm'
+        else:
+            dt_field = 'write_date'
+
+        domain = []
+
+        # Lọc theo page nếu có
+        if page_id:
+            page_id = int(page_id)
+            domain.append(('page_fm_page_id', '=', page_id))
+        if page_fm_id_str:
+            domain.append(('page_fm_page_id.page_fm_id_str', '=', page_fm_id_str))
+
+        if str(unread_only) in ('1', 'true', 'True'):
+            if 'is_unread' in Conv._fields:
+                domain.append(('is_unread', '=', True))
+
+        # --- Timezone & helpers ---
+        args = request.httprequest.args
+        tzname = args.get('tz') or request.env.context.get('tz') or 'UTC'
+        try:
+            tz = pytz.timezone(tzname)
+        except Exception:
+            tz = pytz.UTC
+
+        def to_utc(dt):
+            # dt naive => hiểu theo tz đang chọn
+            if dt.tzinfo is None:
+                dt = tz.localize(dt)
+            return dt.astimezone(pytz.UTC)
+
+        def parse_any(s, is_end=False):
+            if not s:
+                return None
+            # 'YYYY-MM-DD'
+            if len(s) == 10:
+                d = datetime.strptime(s, '%Y-%m-%d').date()
+                t = time.max if is_end else time.min
+                return to_utc(datetime.combine(d, t))
+            # ISO or 'YYYY-MM-DD HH:MM:SS'
+            try:
+                dt = datetime.fromisoformat(s)
+            except ValueError:
+                dt = datetime.strptime(s, '%Y-%m-%d %H:%M:%S')
+            return to_utc(dt)
+
+        # --- Xây khoảng thời gian ---
+        dt_from_utc = dt_to_utc = None
+
+        if date_from or date_to:
+            dt_from_utc = parse_any(date_from, is_end=False) if date_from else None
+            dt_to_utc   = parse_any(date_to,   is_end=True)  if date_to   else None
+        elif date:
+            # lấy trọn 1 ngày theo TZ rồi đổi sang UTC
+            dt_from_utc = parse_any(date, is_end=False)
+            dt_to_utc   = parse_any(date, is_end=True)
+        else:
+            # days (mặc định 2) theo TZ
+            try:
+                days_int = int(days) if days is not None else 2
+            except Exception:
+                days_int = 2
+            now_tz = datetime.now(tz)
+            start_tz = (now_tz - timedelta(days=days_int)).replace(hour=0, minute=0, second=0, microsecond=0)
+            end_tz   = now_tz.replace(hour=23, minute=59, second=59, microsecond=999999)
+            dt_from_utc = start_tz.astimezone(pytz.UTC)
+            dt_to_utc   = end_tz.astimezone(pytz.UTC)
+
+        # Domain cho message theo khoảng thời gian
+        msg_domain = []
+        if page_id:
+            msg_domain.append(('conversation_id.page_fm_page_id', '=', int(page_id)))
+        if page_fm_id_str:
+            msg_domain.append(('conversation_id.page_fm_page_id.page_fm_id_str', '=', page_fm_id_str))
+
+        if dt_from_utc:
+            msg_domain.append(('inserted_at_fm', '>=', fields.Datetime.to_string(dt_from_utc)))
+        if dt_to_utc:
+            msg_domain.append(('inserted_at_fm', '<=', fields.Datetime.to_string(dt_to_utc)))
+
+        # Lấy các message trong khoảng -> gom id conversation
+        msg_records = Message.search(msg_domain)
+        conv_ids = list({m.conversation_id.id for m in msg_records if m.conversation_id})
+
+        # Không có cuộc nào thì trả rỗng sớm
+        if not conv_ids:
+            return {
+                'count': 0,
+                'limit': int(limit) if limit else 200,
+                'offset': int(offset) if offset else 0,
+                'order': f'inserted_at_fm {"asc" if str(asc) in ("1","true","True") else "desc"}',
+                'date_field': 'inserted_at_fm',
+                'items': [],
+            }
+
+        # Khóa domain conversation theo tập id vừa tìm được
+        domain.append(('id', 'in', conv_ids))
+
+        # Paging & sort
+        limit = int(limit) if limit else 200
+        offset = int(offset) if offset else 0
+        order = f"{dt_field} {'asc' if str(asc) in ('1','true','True') else 'desc'}"
+
+        conversations = Conv.search(domain, limit=limit, offset=offset, order=order)
+
+        rows = []
+        for c in conversations:
+            page_info = None
+            if getattr(c, 'page_fm_page_id', False):
+                page_info = {
+                    'id': c.page_fm_page_id.id,
+                    'name': getattr(c.page_fm_page_id, 'display_name', c.page_fm_page_id.name),
+                    'page_fm_id_str': getattr(c.page_fm_page_id, 'page_fm_id_str', None),
+                }
+            row = {
+                'id': c.id,
+                'name': getattr(c, 'display_name', getattr(c, 'name', None)),
+                'conversation_fm_id': getattr(c, 'conversation_fm_id', None),
+                'page': page_info,
+                'is_unread': getattr(c, 'is_unread', None),
+                'last_message_snippet': getattr(c, 'last_message_snippet', None),
+                'last_updated_fm': getattr(c, 'last_updated_fm', None).isoformat() if getattr(c, 'last_updated_fm', None) else None,
+                'last_message_sync_fm': getattr(c, 'last_message_sync_fm', None).isoformat() if getattr(c, 'last_message_sync_fm', None) else None,
+                'write_date': c.write_date.isoformat() if getattr(c, 'write_date', None) else None,
+            }
+
+            if str(include_message_count) in ('1','true','True'):
+                row['message_count'] = Message.search_count([('conversation_id', '=', c.id)])
+
+            if str(include_last_message) in ('1','true','True'):
+                msg_order = 'inserted_at_fm desc' if 'inserted_at_fm' in Message._fields else 'id desc'
+                last_msg = Message.search([('conversation_id', '=', c.id)], limit=1, order=msg_order)
+                if last_msg:
+                    m = last_msg[0]
+                    try:
+                        attachments = json.loads(m.attachments_json) if m.attachments_json else None
+                    except Exception:
+                        attachments = m.attachments_json
+                    row['last_message'] = {
+                        'id': m.id,
+                        'message_fm_id': getattr(m, 'message_fm_id', None),
+                        'inserted_at_fm': m.inserted_at_fm.isoformat() if getattr(m, 'inserted_at_fm', None) else None,
+                        'sender_name_fm': getattr(m, 'sender_name_fm', None),
+                        'staff_name_fm': getattr(m, 'staff_name_fm', None),
+                        'type_content': getattr(m, 'type_content', None),
+                        'content_html': getattr(m, 'content_html', None),
+                        'attachments': attachments,
+                    }
+
+            rows.append(row)
+
+        return {
+            'count': len(rows),
+            'limit': limit,
+            'offset': offset,
+            'order': order,
+            'date_field': 'inserted_at_fm',
+            'items': rows,
+        }
+
+    # --- /CONVERSATIONS EXPORT -------------------------------------------------
