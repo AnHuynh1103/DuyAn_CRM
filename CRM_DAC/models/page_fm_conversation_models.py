@@ -75,6 +75,137 @@ class PageFmConversation(models.Model):
     _sql_constraints = [
         ('conversation_fm_id_page_uniq', 'unique(conversation_fm_id, page_fm_page_id)', 'Conversation FM ID phải là duy nhất cho mỗi trang!')
     ]
+    
+    
+    # ==== STATUS FIELDS (OPTIMIZED) ====
+    status_state = fields.Selection([
+        ('new', 'Tin mới'),
+        ('recontact', 'Chăm lại khách'),
+        ('waiting', 'Đợi khách phản hồi'),
+        ('done', 'Đã xử lý'),
+    ], string="Trạng thái", default='new', index=True, tracking=True)
+
+    # UNIFIED: Chỉ dùng suggestion_note cho mọi loại ghi chú (từ AI, manual, hoặc status note)
+    suggestion_note = fields.Text(string="Ghi chú & Gợi ý xử lý", help="Ghi chú trạng thái, gợi ý từ AI hoặc external system")
+    last_suggestion_at = fields.Datetime(string="Thời điểm cập nhật ghi chú")
+    
+    status_set_by_id = fields.Many2one('res.users', "Người cập nhật", tracking=True)
+    status_set_at = fields.Datetime("Thời điểm cập nhật", tracking=True)
+
+    # UNIFIED: Chỉ dùng require_processing - tự động quản lý logic checklist
+    require_processing = fields.Boolean(string="Có yêu cầu xử lý", default=False, index=True, tracking=True)
+
+    # COMPUTED: status_label được tính toán thay vì lưu trữ
+    status_label = fields.Char(string="Nhãn trạng thái", compute='_compute_status_label', help="Text hiển thị trạng thái")
+
+    @api.depends('status_state', 'require_processing')
+    def _compute_status_label(self):
+        """Tính toán nhãn hiển thị dựa trên trạng thái và yêu cầu xử lý"""
+        default_labels = {
+            'new': 'Có tin nhắn mới',
+            'recontact': 'Chăm lại khách', 
+            'waiting': 'Đợi khách phản hồi',
+            'done': 'Đã xử lý',
+        }
+        for record in self:
+            base_label = default_labels.get(record.status_state, record.status_state or '')
+            if record.require_processing and record.status_state != 'done':
+                record.status_label = f" {base_label}"
+            else:
+                record.status_label = base_label
+
+    def action_toggle_require_processing(self):
+        """Thay thế action_toggle_checklist_ok - Toggle trạng thái yêu cầu xử lý"""
+        self.ensure_one()
+        new_val = not bool(self.require_processing)
+        vals = {
+            'require_processing': new_val,
+            'is_unread_fm': False,  # đánh dấu là đã đọc khi toggle
+        }
+
+        # Khi tắt require_processing => coi như đã xử lý
+        if not new_val:
+            vals.update({
+                'status_state': 'done',
+            })
+        else:
+            # Khi bật lại => trạng thái về new nếu cần
+            if self.status_state == 'done':
+                vals['status_state'] = 'new'
+
+        self.write(vals)
+        
+        return {
+            'require_processing': self.require_processing,
+            'is_unread_fm': self.is_unread_fm,
+            'status_state': self.status_state,
+            'status_label': self.status_label,
+        }
+
+    # DEPRECATED: Giữ lại cho backward compatibility
+    def action_toggle_checklist_ok(self):
+        """DEPRECATED: Chuyển đổi sang dùng action_toggle_require_processing"""
+        return self.action_toggle_require_processing()
+
+    def action_update_status(self, state, require_processing=False, note=None):
+        """Cập nhật trạng thái conversation"""
+        self.ensure_one()
+        vals = {
+            'status_state': state,
+            'require_processing': bool(require_processing),
+            'status_set_by_id': self.env.user.id,
+            'status_set_at': fields.Datetime.now(),
+        }
+        if note:
+            vals.update({
+                'suggestion_note': note,
+                'last_suggestion_at': fields.Datetime.now(),
+            })
+        self.sudo().write(vals)
+        return True
+
+    def _auto_bump_require_processing(self):
+        """Bật require_processing khi có trạng thái đỏ hoặc chưa đọc."""
+        for rec in self:
+            # trạng thái đỏ HOẶC chưa đọc
+            should_process = (
+                rec.status_state in ('new', 'recontact') or 
+                bool(getattr(rec, 'is_unread_fm', False))
+            )
+            
+            # Cập nhật require_processing
+            if should_process != rec.require_processing:
+                rec.require_processing = should_process
+                #_logger.info(f"Auto {'bật' if should_process else 'tắt'} require_processing cho conversation {rec.id} - Trạng thái: {rec.status_state}, unread: {bool(getattr(rec, 'is_unread_fm', False))}")
+
+    # (tuỳ chọn) auto gợi ý trạng thái dựa vào unread/last message
+    def apply_status_rule(self):
+        """Áp dụng quy tắc trạng thái tự động dựa vào tin nhắn."""
+        Message = self.env['page.fm.message'].sudo()
+        for c in self:
+            # Lấy tin nhắn cuối và người gửi
+            last_msg = Message.search([('conversation_id', '=', c.id)], limit=1,
+                                    order='inserted_at_fm desc' if 'inserted_at_fm' in Message._fields else 'id desc')
+            
+            vals = {}
+            if getattr(c, 'is_unread_fm', False):
+                # Có tin chưa đọc -> tin mới, cần xử lý
+                vals.update({'status_state': 'new', 'require_processing': True})
+            elif last_msg and (last_msg.sender_name_fm and not last_msg.staff_name_fm):
+                # Tin cuối là của khách -> chăm lại khách, cần xử lý
+                vals.update({'status_state': 'recontact', 'require_processing': True})
+            elif last_msg and last_msg.staff_name_fm:
+                # Tin cuối là của staff -> chờ khách phản hồi, không cần xử lý ngay
+                vals.update({'status_state': 'waiting', 'require_processing': False})
+            else:
+                # Không có tin nhắn hoặc trường hợp khác -> đã xử lý
+                vals.update({'status_state': 'done', 'require_processing': False})
+            
+            if vals:
+                c.sudo().write(vals)
+                # Đảm bảo require_processing được cập nhật theo logic
+                c._auto_bump_require_processing()
+
 
     @api.depends('customer_name_fm', 'conversation_fm_id')
     def _compute_name(self):
@@ -376,6 +507,12 @@ class PageFmConversation(models.Model):
             record.write({'last_message_sync_fm': datetime.now()})
             record.invalidate_recordset(['message_count'])
 
+            # Tự động cập nhật require_processing sau khi sync tin nhắn
+            try:
+                record._auto_bump_require_processing()
+            except Exception as e:
+                _logger.error(f"Lỗi khi cập nhật require_processing cho conversation {record.id}: {e}")
+
             # Attempt to find or create a partner after syncing
             try:
                 if not record.partner_id:
@@ -388,13 +525,50 @@ class PageFmConversation(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         records = super().create(vals_list)
-        # for rec in records:
-        #     try:
-        #         # Sync messages right after creation to link partner automatically
-        #         _logger.info(f"Đang sync tin nhắn cho hội thoại {rec.conversation_fm_id} sau khi tạo.")
-        #         rec.action_sync_messages()
-
-        #     except Exception as e:
-        #         _logger.error(f"Lỗi khi tự động đồng bộ tin nhắn sau create: {e}", exc_info=True)
+        # Tự động set require_processing theo logic
+        for rec in records:
+            try:
+                rec._auto_bump_require_processing()
+            except Exception as e:
+                _logger.error(f"Lỗi khi set require_processing cho conversation {rec.id}: {e}")
         return records
 
+    def write(self, vals):
+        result = super().write(vals)
+        # Tự động cập nhật require_processing khi thay đổi trạng thái hoặc unread
+        if any(key in vals for key in ['status_state', 'is_unread_fm']):
+            for rec in self:
+                try:
+                    rec._auto_bump_require_processing()
+                except Exception as e:
+                    _logger.error(f"Lỗi khi update require_processing cho conversation {rec.id}: {e}")
+        return result
+
+
+    external_url = fields.Char(string="Link Pancake", compute="_compute_external_url", store=False)
+
+    def _compute_external_url(self):
+        ICP = self.env['ir.config_parameter'].sudo()
+        # Cho phép override bằng system parameter
+        tmpl = ICP.get_param(
+            'pancake.conversation_url_template',
+            # Template mặc định (bạn đổi cho đúng môi trường nếu cần)
+            default='https://pages.fm/conversations/{conversation_fm_id}?page_id={page_fm_id_str}'
+        )
+        for r in self:
+            if r.conversation_fm_id and r.page_fm_id_str_related:
+                r.external_url = tmpl.format(
+                    conversation_fm_id=r.conversation_fm_id,
+                    page_fm_id_str=r.page_fm_id_str_related
+                )
+            else:
+                r.external_url = False
+
+    def action_open_on_pancake(self):
+        self.ensure_one()
+        url = self.external_url or '#'
+        return {
+            'type': 'ir.actions.act_url',
+            'url': url,
+            'target': 'new',
+        }

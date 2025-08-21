@@ -132,9 +132,16 @@
         <field name="arch" type="xml">
             <form string="Conversation">
                  <header>
-                    <button name="action_sync_messages" type="object" string="Sync Messages" class="oe_highlight" context="{'load_all': False}"/>
-                    <button name="action_sync_messages" type="object" string="Load All Messages" 
-                            context="{'load_all': True}" invisible='message_count == 0'/> 
+                    <button name="action_sync_messages" 
+                            type="object" 
+                            string="Sync Messages" 
+                            class="oe_highlight" 
+                            context="{'load_all': False}"/>
+                    <button name="action_sync_messages" 
+                            type="object" 
+                            string="Load All Messages" 
+                            context="{'load_all': True}" 
+                            invisible='message_count == 0'/>
                 </header>
                 <sheet>
                      <div name="button_box" class="oe_button_box">
@@ -154,24 +161,44 @@
                             <field name="page_fm_id_str_related" readonly="1"/> -->
                         </group>
                         <group>
-                            <field name="customer_name_fm" string="Tên (pancake)" readonly="1"/>
+                            <field name="customer_name_fm" string="Tên KH (pancake)" readonly="1"/>
                             <field name="customer_fm_id" string="Id (pancake)" readonly="1"/>
-                            <field name="platform_fm"  readonly="1"/>
+                            <field name="platform_fm" string="Nền tảng (pancake)" readonly="1"/>
+                            <div name="button_box" class="oe_button_box">
+                                <button name="action_open_on_pancake"
+                                        type="object"
+                                        class="oe_stat_button"
+                                        icon="fa-external-link"
+                                        modifiers="{'invisible': [['external_url', '=', false]]}">
+                                    <div class="o_stat_info">
+                                        <span class="o_stat_text">Mở Pancake</span>
+                                    </div>
+                                </button>
+                            </div>
                         </group>
                     </group>
-                    <group string="Details">
-                        <field name="last_message_snippet" readonly="1"/>
-                        <field name="updated_at_fm" readonly="1"/>
-                        <field name="is_unread_fm"/>
-                        <field name="last_message_sync_fm" readonly="1"/>
+                    
+                    <group string="Chi tiết">
+                        <group>
+                            <field name="last_message_snippet" string="Đoạn tin nhắn cuối" readonly="1"/>
+                            <field name="updated_at_fm" string="Thời gian cập nhật" readonly="1"/>
+                            <field name="is_unread_fm" string="Chưa đọc"/>
+                            <field name="last_message_sync_fm" string="Thời gian đồng bộ tin nhắn cuối" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="status_state" string="Trạng thái"/>
+                            <field name="require_processing" string="Có yêu cầu xử lý" widget="boolean_toggle"/>
+                            <field name="status_label" string="Nhãn hiển thị" readonly="1"/>
+                            <field name="suggestion_note" string="Ghi chú &amp; Gợi ý"/>
+                            <field name="last_suggestion_at" widget="datetime" string="Cập nhật lần cuối"/>
+                        </group>
                     </group>
                     <notebook>
-                        <page string="Messages">
+                        <page string="Tin nhắn">
                             <field name="message_ids" readonly="1" context="{'list_view_ref': 'CRM_DAC.view_page_fm_message_list'}"
-                                 mode="list,form"
-                                views="[(list, 'CRM_DAC.view_page_fm_message_list'), (form, 'CRM_DAC.view_page_fm_message_form')]"
-                            >
-                                </field>
+                                    mode="list,form"
+                                    views="[(list, 'CRM_DAC.view_page_fm_message_list'), (form, 'CRM_DAC.view_page_fm_message_form')]">
+                            </field>
                         </page>
                     </notebook>
                 </sheet>
@@ -238,11 +265,9 @@
     </record>
 
     <record id="action_page_fm_conversation_all" model="ir.actions.act_window">
-        <field name="name">All Conversations</field>
+        <field name="name">Tất cả cuộc trò chuyện</field>
         <field name="res_model">page.fm.conversation</field>
-        <field name="view_mode">list,kanban,form</field>
-         <!-- <field name="search_view_id" ref="view_page_fm_conversation_search"/> -->
-        <!-- <field name="context">{'search_default_filter_unread': 1}</field> -->
+        <field name="view_mode">kanban,list,form</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
                 No conversations found.
@@ -289,22 +314,4 @@
             </form>
         </field>
     </record>
-
-
-    <menuitem id="menu_page_fm_sync_root"
-              name="Đồng Bộ"
-              sequence="80"/>
-
-    <menuitem id="menu_page_fm_synced_pages_main"
-              name="Các Trang Đã Đồng Bộ"
-              parent="menu_page_fm_sync_root"
-              action="action_page_fm_page_simplified"
-              sequence="10"/>
-
-    <menuitem id="menu_page_fm_all_conversations_optional"
-              name="Tất Cả Cuộc Trò Chuyện"
-              parent="menu_page_fm_sync_root"
-              action="action_page_fm_conversation_all"
-              sequence="20"/>
-
 </odoo>

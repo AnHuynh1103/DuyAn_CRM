@@ -1,10 +1,53 @@
-from odoo import api, fields, models
+from odoo import api, fields, models, _
 from odoo.tools.misc import formatLang
 import calendar
+from datetime import datetime, timedelta
 
+STATUS_COLOR_MAP = {
+    'new': 'danger',      # đỏ
+    'recontact': 'danger', # đỏ
+    'waiting': 'warning', # vàng
+    'done': 'success',    # xanh
+    False: 'muted',
+}
 
 class SaleOrderDashboardService(models.Model):
     _inherit = "sale.order"
+
+    def _dac_build_consulting_cards(self, limit=50):
+        Conv = self.env['page.fm.conversation'].sudo()
+        # Domain ví dụ: lấy theo hoạt động gần đây
+        domain = [('last_message_sync_fm', '!=', False)]
+        recs = Conv.search(domain, limit=limit, order='updated_at_fm desc')
+
+        out = []
+        for c in recs:
+            color = STATUS_COLOR_MAP.get(c.status_state or False, 'muted')
+            # Tạo status label
+            status_labels = {
+                'new': 'Có tin nhắn mới',
+                'recontact': 'Chăm lại khách', 
+                'waiting': 'Cần liên hệ lại',
+                'done': 'Đã xử lý',
+            }
+            label = status_labels.get(c.status_state, '')
+            
+            out.append({
+                'id': c.id,
+                'title': c.display_name or c.name or '',
+                'snippet': c.last_message_snippet or '',
+                'note': c.suggestion_note or '',  # <— ƯU TIÊN suggestion từ AI/n8n
+                'status_label': label,        # <— DÒNG TRẠNG THÁI
+                'status_state': c.status_state,  # <— TRẠNG THÁI GỐC
+                'status_color': color,        # <— MÀU: danger / warning / success
+                'external_url': c.external_url or '',  # <— NÚT PANCAKE
+                'checklist_ok': bool(getattr(c, 'checklist_ok', False)),
+                'is_unread_fm': bool(getattr(c, 'is_unread_fm', False)),
+                'require_processing': bool(getattr(c, 'require_processing', False)),
+                'partner_name': c.partner_id.name if c.partner_id else '',
+                'customer_name_fm': c.customer_name_fm or '',
+            })
+        return out
 
     # ---- helpers ----
     def _rg_count(self, model, domain, id_field="id"):
@@ -113,20 +156,8 @@ class SaleOrderDashboardService(models.Model):
         delta_vs_expected = progress_ratio - expected_ratio
 
         # ---- Lists ----
-        consulting_list = []
-        if doms["consulting"]:
-            cons = self.search(
-                [("company_id", "=", company.id)] + doms["consulting"],
-                limit=10,
-                order="write_date desc, id desc",
-            )
-            consulting_list = [{
-                "id": so.id,
-                "title": so.partner_id.display_name,
-                "subtitle": (so.note or so.client_order_ref or "")[:120],
-                "has_unread": getattr(so, "message_needaction", False),
-            } for so in cons]
-
+        consulting_list = self._dac_build_consulting_cards(limit=20)
+        
         quotes = self.search(q_dom, limit=10, order="date_order desc, id desc")
         quotation_list = [{
             "id": so.id,
@@ -172,6 +203,16 @@ class SaleOrderDashboardService(models.Model):
             "date": (so.date_order or fields.Datetime.now()).date().isoformat(),
         } for so in recent]
 
+        # Tổng tiền cho 2 bảng dưới
+        receivables_total_val = sum(m.amount_residual for m in receivables)
+        recent_total_val      = sum(o.amount_total     for o in recent)
+        sums = {
+            "receivables_total": receivables_total_val,
+            "receivables_total_str": fmt(receivables_total_val),
+            "recent_total": recent_total_val,
+            "recent_total_str": fmt(recent_total_val),
+        }
+
         return {
             "header": {
                 "month_target": fmt(goal),
@@ -183,6 +224,7 @@ class SaleOrderDashboardService(models.Model):
                 "delta_vs_expected": delta_vs_expected,
                 # nếu cần hiển thị số tiền báo giá, có thể thêm:
                 # "quotation_amount": fmt(quotation_amount),
+
             },
             "lists": {
                 "consulting": consulting_list,
@@ -191,4 +233,5 @@ class SaleOrderDashboardService(models.Model):
                 "receivables": receivables_list,
                 "recent_customers": recent_list,
             },
+            "sums": sums,  # <<< NEW
         }

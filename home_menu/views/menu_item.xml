@@ -1,7 +1,7 @@
 <odoo>
     <data>
         <menuitem id="home_root"
-                    name="Trang chủ"
+                    name="Home"
                     sequence="-10"
                     groups="base.group_user"
                     action="home_menu_action"/>

@@ -182,3 +182,75 @@
 .dac-compact {
   --bottom-card-h: 240px;
 }
+
+/* Progress full-width trong header */
+.dac-card .dac-progress {
+  border-radius: 8px;
+  overflow: hidden; /* bo tròn phần bar */
+}
+.dac-card .dac-progress .progress-bar {
+  /* bạn có thể đổi màu theo theme Odoo: bg-primary/bg-success... */
+  background-color: #ffa220; /* cam nhẹ, tuỳ chọn */
+}
+
+.badge-status {
+  font-weight: 600;
+}
+.badge-status.badge-new,
+.badge-status.badge-recontact {
+  background: #dc3545;
+} /* đỏ */
+.badge-status.badge-waiting {
+  background: #ffc107;
+  color: #000;
+} /* vàng */
+.badge-status.badge-done {
+  background: #198754;
+}
+
+/* Conversation card – large */
+.ticket--lg {
+  padding: 12px 14px;
+  min-height: 92px;
+  display: flex;
+  align-items: flex-start;
+  border-radius: 12px;
+}
+
+.ticket__row {
+  display: flex;
+  width: 100%;
+  gap: 12px;
+}
+.ticket__main {
+  flex: 1;
+}
+.ticket__title {
+  font-weight: 600;
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+.ticket__state {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.ticket__snippet {
+  font-size: 13px;
+  line-height: 1.4;
+  color: #555;
+}
+
+.ticket__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+}
+.btn-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

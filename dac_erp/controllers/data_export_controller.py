@@ -75,21 +75,6 @@ class DataExportController(http.Controller):
         
         return result
 
-    @http.route('/dac_erp/api/test', type='http', auth='public', csrf=False, methods=['GET', 'POST'])
-    def test_api(self, **kwargs):
-        """Test endpoint để kiểm tra API hoạt động"""
-        _logger.info("API Test endpoint được gọi")
-        data = {
-            'message': 'API hoạt động tốt!',
-            'timestamp': datetime.now().isoformat(),
-            'controller': 'DataExportController'
-        }
-        return http.Response(
-            json.dumps(data, ensure_ascii=False),
-            content_type='application/json',
-            status=200
-        )
-
     @http.route('/dac_erp/api/export/all', type='http', auth='public', csrf=False, methods=['GET', 'POST'])
     def export_all_data(self, **kwargs):
         """API endpoint để get tất cả dữ liệu"""
@@ -697,7 +682,10 @@ class DataExportController(http.Controller):
                                 offset=0,
                                 asc='0',                     # '1' = ASC, '0' = DESC theo mốc thời gian
                                 include_last_message='1',    # '1' trả kèm last message rút gọn
-                                include_message_count='0',   # '1' đếm tổng số message của cuộc
+                                include_message_count='0',    # '1' đếm tổng số message của cuộc
+                                staff_user_id=None,           # id res.users trong Odoo
+                                staff_id_fm=None,             # mã staff do Pages.fm trả về
+                                staff_name=None,              # tên staff (ilike)
                                 **kwargs):
         """
         Trả về danh sách conversations theo bộ lọc thời gian & điều kiện khác.
@@ -717,6 +705,9 @@ class DataExportController(http.Controller):
                 asc=asc,
                 include_last_message=include_last_message,
                 include_message_count=include_message_count,
+                staff_user_id=staff_user_id,
+                staff_id_fm=staff_id_fm,
+                staff_name=staff_name,
             )
             return http.Response(
                 json.dumps(data, ensure_ascii=False, default=str),
@@ -744,6 +735,9 @@ class DataExportController(http.Controller):
                             asc='0',
                             include_last_message='1',
                             include_message_count='0',
+                            staff_user_id=None,
+                            staff_id_fm=None,
+                            staff_name=None,
                             **kwargs):
         """Lấy dữ liệu conversations theo bộ lọc thời gian & điều kiện khác."""
         Conv = request.env['page.fm.conversation'].sudo()
@@ -828,6 +822,19 @@ class DataExportController(http.Controller):
         if page_fm_id_str:
             msg_domain.append(('conversation_id.page_fm_page_id.page_fm_id_str', '=', page_fm_id_str))
 
+        # staff (ít nhất một trong 3 tham số) ---
+        if staff_user_id:
+            # Many2one res.users trên message: field 'staff'
+            msg_domain.append(('staff', '=', int(staff_user_id)))
+        if staff_id_fm:
+            # Mã staff từ Pages/Pancake lưu ở Char 'staff_id_fm'
+            msg_domain.append(('staff_id_fm', '=', str(staff_id_fm)))
+        if staff_name:
+            # Tên staff (ilike) ở Char 'staff_name_fm'
+            msg_domain.append(('staff_name_fm', 'ilike', staff_name))
+        
+        
+        # cùng khung thời gian nhưng neo theo thời điểm gửi tin nhắn
         if dt_from_utc:
             msg_domain.append(('inserted_at_fm', '>=', fields.Datetime.to_string(dt_from_utc)))
         if dt_to_utc:
@@ -914,3 +921,126 @@ class DataExportController(http.Controller):
         }
 
     # --- /CONVERSATIONS EXPORT -------------------------------------------------
+    
+
+    # --- /UPDATE CONVERSATION STATUS -------------------------------------------
+class DacConversationApi(http.Controller):
+
+    @http.route('/dac_erp/api/conversation/update_status', type='json', auth='public', methods=['POST'], csrf=False)
+    def update_conversation_status(self, **payload):
+        """
+        API tối ưu để cập nhật trạng thái conversation:
+        
+        Payload structure:
+        {
+          "conversation_id": 123,                    // ID conversation (bắt buộc)
+          "suggestion": "Gợi ý xử lý từ AI...",      // Ghi chú & gợi ý (tùy chọn)
+          "status_state": "new|recontact|waiting|done", // Trạng thái (tùy chọn)
+          "require_processing": true|false,          // Yêu cầu xử lý (tùy chọn)
+          "mark_read": true|false                    // Đánh dấu đã đọc (tùy chọn)
+        }
+        
+        Các cách nhận diện conversation (chọn 1):
+        - conversation_id: Odoo ID
+        - id: Legacy Odoo ID  
+        - conversation_fm_id: External Pages/Pancake ID
+        """
+        try:
+            data = request.get_json_data() or payload
+            Conv = request.env['page.fm.conversation'].sudo()
+            rec = None
+            
+            # Tìm conversation theo 3 cách khác nhau
+            if data.get('conversation_id'):
+                conv_id = int(data['conversation_id'])
+                rec = Conv.browse(conv_id)
+            elif data.get('id'):
+                rec = Conv.browse(int(data['id']))
+            elif data.get('conversation_fm_id'):
+                rec = Conv.search([('conversation_fm_id', '=', data['conversation_fm_id'])], limit=1)
+            
+            if not rec or not rec.exists():
+                return {'ok': False, 'error': 'Conversation not found'}
+
+            vals = {}
+            
+            # Xử lý ghi chú/gợi ý (UNIFIED field)
+            if data.get('suggestion'):
+                vals['suggestion_note'] = data['suggestion']
+                vals['last_suggestion_at'] = fields.Datetime.now()
+            elif data.get('note'):  # Legacy support
+                vals['suggestion_note'] = data['note']
+                vals['last_suggestion_at'] = fields.Datetime.now()
+            
+            # Xử lý trạng thái
+            status_state = data.get('status_state')
+            if status_state and status_state in ('new', 'recontact', 'waiting', 'done'):
+                vals['status_state'] = status_state
+                vals['status_set_by_id'] = request.env.user.id
+                vals['status_set_at'] = fields.Datetime.now()
+                
+                # Auto-set require_processing khi done
+                if status_state == 'done':
+                    vals['require_processing'] = False
+            
+            # Xử lý require_processing
+            if 'require_processing' in data:
+                vals['require_processing'] = bool(data['require_processing'])
+            
+            # Xử lý mark_read
+            if data.get('mark_read') and 'is_unread_fm' in Conv._fields:
+                vals['is_unread_fm'] = not bool(data['mark_read'])  # true = đã đọc => is_unread_fm = False
+
+            # Cập nhật nếu có thay đổi
+            if vals:
+                rec.write(vals)
+                # Trigger compute status_label
+                rec._compute_status_label()
+                return {'ok': True, 'id': rec.id, 'updated_fields': list(vals.keys())}
+            else:
+                return {'ok': True, 'id': rec.id, 'message': 'No changes made'}
+        
+        except Exception as e:
+            _logger.error(f"Error in update_conversation_status: {str(e)}", exc_info=True)
+            return {'ok': False, 'error': str(e)}
+
+    @http.route('/dac_erp/api/conversation/toggle_checklist', type='json', auth='public', methods=['POST'], csrf=False)
+    def toggle_checklist(self, **payload):
+        """
+        DEPRECATED: Sử dụng toggle_require_processing thay thế
+        Body JSON: { "id": 123 } hoặc { "conversation_fm_id": "xxx" }
+        """
+        Conv = request.env['page.fm.conversation'].sudo()
+        rec = None
+        if payload.get('id'):
+            rec = Conv.browse(int(payload['id']))
+        elif payload.get('conversation_fm_id'):
+            rec = Conv.search([('conversation_fm_id', '=', payload['conversation_fm_id'])], limit=1)
+        if not rec:
+            return {'ok': False, 'error': 'Conversation not found'}
+        
+        # Chuyển đổi sang dùng require_processing logic
+        result = rec.action_toggle_require_processing()
+        return {'ok': True, 'result': result}
+    
+    @http.route('/dac_erp/api/conversation/toggle_require_processing', type='json', auth='public', methods=['POST'], csrf=False)
+    def toggle_require_processing(self, **payload):
+        """
+        API mới: Toggle trạng thái yêu cầu xử lý
+        Body JSON: { "conversation_id": 123 } hoặc { "conversation_fm_id": "xxx" }
+        """
+        Conv = request.env['page.fm.conversation'].sudo()
+        rec = None
+        if payload.get('conversation_id'):
+            rec = Conv.browse(int(payload['conversation_id']))
+        elif payload.get('id'):  # Legacy support
+            rec = Conv.browse(int(payload['id']))
+        elif payload.get('conversation_fm_id'):
+            rec = Conv.search([('conversation_fm_id', '=', payload['conversation_fm_id'])], limit=1)
+        
+        if not rec:
+            return {'ok': False, 'error': 'Conversation not found'}
+        
+        result = rec.action_toggle_require_processing()
+        return {'ok': True, 'result': result}
+        return {'ok': True, 'checklist_ok': rec.checklist_ok}
