@@ -97,19 +97,24 @@
                             </div>
 
                             <div class="ticket__actions">
+                              <!-- Nút checklist -->
+                              <button t-att-class="{
+                                                    'btn': true,
+                                                    'btn-icon': true,
+                                                    'btn-checklist-done': it.checklist_ok,
+                                                    'btn-checklist-pending': !it.checklist_ok
+                                                  }"
+                                      title="Đánh dấu đã kiểm checklist"
+                                      t-on-click="(ev)=>this.toggleChecklist(it, ev)">
+                                <i class="fa fa-check"/>
+                              </button>
+
                               <!-- Nút mở Pancake (nếu có URL) -->
                               <button t-if="this.getExternalUrl(it)"
                                       class="btn btn-primary btn-icon text-white"
                                       title="Mở trên Pancake"
                                       t-on-click="(ev)=>this.openPancake(it, ev)">
                                 <i class="fa fa-comments"/>
-                              </button>
-
-                              <!-- Nút checklist -->
-                              <button t-attf-class="btn btn-icon #{it.checklist_ok ? 'btn-success' : 'btn-outline-secondary'}"
-                                      title="Đánh dấu đã kiểm checklist"
-                                      t-on-click="(ev)=>this.toggleChecklist(it, ev)">
-                                <i class="fa fa-check"/>
                               </button>
                             </div>
                           </div>

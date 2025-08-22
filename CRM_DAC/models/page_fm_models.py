@@ -168,6 +168,8 @@ class PageFmPage(models.Model):
 
                     is_unread = not conv_data.get('seen', False)
 
+                    page_id_api = (conv_data.get('page_id') or '').strip()           # NEW
+                    
                     processed_conv = {
                         'conversation_fm_id': conv_data.get('id'),
                         'page_fm_page_id': odoo_page_id,
@@ -176,7 +178,8 @@ class PageFmPage(models.Model):
                         'last_message_snippet': conv_data.get('snippet') or 'Không có tin nhắn',
                         'updated_at_fm': updated_at_fmt,
                         'is_unread_fm': is_unread,
-                        'platform_fm': platform
+                        'platform_fm': platform,
+                        'conv_page_fm_id': page_id_api,  # <-- NEW (rất quan trọng)
                     }
                     processed_conversations.append(processed_conv)
 

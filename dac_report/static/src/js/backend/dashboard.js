@@ -65,7 +65,12 @@ class DacSaleDashboard extends Component {
   getSnippet(it) {
     // Ưu tiên: note (suggestion từ AI/n8n) > snippet (tin nhắn cuối) > các field khác
     return (
-      it.note || it.suggestion_note || it.last_message_snippet || it.snippet || it.last_message || ""
+      it.note ||
+      it.suggestion_note ||
+      it.last_message_snippet ||
+      it.snippet ||
+      it.last_message ||
+      ""
     );
   }
 
@@ -142,14 +147,15 @@ class DacSaleDashboard extends Component {
         [item.id]
       );
       Object.assign(item, res);
-      // đảm bảo UI đổi trạng thái ngay
+      // cập nhật lại label
       if (item.checklist_ok) {
         item.status_state = "done";
         item.is_unread_fm = false;
         item.status_label = "Đã xử lý";
         item.require_processing = false;
       }
-      this.render();
+      // Trigger OWL update bằng cách thay đổi object state gốc
+      this.state.data = { ...this.state.data };
     } catch (err) {
       console.error("toggleChecklist failed:", err);
       this.notification.add(_t("Không cập nhật được Checklist."), {

@@ -40,6 +40,7 @@
         # 'views/menu.xml',
         # 'data/ir_config_parameter_data.xml',
         'security/ir.model.access.csv', # Đảm bảo file này được khai báo TRƯỚC views
+        'data/cron_pancake.xml',
         'views/page_fm_views.xml',
         'views/KPI_View.xml',
         'views/menuitem.xml',

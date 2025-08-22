@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Cron chạy nền mỗi 5 phút, gọi batch sync -->
+        <record id="cron_pancake_sync_conversations" model="ir.cron">
+            <field name="name">CRM_DAC: Sync Conversations (batch)</field>
+            <field name="model_id" ref="CRM_DAC.model_page_fm_conversation"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_sync_conversations_batch()</field>
+            <field name="interval_number">5</field>
+            <field name="interval_type">minutes</field>
+            <field name="active">True</field>
+            <field name="user_id" ref="base.user_root"/>
+        </record>
+    </data>
+</odoo>

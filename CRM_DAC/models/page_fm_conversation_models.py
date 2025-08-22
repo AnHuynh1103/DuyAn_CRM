@@ -49,6 +49,12 @@ class PageFmConversation(models.Model):
     )
     page_fm_id_str_related = fields.Char(related='page_fm_page_id.page_fm_id_str', string="Page FM ID (Related)", store=True, readonly=True)
 
+    # --- Dùng cho URL conversation pancake ---
+    conv_page_fm_id = fields.Char( 
+    string="Conversation Page ID (from API)",
+    index=True,
+    help="page_id trả về kèm mỗi hội thoại từ API; ưu tiên dùng khi build URL")
+
     # == Customer & Partner Fields ==
     customer_fm_id = fields.Char(string="Customer FM ID (for API)", index=True, copy=False, help="Customer ID (UUID) từ API, dùng để lấy tin nhắn chi tiết")
     customer_name_fm = fields.Char(string="Customer Name (from API)", help="Tên khách hàng từ API")
@@ -375,8 +381,13 @@ class PageFmConversation(models.Model):
                 _logger.error(f"Không thể tạo token cho trang của hội thoại {record.conversation_fm_id}")
                 continue
 
+            # Fallback: dữ liệu cũ chưa có conv_page_fm_id thì gán bằng page_fm_id_str_related
+            if not record.conv_page_fm_id and record.page_fm_id_str_related:
+                record.write({'conv_page_fm_id': record.page_fm_id_str_related})
+
             messages = record._fetch_all_messages(page_specific_access_token)
             if not messages:
+                record.write({'last_message_sync_fm': fields.Datetime.now()})
                 _logger.info(f"Không có tin nhắn mới cho hội thoại {record.name}")
                 continue
 
@@ -544,25 +555,64 @@ class PageFmConversation(models.Model):
                     _logger.error(f"Lỗi khi update require_processing cho conversation {rec.id}: {e}")
         return result
 
+    def _build_external_url_for_platform(self, platform, page_id, conv_id):
+        ICP = self.env['ir.config_parameter'].sudo()
+
+        # Cho phép cấu hình theo nền tảng qua system parameters
+        # Token hỗ trợ trong template:
+        #   {conversation}          -> nguyên chuỗi id hội thoại (vd: pzl_u_..._7961559...)
+        #   {conversation_numeric}  -> chỉ phần số ở cuối (vd: 7961559...), tự động extract
+        #   {page}                  -> page_id (pzl_... hoặc fb_.../số)
+        tpl_default  = ICP.get_param('pancake.url_template.default')  or \
+                    'https://pancake.vn/conversations/{conversation}?page_id={page}'
+        tpl_zalo     = ICP.get_param('pancake.url_template.zalo')     or \
+                    'https://pancake.vn/conversations/{conversation_numeric}?page_id={page}'
+        tpl_facebook = ICP.get_param('pancake.url_template.facebook') or tpl_default
+        tpl_instagram= ICP.get_param('pancake.url_template.instagram') or tpl_default
+
+        # Tự động lấy phần số cuối nếu có
+        m = re.search(r'(\d+)$', conv_id or '')
+        conv_numeric = m.group(1) if m else (conv_id or '')
+
+        platform = (platform or '').strip().lower()
+        if platform == 'zalo':
+            tpl = tpl_zalo
+        elif platform == 'facebook':
+            tpl = tpl_facebook
+        elif platform == 'instagram':
+            tpl = tpl_instagram
+        else:
+            # fallback: nếu conv_id có đuôi số thì template default vẫn nhận {conversation_numeric}
+            tpl = tpl_default
+
+        return tpl.format(conversation=conv_id or '', conversation_numeric=conv_numeric, page=page_id or '')
+
 
     external_url = fields.Char(string="Link Pancake", compute="_compute_external_url", store=False)
 
     def _compute_external_url(self):
-        ICP = self.env['ir.config_parameter'].sudo()
-        # Cho phép override bằng system parameter
-        tmpl = ICP.get_param(
-            'pancake.conversation_url_template',
-            # Template mặc định (bạn đổi cho đúng môi trường nếu cần)
-            default='https://pages.fm/conversations/{conversation_fm_id}?page_id={page_fm_id_str}'
-        )
         for r in self:
-            if r.conversation_fm_id and r.page_fm_id_str_related:
-                r.external_url = tmpl.format(
-                    conversation_fm_id=r.conversation_fm_id,
-                    page_fm_id_str=r.page_fm_id_str_related
-                )
+            page_id = r.conv_page_fm_id or r.page_fm_id_str_related
+            conv_id = r.conversation_fm_id
+            if page_id and conv_id:
+                # Ưu tiên platform đã lưu từ API; nếu thiếu, suy ra nhanh theo prefix
+                platform = r.platform_fm
+                if not platform:
+                    cid = conv_id or ''
+                    pid = page_id or ''
+                    if cid.startswith('pzl_') or pid.startswith('pzl_'):
+                        platform = 'Zalo'
+                    elif cid.startswith('fb_') or pid.startswith('fb_') or pid.isdigit():
+                        platform = 'Facebook'
+                    elif cid.startswith('igo_') or pid.startswith('igo_'):
+                        platform = 'Instagram'
+                    else:
+                        platform = 'default'
+
+                r.external_url = self._build_external_url_for_platform(platform, page_id, conv_id)
             else:
                 r.external_url = False
+
 
     def action_open_on_pancake(self):
         self.ensure_one()
@@ -571,4 +621,87 @@ class PageFmConversation(models.Model):
             'type': 'ir.actions.act_url',
             'url': url,
             'target': 'new',
+        }
+        
+    # === BATCH & CRON SYNC =================================================
+    # Domain chọn hội thoại cần sync (tuỳ chỉnh nếu muốn)
+    def _get_batch_sync_domain(self):
+        # Gợi ý: sync những cuộc có require_processing hoặc có tin chưa đọc
+        domain = ['|', ('require_processing', '=', True), ('is_unread_fm', '=', True)]
+        return domain
+
+    def _get_batch_size(self, batch_size=None):
+        ICP = self.env['ir.config_parameter'].sudo()
+        default_size = int(ICP.get_param('pancake.sync_batch_size', '10'))
+        return int(batch_size or default_size or 10)
+
+    @api.model
+    def cron_sync_conversations_batch(self, batch_size=None):
+        """Cron gọi hàm này: sync theo batch (mặc định 10). Chạy nền."""
+        size = self._get_batch_size(batch_size)
+        domain = self._get_batch_sync_domain()
+        # ưu tiên sort theo updated_at để “mới trước”
+        convs = self.search(
+            domain,
+            order="last_message_sync_fm asc, updated_at_fm desc, id asc",  # <-- NEW: ưu tiên record chưa/ lâu chưa sync
+            limit=size,
+        )
+
+        if not convs:
+            _logger.info("Pancake Sync: không có hội thoại nào cần đồng bộ.")
+            return 0
+
+        processed = 0
+        for conv in convs:
+            try:
+                conv.action_sync_messages()
+                self.env.cr.commit()   # commit từng cái để an toàn
+                processed += 1
+            except Exception:
+                _logger.exception("Pancake Sync: lỗi khi sync hội thoại id=%s", conv.id)
+                self.env.cr.rollback()
+        _logger.info("Pancake Sync: đã sync %s/%s hội thoại (batch).", processed, len(convs))
+        return processed
+
+    def action_sync_conversations_batch_button(self, batch_size=None):
+        """Nút chạy tay: sync ngay 1 batch trong request web."""
+        processed = self.cron_sync_conversations_batch(batch_size=batch_size)
+        remain = self.search_count(self._get_batch_sync_domain())
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "title": _("Đồng bộ hội thoại"),
+                "message": _("Đã xử lý %s hội thoại. Còn lại: %s") % (processed, remain),
+                "type": "success" if processed else "warning",
+                "sticky": False,
+            },
+        }
+
+    def action_enqueue_sync_now(self):
+        """Nút tạo/đặt lại cron để chạy NGAY (nextcall = now())."""
+        IrCron = self.env['ir.cron'].sudo()
+        # cố gắng lấy theo xml_id nếu đã cài từ data/cron.xml
+        cron = self.env.ref('CRM_DAC.cron_pancake_sync_conversations', raise_if_not_found=False)
+        if not cron:
+            model_id = self.env['ir.model']._get('page.fm.conversation').id
+            cron = IrCron.create({
+                'name': 'CRM_DAC: Sync Conversations (batch)',
+                'model_id': model_id,
+                'state': 'code',
+                'code': "model.cron_sync_conversations_batch()",
+                'interval_number': 5,
+                'interval_type': 'minutes',
+                'active': True,
+            })
+        cron.write({'nextcall': fields.Datetime.now(), 'active': True})
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "title": _("Đã enqueue job đồng bộ"),
+                "message": _("Cron sẽ chạy trong giây lát."),
+                "type": "success",
+                "sticky": False,
+            },
         }
