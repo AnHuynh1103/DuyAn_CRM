@@ -15,9 +15,22 @@ class SaleOrderDashboardService(models.Model):
     _inherit = "sale.order"
 
     def _dac_build_consulting_cards(self, limit=50):
-        Conv = self.env['page.fm.conversation'].sudo()
-        # Domain ví dụ: lấy theo hoạt động gần đây
-        domain = [('last_message_sync_fm', '!=', False)]
+        Conv = self.env['page.fm.conversation']  # bỏ sudo()
+
+        # chỉ hiển thị hội thoại tôi phụ trách hoặc có tham gia
+        my_dom = ['|', ('owner_id', '=', self.env.uid), ('participant_user_ids', 'in', self.env.uid)]
+
+        # điều kiện hiện có, bạn có thể giữ như cũ và + thêm điều kiện khác nếu cần
+        base_dom = [('last_message_sync_fm', '!=', False)]
+
+        
+
+        # ưu tiên hội thoại chưa đọc hoặc cập nhật trong 14 ngày
+        threshold = fields.Datetime.to_string(datetime.utcnow() - timedelta(days=14))
+        recent_or_unread = ['|', ('is_unread_fm', '=', True), ('updated_at_fm', '>=', threshold)]
+
+        domain = base_dom + my_dom + recent_or_unread
+
         recs = Conv.search(domain, limit=limit, order='updated_at_fm desc')
 
         out = []
@@ -97,16 +110,15 @@ class SaleOrderDashboardService(models.Model):
         orders = self.search(dom)
         return sum(orders.mapped("amount_total"))
 
-    @api.model
-    def _dashboard_month_goal(self, year, month, company):
-        # Nếu bạn có override trong sales_goal.py thì giá trị thật sẽ được trả về từ đó.
-        return 0.0
+    
 
     @api.model
     def dac_get_dashboard(self, date_from=False, date_to=False, company_id=False):
         company = self.env["res.company"].browse(company_id) if company_id else self.env.company
         currency = company.currency_id
         today = fields.Date.context_today(self)
+        manager = self.env.user.has_group('dac_erp.group_dac_erp_manager')
+        uid = self.env.uid
         if not date_from:
             date_from = today.replace(day=1)
         if not date_to:
@@ -121,6 +133,8 @@ class SaleOrderDashboardService(models.Model):
             ("date_order", ">=", date_from),
             ("date_order", "<=", date_to),
         ] + doms["quotation"]
+        if not manager:
+            q_dom.append(("user_id", "=", uid))              # <- cá nhân
         quotation_amount = self._safe_sum_amount_total(q_dom)
 
         # ---- CONFIRMED/DONE ----
@@ -129,6 +143,8 @@ class SaleOrderDashboardService(models.Model):
             ("date_order", ">=", date_from),
             ("date_order", "<=", date_to),
         ] + doms["sale_confirmed"]
+        if not manager:
+            s_dom.append(("user_id", "=", uid))              # <- cá nhân
         total_revenue = self._safe_sum_amount_total(s_dom)
         closed_count = self._rg_count(self, s_dom, "id")
 
@@ -144,6 +160,12 @@ class SaleOrderDashboardService(models.Model):
             ("invoice_date", ">=", date_from),
             ("invoice_date", "<=", date_to),
         ]
+        if not manager:
+            # lọc theo người phụ trách hóa đơn
+            if "invoice_user_id" in Move._fields:
+                mv_dom.append(("invoice_user_id", "=", uid))
+            elif "dac_user_id" in Move._fields:
+                mv_dom.append(("dac_user_id", "=", uid))
         field_to_sum = "amount_total_signed" if "amount_total_signed" in Move._fields else "amount_total"
         collected = self._safe_sum_field(Move, mv_dom, field_to_sum)
 
@@ -182,12 +204,17 @@ class SaleOrderDashboardService(models.Model):
                     "late_days": late_days,
                 })
 
-        receivables = Move.search([
-            ("move_type", "=", "out_invoice"),
-            ("state", "=", "posted"),
-            ("payment_state", "in", ["not_paid", "partial"]),
-            ("company_id", "=", company.id),
-        ], limit=5, order="invoice_date_due asc, id asc")
+        receivables_dom = [
+            ('move_type', '=', 'out_invoice'),
+            ('state', '=', 'posted'),
+            ('payment_state', 'in', ['not_paid', 'partial']),
+            ('company_id', '=', company.id),
+        ]
+        # chỉ xem công nợ của tôi nếu không phải quản lý
+        if not manager and 'invoice_user_id' in Move._fields:
+            receivables_dom.append(('invoice_user_id', '=', uid))
+
+        receivables = Move.search(receivables_dom, limit=5, order='invoice_date_due asc, id asc')
         receivables_list = [{
             "move_id": m.id,
             "partner": m.partner_id.display_name,

@@ -41,6 +41,11 @@
                                     string="Cập nhật"
                                     help="Kiểm tra, cập nhật trạng thái và tải lại view"
                                     groups="base.group_system"/>
+                            <button name="action_open_conversation"
+                                    type="object"
+                                    class="oe_stat_button"
+                                    icon="fa-comments"
+                                    string="Cuộc hội thoại"/>
                         </div>
                         <div class="oe_title">
                             <h1>

@@ -197,67 +197,163 @@ class DataExportController(http.Controller):
                 status=500
             )
 
-    def _get_sales_data(self, limit=None, date_from=None, date_to=None, **kwargs):
-        """Get dữ liệu đơn hàng"""
+    def _get_sales_data(
+        self,
+        limit=None,
+        offset=0,
+        # thời gian
+        date=None,                  # YYYY-MM-DD (lấy đúng 1 ngày)
+        date_from=None,             # YYYY-MM-DD hoặc YYYY-MM-DD HH:MM:SS
+        date_to=None,
+        date_field='date_order',    # 'date_order' | 'create_date' | 'date' (custom)
+        # bộ lọc cơ bản
+        user_id=None,               # id người phụ trách – cho phép 'me'
+        partner_id=None,            # id khách hàng
+        state=None,                 # CSV: draft,sent,sale,done,cancel
+        custom_state=None,          # CSV: quotation,deposit,production,delivery,payment
+        company_id=None,            # id công ty
+        has_deposit=None,           # '1'/'0'
+        is_order_completed=None,    # '1'/'0'
+        # bộ lọc số liệu
+        min_total=None,             # số: tổng tối thiểu
+        max_total=None,             # số: tổng tối đa
+        # hiển thị
+        order='date_order desc',    # cột sắp xếp
+        include_lines='1',          # '1' trả kèm dòng hàng, '0' bỏ để nhẹ
+        format=None,                # 'flat' => trả list thuần (tương thích cũ)
+        **kwargs
+    ):
+        def _as_bool(v):
+            return str(v).lower() in ('1', 'true', 't', 'yes', 'y')
+
+        def _as_int(v):
+            try:
+                return int(v)
+            except Exception:
+                return None
+
+        def _as_float(v):
+            try:
+                return float(v)
+            except Exception:
+                return None
+
         domain = []
-        
-        # Filter theo ngày nếu có
+
+        # Chọn field ngày hợp lệ
+        df = date_field if date_field in ('date_order', 'create_date', 'date') else 'date_order'
+
+        # Hỗ trợ ?date=YYYY-MM-DD
+        if date and (not date_from and not date_to):
+            date_from = f"{date} 00:00:00"
+            date_to   = f"{date} 23:59:59"
+
         if date_from:
-            domain.append(('create_date', '>=', date_from))
+            domain.append((df, '>=', date_from))
         if date_to:
-            domain.append(('create_date', '<=', date_to))
-        
-        # Limit results
-        limit = int(limit) if limit else 1000
-        
-        # Sử dụng sudo() để bypass permission check
-        orders = request.env['sale.order'].sudo().search(domain, limit=limit, order='create_date desc')
-        
-        sales_data = []
-        for order in orders:
-            order_data = {
-                'id': order.id,
-                'name': order.name,
-                'partner_id': {
-                    'id': order.partner_id.id,
-                    'name': order.partner_id.name,
-                    'phone': order.partner_id.phone,
-                    'email': order.partner_id.email
-                },
-                'user_id': {
-                    'id': order.user_id.id,
-                    'name': order.user_id.name
-                } if order.user_id else None,
-                'date_order': order.date_order.isoformat() if order.date_order else None,
-                'create_date': order.create_date.isoformat() if order.create_date else None,
-                'amount_total': order.amount_total,
-                'amount_untaxed': order.amount_untaxed,
-                'amount_tax': order.amount_tax,
-                'state': order.state,
-                'order_state_custom': getattr(order, 'order_state_custom', None),
-                'has_deposit': getattr(order, 'has_deposit', False),
-                'deposit_amount': getattr(order, 'deposit_amount', 0),
-                'is_order_completed': getattr(order, 'is_order_completed', False),
-                'production_deadline': order.production_deadline.isoformat() if hasattr(order, 'production_deadline') and order.production_deadline else None,
-                'delivery_address': getattr(order, 'delivery_address', None),
-                'order_lines': [
-                    {
-                        'id': line.id,
-                        'product_id': {
-                            'id': line.product_id.id,
-                            'name': line.product_id.name
-                        } if line.product_id else None,
-                        'name': line.name,
-                        'product_uom_qty': line.product_uom_qty,
-                        'price_unit': line.price_unit,
-                        'price_subtotal': line.price_subtotal,
-                        'display_type': line.display_type
-                    } for line in order.order_line
-                ]
+            domain.append((df, '<=', date_to))
+
+        # Người phụ trách
+        if user_id:
+            uid = _as_int(user_id) if user_id != 'me' else request.env.user.id
+            if uid:
+                domain.append(('user_id', '=', uid))
+
+        # Khách hàng
+        if partner_id:
+            pid = _as_int(partner_id)
+            if pid:
+                domain.append(('partner_id', '=', pid))
+
+        # Trạng thái chuẩn
+        if state:
+            states = [s.strip() for s in str(state).split(',') if s.strip()]
+            if states:
+                domain.append(('state', 'in', states))
+
+        # Trạng thái custom
+        if custom_state:
+            csts = [s.strip() for s in str(custom_state).split(',') if s.strip()]
+            if csts:
+                domain.append(('order_state_custom', 'in', csts))
+
+        # Công ty
+        if company_id:
+            cid = _as_int(company_id)
+            if cid:
+                domain.append(('company_id', '=', cid))
+
+        # Cọc / hoàn thành
+        if has_deposit is not None and str(has_deposit) != '':
+            domain.append(('has_deposit', '=', _as_bool(has_deposit)))
+        if is_order_completed is not None and str(is_order_completed) != '':
+            domain.append(('is_order_completed', '=', _as_bool(is_order_completed)))
+
+        # Tổng tiền
+        mn = _as_float(min_total)
+        mx = _as_float(max_total)
+        if mn is not None:
+            domain.append(('amount_total', '>=', mn))
+        if mx is not None:
+            domain.append(('amount_total', '<=', mx))
+
+        # Truy vấn
+        limit = int(limit) if limit else 100
+        offset = int(offset) if offset else 0
+        order = order or 'date_order desc'
+
+        Order = request.env['sale.order'].sudo()  # giữ sudo như hiện tại
+        orders = Order.search(domain, limit=limit, offset=offset, order=order)
+
+        # Serialize
+        send_lines = _as_bool(include_lines)
+        items = []
+        for so in orders:
+            row = {
+                'id': so.id,
+                'name': so.name,
+                'partner_id': {'id': so.partner_id.id, 'name': so.partner_id.name} if so.partner_id else None,
+                'user_id': {'id': so.user_id.id, 'name': so.user_id.name} if so.user_id else None,
+                'company_id': {'id': so.company_id.id, 'name': so.company_id.name} if so.company_id else None,
+                'state': so.state,
+                'order_state_custom': getattr(so, 'order_state_custom', None),
+                'date_order': so.date_order.isoformat() if so.date_order else None,
+                'create_date': so.create_date.isoformat() if so.create_date else None,
+                'date': so.date.isoformat() if hasattr(so, 'date') and so.date else None,
+                'amount_total': so.amount_total,
+                'amount_untaxed': so.amount_untaxed,
+                'amount_tax': so.amount_tax,
+                'has_deposit': getattr(so, 'has_deposit', False),
+                'deposit_amount': getattr(so, 'deposit_amount', 0.0),
+                'is_order_completed': getattr(so, 'is_order_completed', False),
+                'production_deadline': so.production_deadline.isoformat() if hasattr(so, 'production_deadline') and so.production_deadline else None,
+                'delivery_address': getattr(so, 'delivery_address', None),
             }
-            sales_data.append(order_data)
-        
-        return sales_data
+            if send_lines:
+                row['order_lines'] = [{
+                    'id': l.id,
+                    'product_id': {'id': l.product_id.id, 'name': l.product_id.name} if l.product_id else None,
+                    'name': l.name,
+                    'product_uom_qty': l.product_uom_qty,
+                    'price_unit': l.price_unit,
+                    'price_subtotal': l.price_subtotal,
+                    'display_type': l.display_type,
+                } for l in so.order_line]
+            items.append(row)
+
+        # Tương thích ngược: ?format=flat -> trả list thuần như trước
+        if (format or '').lower() == 'flat':
+            return items
+
+        return {
+            'count': len(items),
+            'limit': limit,
+            'offset': offset,
+            'order': order,
+            'domain': domain,   # tiện debug
+            'items': items,
+        }
+
 
     def _get_customers_data(self, limit=None, **kwargs):
         """Get dữ liệu khách hàng"""

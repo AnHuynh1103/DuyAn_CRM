@@ -7,7 +7,7 @@
     'category': '1. Duy An ERP',
     
     # Tên tác giả
-    'author': 'khangnpb',
+    'author': 'Huỳnh Quốc An',
     
     # Độ ưu tiên module trong list module
     # Số càng nhỏ, độ ưu tiên càng cao
@@ -35,14 +35,13 @@
     # Những file ảnh hưởng trực tiếp đến giao diện (không phải file để chỉnh sửa giao diện)
     ## hoặc hệ thống (file group, phân quyền)
     'data': [
-        # 'security/ir.model.access.csv',
-        # 'views/contents_view.xml',
-        # 'views/menu.xml',
-        # 'data/ir_config_parameter_data.xml',
-        'security/ir.model.access.csv', # Đảm bảo file này được khai báo TRƯỚC views
+        'security/ir.model.access.csv',
+        'security/user_access_rule.xml',
         'data/cron_pancake.xml',
         'views/page_fm_views.xml',
         'views/KPI_View.xml',
+        'views/page_fm_conversation_views_inherit.xml',
+        'views/res_partner_views_inherit_pancake.xml',
         'views/menuitem.xml',
     ],
 

@@ -530,6 +530,19 @@ class PageFmConversation(models.Model):
                     record._find_or_create_partner()
             except Exception as e:
                 _logger.error(f"Lỗi khi tìm/tạo partner cho hội thoại {record.id}: {e}", exc_info=True)
+                
+            # >>> NEW: cập nhật owner & participants từ message
+            try:
+                record._recompute_staff_links()
+            except Exception:
+                _logger.exception("Lỗi khi cập nhật owner/participants cho conversation %s", record.id)
+            
+            # >>> NEW: đẩy thông tin phụ trách sang Partner (nếu đã có partner)
+            if record.partner_id:
+                try:
+                    record.partner_id.sync_staff_from_conversations()
+                except Exception:
+                    _logger.exception("Lỗi khi đồng bộ staff sang partner cho conv %s", record.id)
 
         return {'type': 'ir.actions.client', 'tag': 'reload'}
 
@@ -705,3 +718,89 @@ class PageFmConversation(models.Model):
                 "sticky": False,
             },
         }
+        
+        
+        # --- NEW: helper hiển thị thông báo ---
+    def _notify(self, title, message, notif_type='warning'):
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': title,
+                'message': message,
+                'type': notif_type,
+                'sticky': False,
+            }
+        }
+
+    # --- NEW: mở form khách hàng ---
+    def action_open_partner(self):
+        self.ensure_one()
+        if not self.partner_id:
+            return self._notify(_('Chưa có khách hàng'), _('Hội thoại này chưa liên kết khách hàng.'))
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('Khách hàng'),
+            'res_model': 'res.partner',
+            'view_mode': 'form',
+            'res_id': self.partner_id.id,
+            'target': 'current',
+        }
+
+    # --- NEW: mở danh sách đơn hàng của khách (bao gồm cả công ty mẹ) ---
+    def action_open_partner_orders(self):
+        self.ensure_one()
+        if not self.partner_id:
+            return self._notify(_('Chưa có khách hàng'), _('Hội thoại này chưa liên kết khách hàng.'))
+        commercial = self.partner_id.commercial_partner_id
+        domain = [('partner_id', 'child_of', commercial.id)]
+        count = self.env['sale.order'].search_count(domain)
+        if not count:
+            return self._notify(_('Chưa có đơn hàng'), _('Khách hàng này chưa có đơn hàng nào trên hệ thống.'))
+        action = self.env.ref('sale.action_orders').read()[0]
+        action['domain'] = domain
+        action['context'] = {'search_default_customer': commercial.id}
+        return action
+    
+    
+    
+    # Dành cho người phụ trách
+    owner_id = fields.Many2one(
+        'res.users', string="Người phụ trách", index=True, copy=False
+    )
+    participant_user_ids = fields.Many2many(
+        'res.users',
+        'page_fm_conv_user_rel', 'conv_id', 'user_id',
+        string="Nhóm phụ trách", copy=False
+    )
+
+    def _recompute_staff_links(self):
+        """Lấy staff từ message để xác định owner & participants."""
+        Message = self.env['page.fm.message'].sudo()
+        for rec in self:
+            # người gửi staff mới nhất -> owner
+            last_staff_msg = Message.search(
+                [('conversation_id', '=', rec.id), ('staff', '!=', False)],
+                order='inserted_at_fm desc, id desc', limit=1
+            )
+            new_owner = last_staff_msg.staff if last_staff_msg else False
+
+            # tập hợp tất cả staff đã từng nhắn
+            rows = Message.read_group(
+                [('conversation_id', '=', rec.id), ('staff', '!=', False)],
+                ['staff'], ['staff']
+            )
+            participants = self.env['res.users']
+            for r in rows:
+                if r.get('staff'):
+                    participants |= self.env['res.users'].browse(r['staff'][0])
+
+            rec.write({
+                'owner_id': new_owner.id if new_owner else False,
+                'participant_user_ids': [(6, 0, participants.ids)],
+            })
+
+    def action_assign_to_me(self):
+        for rec in self:
+            rec.owner_id = self.env.user.id
+        return True

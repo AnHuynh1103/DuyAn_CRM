@@ -21,7 +21,7 @@
     # Module dựa trên các category nào
     # Khi hoạt động, category trong 'depends' phải được install
     ### rồi module này mới đc install
-    'depends': ['base','web','dac_erp','sale','account','sale_management','product'],
+    'depends': ['base','web','dac_erp','CRM_DAC','sale','account','sale_management','product'],
 
 
     # Module có được phép install hay không

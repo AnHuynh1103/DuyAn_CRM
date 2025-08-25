@@ -1,4 +1,4 @@
-from odoo import models, fields, api
+from odoo import models, fields, api, _
 from odoo.exceptions import UserError, AccessError
 import logging
 
@@ -1241,3 +1241,39 @@ class SaleOrder(models.Model):
                 'sticky': True,
             }
         }
+
+
+    # Cho nút mở hội thoại
+    conversation_id = fields.Many2one(
+        'page.fm.conversation', string='Conversation', index=True
+    )
+
+    def action_open_conversation(self):
+        self.ensure_one()
+        conv = self.conversation_id
+        if not conv:
+            # fallback: lấy conversation mới nhất theo partner (nếu có)
+            conv = self.env['page.fm.conversation'].search(
+                [('partner_id', 'child_of', self.partner_id.commercial_partner_id.id)],
+                order='write_date desc', limit=1
+            )
+        if not conv:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _('Chưa có hội thoại'),
+                    'message': _('Đơn hàng này chưa gắn conversation Pancake (hoặc chưa đồng bộ).'),
+                    'type': 'warning',
+                    'sticky': False,
+                }
+            }
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('Conversation'),
+            'res_model': 'page.fm.conversation',
+            'view_mode': 'form',
+            'res_id': conv.id,
+            'target': 'current',
+        }
+        

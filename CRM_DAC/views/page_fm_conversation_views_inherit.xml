@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <record id="view_page_fm_conversation_form_inherit_links" model="ir.ui.view">
+            <field name="name">page.fm.conversation.form.links</field>
+            <field name="model">page.fm.conversation</field>
+            <field name="inherit_id" ref="CRM_DAC.view_page_fm_conversation_form"/>
+            <field name="arch" type="xml">
+            <xpath expr="//sheet/div[@name='button_box']" position="inside">
+                <!-- Đi tới Khách hàng -->
+                <button name="action_open_partner"
+                        type="object"
+                        class="oe_stat_button"
+                        icon="fa-user">
+                <field name="partner_id" widget="statinfo" string="Khách hàng"/>
+                </button>
+
+                <!-- Đi tới Đơn hàng của khách -->
+                <button name="action_open_partner_orders"
+                        type="object"
+                        class="oe_stat_button"
+                        icon="fa-shopping-cart">
+                <span class="o_stat_info">
+                    <span class="o_stat_text">Đơn hàng</span>
+                </span>
+                </button>
+            </xpath>
+            </field>
+        </record>
+
+        <!-- Khối phân công trên form -->
+        <record id="view_page_fm_conversation_form_inherit_staff" model="ir.ui.view">
+            <field name="name">page.fm.conversation.form.staff</field>
+            <field name="model">page.fm.conversation</field>
+            <field name="inherit_id" ref="CRM_DAC.view_page_fm_conversation_form"/>
+            <field name="arch" type="xml">
+                <!-- Chèn vào group đầu tiên trong sheet để luôn có chỗ bám -->
+                <xpath expr="//sheet//group[1]" position="after">
+                <group string="Phân công">
+                    <field name="owner_id"/>
+                    <field name="participant_user_ids" widget="many2many_tags" options="{'no_create': True}"/>
+                    <button name="action_assign_to_me" type="object" class="oe_highlight" string="Gán cho tôi"/>
+                </group>
+                </xpath>
+            </field>
+        </record>
+    </data>
+</odoo>
