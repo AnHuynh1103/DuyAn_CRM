@@ -4,13 +4,12 @@
       <field name="name">dac.sales.goal.list</field>
       <field name="model">dac.sales.goal</field>
       <field name="arch" type="xml">
-        <list string="Mục tiêu/KPI" create="true" edit="true">
-          <field name="goal_scope"/>
-          <field name="team_id" optional="show"/>
-          <field name="user_id" optional="show"/>
+        <list string="Mục tiêu/KPI (cá nhân)" create="true" edit="true">
+          <field name="user_id"/>
           <field name="company_id"/>
           <field name="year"/>
           <field name="month"/>
+          <!-- GIỮ ĐÚNG TÊN FIELD: target_amount -->
           <field name="target_amount"/>
           <field name="kpi_cared_count" optional="hide"/>
           <field name="kpi_quotation_count" optional="hide"/>
@@ -22,7 +21,7 @@
       </field>
     </record>
 
-      <!-- ===== LIST/FORM (dac.sales.goal.member) – view riêng ===== -->
+      <!-- ===== LIST/FORM (dac.sales.goal.member) – view riêng ===== 
       <record id="view_dac_sales_goal_member_list" model="ir.ui.view">
           <field name="name">dac.sales.goal.member.list</field>
           <field name="model">dac.sales.goal.member</field>
@@ -47,34 +46,28 @@
               </group>
             </form>
           </field>
-      </record>
+      </record> -->
 
 
 
 
+    <!-- ===== FORM VIEW (KHÔNG team, KHÔNG phân bổ) ===== -->
     <record id="view_dac_sales_goal_form" model="ir.ui.view">
       <field name="name">dac.sales.goal.form</field>
       <field name="model">dac.sales.goal</field>
       <field name="arch" type="xml">
-        <form string="Mục tiêu doanh thu / KPI">
+        <form string="Mục tiêu doanh thu / KPI (cá nhân)">
           <sheet>
             <group>
               <group>
-                <field name="goal_scope"/>
-                <!-- Hiện & bắt buộc nếu scope=user -->
-                <field name="user_id"
-                       modifiers="{&quot;required&quot;: [[&quot;goal_scope&quot;,&quot;=&quot;,&quot;user&quot;]],
-                                   &quot;invisible&quot;: [[&quot;goal_scope&quot;,&quot;!=&quot;,&quot;user&quot;]]}"/>
-                <!-- Hiện & bắt buộc nếu scope=team -->
-                <field name="team_id"
-                       modifiers="{&quot;required&quot;: [[&quot;goal_scope&quot;,&quot;=&quot;,&quot;team&quot;]],
-                                   &quot;invisible&quot;: [[&quot;goal_scope&quot;,&quot;!=&quot;,&quot;team&quot;]]}"/>
+                <field name="user_id"/>
                 <field name="company_id"/>
                 <field name="year"/>
                 <field name="month"/>
                 <field name="active"/>
               </group>
               <group string="Mục tiêu chính">
+                <!-- GIỮ ĐÚNG TÊN FIELD: target_amount -->
                 <field name="target_amount"/>
                 <field name="note"/>
               </group>
@@ -97,19 +90,6 @@
                   <field name="weight_quotation"/>
                   <field name="weight_closed"/>
                   <field name="weight_completed"/>
-                </group>
-              </page>
-
-              <page string="Phân bổ thành viên"
-                    modifiers="{&quot;invisible&quot;: [[&quot;goal_scope&quot;,&quot;!=&quot;,&quot;team&quot;]]}">
-                <group>
-                  <field name="member_line_ids"
-                         mode="list,form"
-                         views="{
-                            'list': 'dac_report.view_dac_sales_goal_member_list',
-                            'form': 'dac_report.view_dac_sales_goal_member_form'
-                          }"
-                         options="{'no_open': True}"/>
                 </group>
               </page>
             </notebook>
