@@ -115,4 +115,26 @@ class PageFmMessage(models.Model):
             'views': [(view_id, 'form')] if view_id else [], 
         }
 
-    #### Support funct for KPI
+
+    @api.model
+    def create(self, vals):
+        rec = super().create(vals)
+        try:
+            conv = rec.conversation_id
+            if conv:
+                # so sánh bằng inserted_at_fm
+                newer = False
+                if rec.inserted_at_fm and conv.last_message_sync_fm:
+                    newer = rec.inserted_at_fm > conv.last_message_sync_fm
+                elif rec.inserted_at_fm and not conv.last_message_sync_fm:
+                    newer = True
+
+                if newer:
+                    snippet = rec.name or (getattr(rec, 'type_content', None) or 'message')
+                    conv.write({
+                        'last_message_snippet': snippet,
+                        'last_message_sync_fm': rec.inserted_at_fm,
+                    })
+        except Exception:
+            _logger.exception("Failed to update conversation after message create")
+        return rec

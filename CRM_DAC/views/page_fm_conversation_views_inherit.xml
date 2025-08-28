@@ -39,7 +39,6 @@
                 <group string="Phân công">
                     <field name="owner_id"/>
                     <field name="participant_user_ids" widget="many2many_tags" options="{'no_create': True}"/>
-                    <button name="action_assign_to_me" type="object" class="oe_highlight" string="Gán cho tôi"/>
                 </group>
                 </xpath>
             </field>

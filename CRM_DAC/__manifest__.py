@@ -42,6 +42,7 @@
         'views/KPI_View.xml',
         'views/page_fm_conversation_views_inherit.xml',
         'views/res_partner_views_inherit_pancake.xml',
+        'views/conversation_message_sync_wizard_views.xml',
         'views/menuitem.xml',
     ],
 

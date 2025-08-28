@@ -23,6 +23,7 @@
                 sequence="20"
                 groups="dac_erp.group_dac_erp_manager,base.group_system"/>
 
+                
 
         <!-- Báo cáo và KPI -->
         <menuitem 

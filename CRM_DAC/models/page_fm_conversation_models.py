@@ -5,6 +5,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from odoo import SUPERUSER_ID
 from odoo import models, fields, api, _
+from odoo.exceptions import AccessError
 from datetime import datetime, timedelta
 from odoo.tools import DEFAULT_SERVER_DATETIME_FORMAT
 import time
@@ -129,17 +130,15 @@ class PageFmConversation(models.Model):
             'is_unread_fm': False,  # đánh dấu là đã đọc khi toggle
         }
 
-        # Khi tắt require_processing => coi như đã xử lý
+        # Bật/ Tắt yêu cầu xử lý
         if not new_val:
-            vals.update({
-                'status_state': 'done',
-            })
-        else:
-            # Khi bật lại => trạng thái về new nếu cần
-            if self.status_state == 'done':
-                vals['status_state'] = 'new'
+            vals['status_state'] = 'done'
+        elif self.status_state == 'done':
+            vals['status_state'] = 'new'
+        
+        # Cho phép vượt qua hạn chế của write cho nhóm sale
+        self.with_context(allow_toggle_require_processing=True).sudo().write(vals)
 
-        self.write(vals)
         
         return {
             'require_processing': self.require_processing,
@@ -186,30 +185,69 @@ class PageFmConversation(models.Model):
 
     # (tuỳ chọn) auto gợi ý trạng thái dựa vào unread/last message
     def apply_status_rule(self):
-        """Áp dụng quy tắc trạng thái tự động dựa vào tin nhắn."""
+        """Áp dụng quy tắc trạng thái tự động dựa vào tin nhắn
+        + Đồng thời refresh last_message_snippet & last_message_id theo tin mới nhất.
+        """
         Message = self.env['page.fm.message'].sudo()
         for c in self:
-            # Lấy tin nhắn cuối và người gửi
-            last_msg = Message.search([('conversation_id', '=', c.id)], limit=1,
-                                    order='inserted_at_fm desc' if 'inserted_at_fm' in Message._fields else 'id desc')
-            
+            # Lấy tin nhắn cuối (ưu tiên inserted_at_fm)
+            msg_order = 'inserted_at_fm desc, id desc' if 'inserted_at_fm' in Message._fields else 'id desc'
+            last_msg = Message.search([('conversation_id', '=', c.id)], limit=1, order=msg_order)
+
             vals = {}
+
+            # 1) Logic trạng thái
             if getattr(c, 'is_unread_fm', False):
-                # Có tin chưa đọc -> tin mới, cần xử lý
+                # Có tin chưa đọc -> 'Tin mới', cần xử lý
                 vals.update({'status_state': 'new', 'require_processing': True})
             elif last_msg and (last_msg.sender_name_fm and not last_msg.staff_name_fm):
-                # Tin cuối là của khách -> chăm lại khách, cần xử lý
+                # Tin cuối là của KH -> 'Chăm lại khách', cần xử lý
                 vals.update({'status_state': 'recontact', 'require_processing': True})
             elif last_msg and last_msg.staff_name_fm:
-                # Tin cuối là của staff -> chờ khách phản hồi, không cần xử lý ngay
+                # Tin cuối là của NV -> 'Đợi khách phản hồi', không cần xử lý ngay
                 vals.update({'status_state': 'waiting', 'require_processing': False})
             else:
-                # Không có tin nhắn hoặc trường hợp khác -> đã xử lý
+                # Không có tin/khác -> 'Đã xử lý'
                 vals.update({'status_state': 'done', 'require_processing': False})
-            
+
+            # 2) Làm mới snippet: Ưu tiên tin NHẮN CỦA KHÁCH HÀNG
+            if last_msg:
+                # Tìm tin khách hàng mới nhất của cuộc hội thoại
+                # tiêu chí: không gán staff (staff = False) và không có staff_name_fm
+                cust_domain = [
+                    ('conversation_id', '=', c.id),
+                    ('staff', '=', False),
+                    '|', ('staff_name_fm', '=', False), ('staff_name_fm', '=', ''),  # bắt cả None lẫn chuỗi rỗng
+                ]
+                last_cust_msg = Message.search(cust_domain, limit=1, order=msg_order)
+
+                # Helper dựng snippet ngắn gọn
+                def _make_snippet(m):
+                    if not m:
+                        return False
+                    txt = (m.content_html or '').strip()
+                    if txt:
+                        return txt
+                    if m.type_content and m.type_content != 'text':
+                        label_map = {'image': 'Ảnh', 'video': 'Video', 'file': 'Tệp', 'audio': 'Audio'}
+                        label = label_map.get(m.type_content, m.type_content)
+                        suf = (m.url_content or '').strip()
+                        return f"[{label}]" + (f" {suf}" if suf else "")
+                    return False
+
+                # Ưu tiên snippet từ tin khách; nếu không có thì rơi về tin cuối bất kỳ
+                snippet = _make_snippet(last_cust_msg) or _make_snippet(last_msg)
+
+                vals.update({
+                    'last_message_snippet': snippet or False,
+                    # Giữ nguyên last_message_id theo tin cuối bất kỳ để phục vụ logic sync dừng đúng chỗ
+                    'last_message_id': last_msg.message_fm_id or c.last_message_id,
+                    # Không đụng vào last_message_sync_fm ở đây
+                })
+
+            # Ghi & auto-bump lại theo rule phụ
             if vals:
                 c.sudo().write(vals)
-                # Đảm bảo require_processing được cập nhật theo logic
                 c._auto_bump_require_processing()
 
 
@@ -368,8 +406,38 @@ class PageFmConversation(models.Model):
     #     _logger.info(f"Finished scheduled sync for {len(conversations)} recent conversations.")
     
 
-    def action_sync_messages(self):
+    def action_sync_messages(self, date_from=None, date_to=None, unread_first=False, **kwargs):
+        """Đồng bộ tin nhắn; hỗ trợ lọc theo khoảng thời gian và cờ ưu tiên (tùy chọn).
+       - date_from/date_to: datetime hoặc str (ISO / 'YYYY-MM-DD' / 'YYYY-MM-DD HH:MM:SS')
+       - unread_first: hiện tại chỉ để tương thích; không ảnh hưởng thứ tự ghi
+       - cũng chấp nhận unread_only từ wizard qua **kwargs
+       """
         #_logger.info("------------------------------------------->Hello")
+        if 'unread_only' in kwargs and kwargs['unread_only'] is not None:
+            unread_first = bool(kwargs['unread_only'])
+
+        def _to_dt_any(v, is_end=False):
+            if not v:
+                return None
+            if isinstance(v, datetime):
+                return v
+            s = str(v)
+            # ISO 8601 (chấp nhận 'Z')
+            try:
+                return datetime.fromisoformat(s.replace('Z', '+00:00'))
+            except Exception:
+                pass
+            # 'YYYY-MM-DD' hoặc 'YYYY-MM-DD HH:MM:SS'
+            try:
+                if len(s) == 10:
+                    return fields.Datetime.to_datetime(s + (' 23:59:59' if is_end else ' 00:00:00'))
+                return fields.Datetime.to_datetime(s)
+            except Exception:
+                return None
+
+        dt_from = _to_dt_any(date_from, is_end=False)
+        dt_to   = _to_dt_any(date_to,   is_end=True)
+        
         main_access_token = self.env['ir.config_parameter'].sudo().get_param('page_fm.access_token')
         if not main_access_token:
             _logger.error("Thiếu main_access_token trong system parameters.")
@@ -395,7 +463,6 @@ class PageFmConversation(models.Model):
 
             Message = self.env['page.fm.message']
             
-            
 
             messages_reversed = list(reversed(messages))  # Đảm bảo là list
             for i in range(len(messages_reversed)):  # Process oldest first
@@ -418,6 +485,12 @@ class PageFmConversation(models.Model):
                     inserted_at = dt_obj.strftime(DEFAULT_SERVER_DATETIME_FORMAT)
                 except ValueError:
                     inserted_at = datetime.now().strftime(DEFAULT_SERVER_DATETIME_FORMAT)
+                
+                # >>> NEW: lọc theo date_from / date_to nếu có
+                if dt_from and dt_obj and dt_obj < dt_from:
+                    continue
+                if dt_to and dt_obj and dt_obj > dt_to:
+                    continue
 
                 previous_time = datetime.now().strftime(DEFAULT_SERVER_DATETIME_FORMAT)
                 if i + 1 < len(messages_reversed):
@@ -530,6 +603,12 @@ class PageFmConversation(models.Model):
                     record._find_or_create_partner()
             except Exception as e:
                 _logger.error(f"Lỗi khi tìm/tạo partner cho hội thoại {record.id}: {e}", exc_info=True)
+
+            # Áp dụng rule/refresh snippet
+            try:
+                record.apply_status_rule()
+            except Exception:
+                _logger.exception("Lỗi khi áp dụng rule/refresh snippet cho conversation %s", record.id)
                 
             # >>> NEW: cập nhật owner & participants từ message
             try:
@@ -558,15 +637,31 @@ class PageFmConversation(models.Model):
         return records
 
     def write(self, vals):
-        result = super().write(vals)
-        # Tự động cập nhật require_processing khi thay đổi trạng thái hoặc unread
-        if any(key in vals for key in ['status_state', 'is_unread_fm']):
+        """Mô tả:
+        - Giới hạn quyền cho nhóm sale (không phải manager)
+        - Sau khi ghi, nếu đổi status/unread thì auto cập nhật require_processing
+        """
+        user = self.env.user
+        allow_toggle = self.env.context.get('allow_toggle_require_processing')  # cho phép toggle checklist
+
+        if (user.has_group('dac_erp.group_dac_erp_sale')
+            and not user.has_group('dac_erp.group_dac_erp_manager')
+            and not allow_toggle):
+            allowed = {'status_state', 'is_unread_fm'}
+            disallowed = set(vals.keys()) - allowed
+            if disallowed:
+                raise AccessError(_("Bạn chỉ được phép cập nhật: Trạng thái và Đã đọc/Chưa đọc."))
+
+        res = super(PageFmConversation, self).write(vals)
+
+        # Logic auto-bump khi có thay đổi 2 field này
+        if any(k in vals for k in ('status_state', 'is_unread_fm')):
             for rec in self:
                 try:
                     rec._auto_bump_require_processing()
-                except Exception as e:
-                    _logger.error(f"Lỗi khi update require_processing cho conversation {rec.id}: {e}")
-        return result
+                except Exception:
+                    _logger.exception("Auto-bump require_processing failed for conv %s", rec.id)
+        return res
 
     def _build_external_url_for_platform(self, platform, page_id, conv_id):
         ICP = self.env['ir.config_parameter'].sudo()
@@ -804,3 +899,15 @@ class PageFmConversation(models.Model):
         for rec in self:
             rec.owner_id = self.env.user.id
         return True
+    
+    readonly_for_sale = fields.Boolean(
+        string="Readonly for Sale Group",
+        compute="_compute_readonly_for_sale",
+        store=False,
+    )
+
+    @api.depends_context()
+    def _compute_readonly_for_sale(self):
+        is_sale = self.env.user.has_group('dac_erp.group_dac_erp_sale')
+        for rec in self:
+            rec.readonly_for_sale = bool(is_sale)

@@ -182,7 +182,8 @@
                             <field name="last_message_sync_fm" string="Thời gian đồng bộ tin nhắn cuối" readonly="1"/>
                         </group>
                         <group>
-                            <field name="status_state" string="Trạng thái"/>
+                            <field name="readonly_for_sale" invisible="1"/>
+                            <field name="status_state" string="Trạng thái" modifiers="{'readonly': [('readonly_for_sale','=', True)]}"/>
                             <field name="require_processing" string="Có yêu cầu xử lý" widget="boolean_toggle"/>
                             <field name="status_label" string="Nhãn hiển thị" readonly="1"/>
                             <field name="suggestion_note" string="Ghi chú &amp; Gợi ý"/>

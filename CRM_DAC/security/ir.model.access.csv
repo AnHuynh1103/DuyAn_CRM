@@ -11,3 +11,5 @@ access_page_fm_conversation_sale,access.page.fm.conversation.sale,model_page_fm_
 access_page_fm_message_sale,access.page.fm.message.sale,model_page_fm_message,dac_erp.group_dac_erp_sale,1,1,1,0
 
 access_kpi_sale_daily_sale,kpi.sale.daily.user,model_kpi_sale_daily,dac_erp.group_dac_erp_sale,1,0,0,0
+
+access_conversation_message_sync_wizard_manager,access.conversation.message.sync.wizard.manager,model_page_fm_conversation_message_sync_wizard,dac_erp.group_dac_erp_manager,1,1,1,1
