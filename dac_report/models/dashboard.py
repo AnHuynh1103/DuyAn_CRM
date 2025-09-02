@@ -7,7 +7,7 @@ STATUS_COLOR_MAP = {
     'new': 'danger',      # đỏ
     'recontact': 'danger', # đỏ
     'waiting': 'warning', # vàng
-    'done': 'success',    # xanh
+    'done': 'success',    # xám
     False: 'muted',
 }
 
@@ -20,16 +20,18 @@ class SaleOrderDashboardService(models.Model):
         # chỉ hiển thị hội thoại tôi phụ trách hoặc có tham gia
         my_dom = ['|', ('owner_id', '=', self.env.uid), ('participant_user_ids', 'in', self.env.uid)]
 
-        # điều kiện hiện có, bạn có thể giữ như cũ và + thêm điều kiện khác nếu cần
+        # đã từng sync dữ liệu
         base_dom = [('last_message_sync_fm', '!=', False)]
 
-        
+        # Lọc 'done' > 2 ngày
+        cutoff = fields.Datetime.to_string(fields.Datetime.now() - timedelta(days=2))
+        not_stale_done = ['|',
+            ('status_state', '!=', 'done'),
+            '&', ('status_state', '=', 'done'), ('last_update_at', '>=', cutoff),
+        ]
 
-        # ưu tiên hội thoại chưa đọc hoặc cập nhật trong 14 ngày
-        threshold = fields.Datetime.to_string(datetime.utcnow() - timedelta(days=14))
-        recent_or_unread = ['|', ('is_unread_fm', '=', True), ('updated_at_fm', '>=', threshold)]
-
-        domain = base_dom + my_dom + recent_or_unread
+        # GHÉP DOMAIN CUỐI:
+        domain = base_dom + my_dom + not_stale_done
 
         recs = Conv.search(domain, limit=limit, order='updated_at_fm desc')
 

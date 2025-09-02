@@ -15,7 +15,13 @@ _logger = logging.getLogger(__name__)
 
 PAGES_FM_MESSAGES_API_BASE_URL = 'https://pages.fm/api/public_api/v1'
 PAGES_FM_API_V1_BASE_URL = "https://pages.fm/api/v1"
-
+_FORM_TOUCH_FIELDS = {
+        'partner_id', 'phone',
+        'is_unread_fm', 'is_internal_conversation',
+        'status_state', 'require_processing', 'suggestion_note',
+        'owner_id', 'participant_user_ids',
+        # thêm các field hiển thị trên form mà bạn muốn tính là “thay đổi”
+    }
 
 def sync_one_conversation(conv_id, dbname):
     try:
@@ -35,6 +41,7 @@ class PageFmConversation(models.Model):
     _name = 'page.fm.conversation'
     _description = 'Page.fm Conversation'
     _order = 'updated_at_fm desc'
+    _inherit = ['mail.thread', 'mail.activity.mixin']
 
     # == Main Fields ==
     name = fields.Char(string="Customer Name", compute='_compute_name', store=True, help="Tên khách hàng hoặc ID hội thoại")
@@ -72,10 +79,10 @@ class PageFmConversation(models.Model):
     last_message_snippet = fields.Text(string="Last Message Snippet", help="Đoạn tin nhắn cuối cùng")
     last_message_id = fields.Char(string="Last message FM ID")
     updated_at_fm = fields.Datetime(string="Last Updated (FM)", index=True, help="Thời điểm cập nhật cuối cùng của hội thoại từ API")
-    is_unread_fm = fields.Boolean(string="Is Unread", help="Đánh dấu hội thoại là chưa đọc (dựa trên logic !conv.seen từ API)")
+    is_unread_fm = fields.Boolean(string="Is Unread", help="Đánh dấu hội thoại là chưa đọc (dựa trên logic !conv.seen từ API)", tracking=True)
     platform_fm = fields.Char(string="Platform (FM)", help="Nền tảng của hội thoại (Zalo, Facebook, Instagram, etc.) được suy ra từ API")
     updated_at_fm_by_hand = fields.Datetime(string="Last Updated (by hand)")
-    message_ids = fields.One2many('page.fm.message', 'conversation_id', string="Messages")
+    conv_message_ids = fields.One2many('page.fm.message', 'conversation_id', string="Messages")
     message_count = fields.Integer(string="Message Count", compute='_compute_message_count', store=True)
     last_message_sync_fm = fields.Datetime(string="Last Message Sync (FM)", readonly=True, help="Thời điểm cuối cùng đồng bộ tin nhắn cho hội thoại này.")
 
@@ -93,7 +100,7 @@ class PageFmConversation(models.Model):
     ], string="Trạng thái", default='new', index=True, tracking=True)
 
     # UNIFIED: Chỉ dùng suggestion_note cho mọi loại ghi chú (từ AI, manual, hoặc status note)
-    suggestion_note = fields.Text(string="Ghi chú & Gợi ý xử lý", help="Ghi chú trạng thái, gợi ý từ AI hoặc external system")
+    suggestion_note = fields.Text(string="Ghi chú & Gợi ý xử lý", help="Ghi chú trạng thái, gợi ý từ AI hoặc external system", tracking=True)
     last_suggestion_at = fields.Datetime(string="Thời điểm cập nhật ghi chú")
     
     status_set_by_id = fields.Many2one('res.users', "Người cập nhật", tracking=True)
@@ -261,10 +268,10 @@ class PageFmConversation(models.Model):
             else:
                 record.name = _("N/A")
 
-    @api.depends('message_ids')
+    @api.depends('conv_message_ids')
     def _compute_message_count(self):
         for record in self:
-            record.message_count = len(record.message_ids)
+            record.message_count = len(record.conv_message_ids)
 
     def _find_or_create_partner(self):
         """
@@ -636,6 +643,8 @@ class PageFmConversation(models.Model):
                 _logger.error(f"Lỗi khi set require_processing cho conversation {rec.id}: {e}")
         return records
 
+
+
     def write(self, vals):
         """Mô tả:
         - Giới hạn quyền cho nhóm sale (không phải manager)
@@ -650,7 +659,14 @@ class PageFmConversation(models.Model):
             allowed = {'status_state', 'is_unread_fm'}
             disallowed = set(vals.keys()) - allowed
             if disallowed:
-                raise AccessError(_("Bạn chỉ được phép cập nhật: Trạng thái và Đã đọc/Chưa đọc."))
+                raise AccessError(_("Bạn không thể thực hiện thay đổi này. \nVui lòng liên hệ quản lý hoặc quản trị viên để hỗ trợ!"))
+
+        # Nếu có thay đổi thuộc nhóm “form”, set last_update_at = now
+        if any(k in _FORM_TOUCH_FIELDS for k in vals.keys()):
+            vals = dict(vals)  # tránh mutate context
+            vals['updated_at_fm_by_hand'] = fields.Datetime.now()  # để compute gom mốc
+            # hoặc trực tiếp:
+            # vals['last_update_at'] = fields.Datetime.now()
 
         res = super(PageFmConversation, self).write(vals)
 
@@ -861,12 +877,12 @@ class PageFmConversation(models.Model):
     
     # Dành cho người phụ trách
     owner_id = fields.Many2one(
-        'res.users', string="Người phụ trách", index=True, copy=False
+        'res.users', string="Người phụ trách", index=True, copy=False, tracking=True
     )
     participant_user_ids = fields.Many2many(
         'res.users',
         'page_fm_conv_user_rel', 'conv_id', 'user_id',
-        string="Nhóm phụ trách", copy=False
+        string="Nhóm phụ trách", copy=False, tracking=True
     )
 
     def _recompute_staff_links(self):
@@ -900,14 +916,41 @@ class PageFmConversation(models.Model):
             rec.owner_id = self.env.user.id
         return True
     
-    readonly_for_sale = fields.Boolean(
-        string="Readonly for Sale Group",
-        compute="_compute_readonly_for_sale",
-        store=False,
+    
+            
+    # Cho cuộc trò chuyện nội bộ
+    is_internal_conversation = fields.Boolean(
+        string="Cuộc trò chuyện nội bộ",
+        default=False,
+        tracking=True,
+        help="Đánh dấu cuộc trò chuyện này là nội bộ, không hiển thị với nhân viên bán hàng."
+    )
+    
+    
+    # Mốc hoạt động cuối
+    last_update_at = fields.Datetime(
+        string="Cập nhật lần cuối",
+        compute="_compute_last_update_at",
+        store=True,
+        index=True,
+        help="Mốc cập nhật gần nhất: mọi thay đổi trên form, sync/POST n8n, đổi trạng thái, ghi chú,..."
     )
 
-    @api.depends_context()
-    def _compute_readonly_for_sale(self):
-        is_sale = self.env.user.has_group('dac_erp.group_dac_erp_sale')
-        for rec in self:
-            rec.readonly_for_sale = bool(is_sale)
+    @api.depends(
+        'updated_at_fm',          # từ API
+        'last_message_sync_fm',   # lần sync gần nhất
+        'last_suggestion_at',     # n8n/AI/ghi chú
+        'status_set_at',          # đổi trạng thái
+        'updated_at_fm_by_hand',  # cập nhật thủ công
+    )
+    def _compute_last_update_at(self):
+        for r in self:
+            candidates = [
+                r.updated_at_fm,
+                r.last_message_sync_fm,
+                r.last_suggestion_at,
+                r.status_set_at,
+                r.updated_at_fm_by_hand,
+            ]
+            r.last_update_at = max([c for c in candidates if c]) if any(candidates) else False
+

@@ -495,21 +495,6 @@ class SaleOrder(models.Model):
                 'context': {'active_id': order.id},
             }
 
-    def action_custom_view_deposit_invoice(self):
-        self.ensure_one()
-        action = self.env.ref('account.action_move_out_invoice_type').read()[0]
-        deposit_invoices = self.env['account.move'].search([
-            ('move_type', '=', 'out_invoice'),
-            ('invoice_origin', '=', self.name),
-            ('dac_deposit_invoice', '=', True)
-        ])
-        action['domain'] = [('id', 'in', deposit_invoices.ids)]
-        action['context'] = {'create': False}
-        if len(deposit_invoices) == 1:
-            action['views'] = [(self.env.ref('account.view_move_form').id, 'form')]
-            action['res_id'] = deposit_invoices.id
-        return action
-
     def action_view_all_invoices(self):
         """Xem tất cả hóa đơn liên quan đến đơn hàng (cọc + thanh toán)"""
         self.ensure_one()
@@ -762,75 +747,6 @@ class SaleOrder(models.Model):
             'tag': 'reload',
         }
 
-    def action_force_refresh_view(self):
-        """Force refresh view sau khi thanh toán"""
-        self.ensure_one()
-        
-        # Refresh tất cả computed fields
-        self._compute_all_invoices_paid()
-        self._compute_has_paid_final_invoice()
-        self._compute_remaining_amount_display()
-        self._compute_total_deposit_paid()
-        self.invalidate_recordset()
-        
-        # Kiểm tra và cập nhật trạng thái hoàn thành
-        self.check_and_update_completion_status()
-        
-        #_logger.info(f"Force refresh view cho đơn hàng {self.name}")
-        
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'reload',
-        }
-
-    @api.model
-    def poll_order_status(self, order_id):
-        """API để polling trạng thái đơn hàng - gọi từ JavaScript"""
-        try:
-            order = self.browse(order_id)
-            if order.exists():
-                # Force refresh computed fields
-                order._compute_all_invoices_paid()
-                order._compute_has_paid_final_invoice()
-                order._compute_remaining_amount_display()
-                order._compute_total_deposit_paid()
-                
-                # Kiểm tra và cập nhật trạng thái hoàn thành
-                if order.has_paid_final_invoice and not order.is_order_completed:
-                    order.is_order_completed = True
-                    order.invalidate_recordset()
-                    #_logger.info(f"POLLING: Auto set is_order_completed = True cho order {order.name}")
-                
-                return {
-                    'success': True,
-                    'is_order_completed': order.is_order_completed,
-                    'has_paid_final_invoice': order.has_paid_final_invoice,
-                    'all_invoices_paid': order.all_invoices_paid,
-                    'remaining_amount': order.remaining_amount_display,
-                    'total_deposit_paid': order.total_deposit_paid,
-                }
-            else:
-                return {'success': False, 'error': 'Order not found'}
-        except Exception as e:
-            _logger.error(f"Lỗi khi polling order status {order_id}: {e}")
-            return {'success': False, 'error': str(e)}
-
-    @api.model
-    def force_check_completion_after_payment(self, invoice_id):
-        """Method để force check completion sau khi thanh toán - có thể gọi từ bên ngoài"""
-        try:
-            invoice = self.env['account.move'].browse(invoice_id)
-            if invoice.exists() and invoice.invoice_origin and invoice.payment_state == 'paid':
-                sale_order = self.search([('name', '=', invoice.invoice_origin)], limit=1)
-                if sale_order and not invoice.dac_deposit_invoice:  # Chỉ hóa đơn cuối
-                    #_logger.info(f"FORCE CHECK: Checking completion for order {sale_order.name} after invoice {invoice.name} payment")
-                    result = sale_order.check_and_update_completion_status()
-                    sale_order.env.cr.commit()
-                    #_logger.info(f"FORCE CHECK: Completed with result {result}")
-                    return True
-        except Exception as e:
-            _logger.error(f"FORCE CHECK: Error {e}")
-        return False
 
     def check_and_add_deposit_line(self):
         """Phương thức thủ công để kiểm tra và thêm dòng đặt cọc"""
@@ -1183,65 +1099,6 @@ class SaleOrder(models.Model):
             }
         }
     
-    def test_user_assignment(self):
-        """Test logic gán user khi tạo đơn hàng mới"""
-        # Debug: kiểm tra users và groups
-        #_logger.info("=== DEBUG USERS AND GROUPS ===")
-        
-        # Liệt kê tất cả users
-        all_users = self.env['res.users'].search([('share', '=', False)])
-        #_logger.info(f"All internal users: {[(u.id, u.name, u.login) for u in all_users]}")
-        
-        # Liệt kê DAC groups
-        dac_manager_group = self.env.ref('dac_erp.group_dac_erp_manager', raise_if_not_found=False)
-        dac_sale_group = self.env.ref('dac_erp.group_dac_erp_sale', raise_if_not_found=False)
-        
-        if dac_manager_group:
-            _logger.info(f"DAC Manager group users: {[(u.id, u.name) for u in dac_manager_group.users]}")
-        else:
-            _logger.error("DAC Manager group not found!")
-            
-        if dac_sale_group:
-            _logger.info(f"DAC Sale group users: {[(u.id, u.name) for u in dac_sale_group.users]}")
-        else:
-            _logger.error("DAC Sale group not found!")
-        
-        # Tạo đơn hàng test để kiểm tra user assignment
-        partner = self.env['res.partner'].search([('is_company', '=', False)], limit=1)
-        if not partner:
-            partner = self.env['res.partner'].create({
-                'name': 'Test Customer',
-                'phone': '0123456789',
-                'email': 'test@example.com'
-            })
-        
-        # Tạo đơn hàng mới
-        new_order = self.env['sale.order'].create({
-            'partner_id': partner.id,
-            'order_line': [(0, 0, {
-                'product_id': self.env['product.product'].search([], limit=1).id,
-                'product_uom_qty': 1,
-                'price_unit': 100000,
-            })]
-        })
-        
-        #_logger.info(f"=== TEST USER ASSIGNMENT ===")
-        #_logger.info(f"Current user: {self.env.user.name} (ID: {self.env.user.id})")
-        #_logger.info(f"New order user_id: {new_order.user_id.name} (ID: {new_order.user_id.id})")
-        #_logger.info(f"User groups: {[g.name for g in self.env.user.groups_id]}")
-        #_logger.info(f"Assignment successful: {new_order.user_id.id == self.env.user.id}")
-        
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'title': 'Test User Assignment',
-                'message': f'Created order {new_order.name} assigned to: {new_order.user_id.name}. Current user: {self.env.user.name}. Check logs for detailed debug info.',
-                'type': 'success' if new_order.user_id.id == self.env.user.id else 'warning',
-                'sticky': True,
-            }
-        }
-
 
     # Cho nút mở hội thoại
     conversation_id = fields.Many2one(

@@ -130,14 +130,16 @@
                  <header>
                     <button name="action_sync_messages" 
                             type="object" 
-                            string="Sync Messages" 
+                            string="Đồng bộ tin nhắn" 
                             class="oe_highlight" 
-                            context="{'load_all': False}"/>
+                            context="{'load_all': False}"
+                            groups="dac_erp.group_dac_erp_manager"/>
                     <button name="action_sync_messages" 
                             type="object" 
-                            string="Load All Messages" 
+                            string="Đồng bộ tất cả" 
                             context="{'load_all': True}" 
-                            invisible='message_count == 0'/>
+                            invisible='message_count == 0'
+                            groups="dac_erp.group_dac_erp_manager"/>
                 </header>
                 <sheet>
                      <div name="button_box" class="oe_button_box">
@@ -160,7 +162,7 @@
                             <field name="customer_name_fm" string="Tên KH (pancake)" readonly="1"/>
                             <field name="customer_fm_id" string="Id (pancake)" readonly="1"/>
                             <field name="platform_fm" string="Nền tảng (pancake)" readonly="1"/>
-                            <div name="button_box" class="oe_button_box">
+                            <!-- <div name="button_box" class="oe_button_box">
                                 <button name="action_open_on_pancake"
                                         type="object"
                                         class="oe_stat_button"
@@ -170,35 +172,36 @@
                                         <span class="o_stat_text">Mở Pancake</span>
                                     </div>
                                 </button>
-                            </div>
+                            </div> -->
                         </group>
                     </group>
                     
                     <group string="Chi tiết">
                         <group>
-                            <field name="last_message_snippet" string="Đoạn tin nhắn cuối" readonly="1"/>
-                            <field name="updated_at_fm" string="Thời gian cập nhật" readonly="1"/>
                             <field name="is_unread_fm" string="Chưa đọc"/>
-                            <field name="last_message_sync_fm" string="Thời gian đồng bộ tin nhắn cuối" readonly="1"/>
+                            <field name="is_internal_conversation" string="Nội bộ" widget="boolean_toggle" groups="dac_erp.group_dac_erp_manager"/>
+                            <field name="last_message_snippet" string="Đoạn tin nhắn cuối" readonly="1" groups="dac_erp.group_dac_erp_manager"/>
+                            <field name="updated_at_fm" string="Thời gian cập nhật" readonly="1" groups="dac_erp.group_dac_erp_manager"/>
+                            <field name="last_message_sync_fm" string="Thời gian đồng bộ tin nhắn cuối" readonly="1" groups="dac_erp.group_dac_erp_manager"/>
                         </group>
                         <group>
-                            <field name="readonly_for_sale" invisible="1"/>
-                            <field name="status_state" string="Trạng thái" modifiers="{'readonly': [('readonly_for_sale','=', True)]}"/>
+                            <field name="status_state" string="Trạng thái"/>
                             <field name="require_processing" string="Có yêu cầu xử lý" widget="boolean_toggle"/>
                             <field name="status_label" string="Nhãn hiển thị" readonly="1"/>
                             <field name="suggestion_note" string="Ghi chú &amp; Gợi ý"/>
-                            <field name="last_suggestion_at" widget="datetime" string="Cập nhật lần cuối"/>
+                            <field name="last_update_at" string="Cập nhật lần cuối" widget="datetime" readonly="1"/>
                         </group>
                     </group>
                     <notebook>
                         <page string="Tin nhắn">
-                            <field name="message_ids" readonly="1" context="{'list_view_ref': 'CRM_DAC.view_page_fm_message_list'}"
+                            <field name="conv_message_ids" readonly="1" context="{'list_view_ref': 'CRM_DAC.view_page_fm_message_list'}"
                                     mode="list,form"
                                     views="[(list, 'CRM_DAC.view_page_fm_message_list'), (form, 'CRM_DAC.view_page_fm_message_form')]">
                             </field>
                         </page>
                     </notebook>
                 </sheet>
+                <chatter/>
             </form>
         </field>
     </record>
@@ -264,7 +267,7 @@
     <record id="action_page_fm_conversation_all" model="ir.actions.act_window">
         <field name="name">Tất cả cuộc trò chuyện</field>
         <field name="res_model">page.fm.conversation</field>
-        <field name="view_mode">kanban,list,form</field>
+        <field name="view_mode">list,kanban,form</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
                 No conversations found.

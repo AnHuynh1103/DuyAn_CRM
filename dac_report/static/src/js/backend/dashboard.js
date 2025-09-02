@@ -100,7 +100,7 @@ class DacSaleDashboard extends Component {
   // Actions
   //--------------------------------------------------------------------
 
-  // Text trạng thái hiển thị một dòng (đỏ/vàng/xanh)
+  // Text trạng thái hiển thị một dòng (đỏ/vàng/xám)
   getStateText(it) {
     // 1) quyết định theo trạng thái tính được
     const st = this.getStatusKey(it); // 'new' | 'waiting' | 'done' | ...

@@ -27,13 +27,6 @@
                                     string="Debug cọc"
                                     help="Debug thông tin đặt cọc và log chi tiết"
                                     groups="base.group_system"/>
-                            <button name="test_user_assignment"
-                                    type="object"
-                                    class="oe_stat_button"
-                                    icon="fa-user"
-                                    string="Test User"
-                                    help="Test logic gán user khi tạo đơn hàng mới"
-                                    groups="base.group_system"/>
                             <button name="check_and_update_completion_status"
                                     type="object"
                                     class="oe_stat_button"
@@ -136,7 +129,7 @@
                                        string="Người phụ trách"
                                        readonly="1"
                                        groups="dac_erp.group_dac_erp_sale"/>  <!-- Sale users chỉ được xem -->
-                                <!-- Nút liên hệ khách hàng bên dưới-->
+                                <!-- Nút liên hệ khách hàng bên dưới
                                 <field name="pancake_order_link" invisible="1"/>
                                     <div colspan="2">
                                     <button name="action_open_pancake_link"
@@ -144,7 +137,7 @@
                                         string="Pancake"
                                         class="btn-primary"
                                         invisible = 'pancake_order_link == False'/>
-                                    </div>
+                                    </div> -->
                             </group>
                         </group>
                         <notebook>

@@ -37,8 +37,10 @@
                 <!-- Chèn vào group đầu tiên trong sheet để luôn có chỗ bám -->
                 <xpath expr="//sheet//group[1]" position="after">
                 <group string="Phân công">
-                    <field name="owner_id"/>
-                    <field name="participant_user_ids" widget="many2many_tags" options="{'no_create': True}"/>
+                    <field name="owner_id" groups="dac_erp.group_dac_erp_manager"/>
+                    <field name="participant_user_ids" widget="many2many_tags" options="{'no_create': True}" groups="dac_erp.group_dac_erp_manager"/>
+                    <field name="owner_id" readonly="1" groups="dac_erp.group_dac_erp_sale"/>
+                    <field name="participant_user_ids" readonly="1" widget="many2many_tags" groups="dac_erp.group_dac_erp_sale"/>
                 </group>
                 </xpath>
             </field>
