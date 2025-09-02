@@ -1,18 +1,21 @@
 <odoo>
   <data>
-    <!-- Action cho Khách hàng -->
+    <!-- Action cho Khách hàng Sale Dashboard-->
+    <record id="dac_res_partner_customer_action_sale" model="ir.actions.act_window">
+      <field name="name">Khách hàng</field>
+      <field name="res_model">res.partner</field>
+      <field name="view_mode">kanban,list,form</field>
+      <field name="domain">
+          ['|', ('responsible_user_id', '=', uid), ('participant_user_ids', 'in', uid)]
+        </field>
+    </record>
+
+
     <record id="dac_res_partner_customer_action" model="ir.actions.act_window">
       <field name="name">Khách hàng</field>
       <field name="res_model">res.partner</field>
       <field name="view_mode">kanban,list,form</field>
-      <field name="domain"
-       eval="['|',
-               ('customer_rank','>',0),
-               '|','|',
-               ('email','!=',False),
-               ('phone','!=',False),
-               ('mobile','!=',False)
-       ]"/>
+      <field name="domain">[]</field>
     </record>
 
   </data>

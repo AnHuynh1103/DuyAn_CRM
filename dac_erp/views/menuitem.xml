@@ -8,13 +8,23 @@
             sequence="10"/>
 
 
-        <!-- Menuitem cho Khách hàng -->
+        <!-- Menuitem cho manager Khách hàng -->
         <menuitem id="dac_res_partner_customer_menu"
               name="Khách hàng"
               parent="dac_report.dac_sale_dashboard_menu_root"
               action="dac_res_partner_customer_action"
               sequence="15"
-              groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"/>
+              groups="dac_erp.group_dac_erp_manager"/>
+
+
+        <!-- Menuitem cho sale Khách hàng -->
+        <menuitem id="dac_res_partner_customer_menu_sale"
+              name="Khách hàng"
+              parent="dac_report.dac_sale_dashboard_menu_root"
+              action="dac_res_partner_customer_action_sale"
+              sequence="16"
+              groups="dac_erp.group_dac_erp_sale"/>
+
         
         <!-- Menu cho manager Hóa đơn -->
         <menuitem id="dac_account_move_menu_root"
