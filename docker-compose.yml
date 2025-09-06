@@ -1,61 +1,51 @@
 version: "3.9"
 
 services:
-  # odoo:
-  #   # Chage Odoo version image:
-  #   #   image: novobidevops/odoo:[odoo_version]
-  #   # Available [odoo_version]: 10, 11, 12, 13, 14, 15
+  web:
+    image: odoo:18.0
+    depends_on:
+      - db
+      - nginx
+      - n8n
+    ports:
+      - 8069:8069
+    volumes:
+      - odoo-web-data:/var/lib/odoo
+      - ./config:/etc/odoo
+      - ./addons:/mnt/extra-addons
+    env_file:
+      - env/odoo.env
+    command:
 
-  #   image: crm-odoo:16
-  #   # build: ./box
+  db:
+    image: postgres:17
+    ports:
+      - 5432:5432
+    env_file:
+      - env/postgresql.env
+    volumes:
+      - odoo-db-data:/var/lib/postgresql/data
+    restart: on-failure
 
-  #   # If developer want to use their own Docker environment, Do the following actions : 
-  #   #
-  #   # + comment line #9 
-  #   # + uncomment line #10. 
-  #   # + Make adjustment on file ./box/Dockerfile
-  #   #
-  #   # After docker-compose up, a new docker image will be built 
-  #   # with the new adjustments on the file ./box/Dockerfile
-
-  #   ports:
-  #     - "8069:8069"
-  #   volumes:
-  #     - ./:/opt/odoo
-  #     - odoo_data:/home/odoo/.local/share/Odoo
-  #   command: bash -c "$${PYTHON_PATH} $${START_ODOO} $${ODOO_PARAM} && tail -f /dev/null"
-  #   environment:
-  #     PYTHON_PATH: "/usr/bin/python3"
-  #     START_ODOO: "/opt/odoo/odoo/odoo-bin -c /opt/odoo/odoo.conf"
-  #     ODOO_PARAM: "" 
-  #     #"--no-database-list"
-      
-  #   depends_on:
-  #     - nginx
-  #     - postgres
-  #   restart: unless-stopped
-  #   tty: true
   nginx:
     image: nginx
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./box16/odoo_nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./box18/odoo_nginx.conf:/etc/nginx/conf.d/default.conf
       - ./certbot/www:/var/www/certbot
       - ./certbot/conf:/etc/letsencrypt
     restart: unless-stopped
     tty: true
-    
-  # n8n
-  # If you want to use n8n, uncomment the following lines
+
   n8n:
     image: n8nio/n8n
     ports:
       - "5678:5678"
     environment:
       - DB_TYPE=postgresdb
-      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_HOST=db
       - DB_POSTGRESDB_PORT=5432
       - DB_POSTGRESDB_DATABASE=postgres
       - DB_POSTGRESDB_USER=odoo
@@ -69,26 +59,13 @@ services:
       - N8N_PORT=5678
       - N8N_SECURE_COOKIE=false
     depends_on:
-      - postgres
+      - db
     restart: unless-stopped
     volumes:
       - n8n_data:/home/node/.n8n
     tty: true
-  postgres:
-    image: postgres:14-bullseye
-    ports:
-      - "5436:5436"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: postgres
-      POSTGRES_USER: odoo
-      POSTGRES_PASSWORD: odoo
-    tty: true
- 
+
 volumes:
-  # odoo_data:
-  postgres_data:
-  # n8n
+  odoo-web-data:
+  odoo-db-data:
   n8n_data:
