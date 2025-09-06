@@ -70,24 +70,91 @@ class PageFmPage(models.Model):
         return True
 
 
-    def _generate_page_specific_access_token(self, main_access_token):
+    def _generate_page_specific_access_token(self, main_access_token, retry_count=0, max_retries=3):
         self.ensure_one()
         page_fm_id = self.page_fm_id_str
         
+        # CACHE TOKEN: Kiểm tra cache trước khi tạo mới
+        cache_key = f"page_token_{page_fm_id}"
+        cached_token = self.env['ir.config_parameter'].sudo().get_param(cache_key)
+        
+        # Kiểm tra cache validity (cache 10 phút)
+        cache_time_key = f"page_token_time_{page_fm_id}"
+        cached_time = self.env['ir.config_parameter'].sudo().get_param(cache_time_key)
+        
+        if cached_token and cached_time:
+            try:
+                cached_datetime = datetime.fromisoformat(cached_time)
+                if (datetime.now() - cached_datetime).total_seconds() < 600:  # 10 phút
+                    _logger.debug(f"Using cached token for page {page_fm_id}")
+                    return cached_token
+            except:
+                pass  # Invalid cache time, proceed to generate new token
+        
         generate_token_url = f"{PAGES_FM_API_V1_BASE_URL}/pages/{page_fm_id}/generate_page_access_token?access_token={main_access_token}&page_id={page_fm_id}"
-        # _logger.info(f"API Call: Generate Page Token for {page_fm_id} - URL: {generate_token_url}")
 
         try:
-            response = requests.post(generate_token_url, headers={'Content-Type': 'application/json', 'Accept': 'application/json'}, timeout=10)
+            # Retry logic với exponential backoff
+            import time
+            if retry_count > 0:
+                # Exponential backoff: 2^retry_count seconds
+                wait_time = 2 ** retry_count
+                _logger.info(f"Retry {retry_count}/{max_retries} after {wait_time}s for page {page_fm_id}")
+                time.sleep(wait_time)
+            
+            response = requests.post(
+                generate_token_url, 
+                headers={'Content-Type': 'application/json', 'Accept': 'application/json'}, 
+                timeout=30  # Tăng từ 10s lên 30s
+            )
             response.raise_for_status()
             data = response.json()
             if data.get('success') and data.get('page_access_token'):
-                return data['page_access_token']
+                token = data['page_access_token']
+                
+                # CACHE TOKEN mới
+                self.env['ir.config_parameter'].sudo().set_param(cache_key, token)
+                self.env['ir.config_parameter'].sudo().set_param(cache_time_key, datetime.now().isoformat())
+                
+                if retry_count > 0:
+                    _logger.info(f"Retry thành công cho page {page_fm_id} sau {retry_count} lần thử")
+                return token
             _logger.error(f"Failed to generate page token for {page_fm_id}: {data.get('message')}")
             return None
+            
+        except (requests.exceptions.ConnectTimeout, requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            if retry_count < max_retries:
+                _logger.warning(f"Network error for page {page_fm_id}, retry {retry_count + 1}/{max_retries}: {e}")
+                return self._generate_page_specific_access_token(main_access_token, retry_count + 1, max_retries)
+            else:
+                _logger.error(f"Max retries exceeded for page {page_fm_id}: {e}")
+                return None
+                
         except Exception as e:
             _logger.error(f"Error generating page token for {page_fm_id}: {e}", exc_info=True)
             return None
+
+    def clear_token_cache(self):
+        """Xóa cache token của page này"""
+        self.ensure_one()
+        page_fm_id = self.page_fm_id_str
+        cache_key = f"page_token_{page_fm_id}"
+        cache_time_key = f"page_token_time_{page_fm_id}"
+        
+        self.env['ir.config_parameter'].sudo().set_param(cache_key, '')
+        self.env['ir.config_parameter'].sudo().set_param(cache_time_key, '')
+        _logger.info(f"Cleared token cache for page {page_fm_id}")
+
+    @api.model
+    def clear_all_token_cache(self):
+        """Xóa tất cả cache token của toàn bộ pages"""
+        params = self.env['ir.config_parameter'].sudo().search([
+            '|',
+            ('key', 'like', 'page_token_%'),
+            ('key', 'like', 'page_token_time_%')
+        ])
+        params.unlink()
+        _logger.info(f"Cleared {len(params)} token cache entries")
 
     def _fetch_conversations_for_page_record(self, main_access_token):
         self.ensure_one()
@@ -348,3 +415,76 @@ class PageFmPage(models.Model):
     #     _logger.info(f">>> PageFmPage read for records {self.ids}. kwargs: {kwargs}")
     #     # Bỏ gọi API tự động ở đây
     #     return super(PageFmPage, self).read(fields=fields, load=load)
+
+    # === Methods for view buttons ===
+    
+    def action_refresh_page(self):
+        """Refresh page data from Pages.fm"""
+        for record in self:
+            try:
+                # Sync lại page này từ API
+                main_token = self.env['ir.config_parameter'].sudo().get_param('pages_fm_main_access_token')
+                if not main_token:
+                    raise ValueError(_('No main access token configured'))
+                
+                # Fetch conversations for this page
+                conversations = record._fetch_conversations_for_page_record(main_token)
+                conv_count = len(conversations) if conversations else 0
+                
+                # Show success message
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {
+                        'title': _('Success'),
+                        'message': _('Page refreshed successfully. Found %d conversations.') % conv_count,
+                        'type': 'success'
+                    }
+                }
+            except Exception as e:
+                _logger.error(f"Error refreshing page {record.name}: {e}")
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {
+                        'title': _('Error'),
+                        'message': _('Error refreshing page: %s') % str(e),
+                        'type': 'danger'
+                    }
+                }
+
+    def action_generate_access_token(self):
+        """Generate new access token for this page"""
+        for record in self:
+            try:
+                main_token = self.env['ir.config_parameter'].sudo().get_param('pages_fm_main_access_token')
+                if not main_token:
+                    raise ValueError(_('No main access token configured'))
+                
+                # Generate new page token
+                new_token = record._generate_page_specific_access_token(main_token)
+                if new_token:
+                    record.write({'access_token': new_token})
+                    return {
+                        'type': 'ir.actions.client',
+                        'tag': 'display_notification',
+                        'params': {
+                            'title': _('Success'),
+                            'message': _('New access token generated successfully'),
+                            'type': 'success'
+                        }
+                    }
+                else:
+                    raise ValueError(_('Failed to generate new token'))
+                    
+            except Exception as e:
+                _logger.error(f"Error generating token for page {record.name}: {e}")
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {
+                        'title': _('Error'),
+                        'message': _('Error generating token: %s') % str(e),
+                        'type': 'danger'
+                    }
+                }

@@ -8,7 +8,9 @@
             <field name="arch" type="xml">
                 <form string="Báo giá">
                     <header>
-                        <field name="order_state_custom" widget="statusbar" statusbar_visible="quotation,deposit,production,delivery,payment"
+                        <field name="order_state_custom" 
+                                widget="statusbar" 
+                                statusbar_visible="quotation,deposit,production,delivery,payment,completed"
                             />
                     </header>
                     <sheet>
@@ -129,15 +131,23 @@
                                        string="Người phụ trách"
                                        readonly="1"
                                        groups="dac_erp.group_dac_erp_sale"/>  <!-- Sale users chỉ được xem -->
-                                <!-- Nút liên hệ khách hàng bên dưới
-                                <field name="pancake_order_link" invisible="1"/>
-                                    <div colspan="2">
-                                    <button name="action_open_pancake_link"
-                                        type="object"
-                                        string="Pancake"
-                                        class="btn-primary"
-                                        invisible = 'pancake_order_link == False'/>
-                                    </div> -->
+                                <field name="production_is_delayed"
+                                       string="Có trễ không?"
+                                       widget="boolean_toggle"
+                                       invisible="(order_state_custom in ['quotation','deposit']) and (not started_delivery)"
+                                       readonly="order_state_custom != 'production' or started_delivery"/>
+
+                                <field name="production_delay_date"
+                                       string="Ngày trễ"
+                                       invisible="(not production_is_delayed) or ((order_state_custom in ['quotation','deposit']) and (not started_delivery))"
+                                       readonly="order_state_custom != 'production' or started_delivery"/>
+
+                                <field name="production_delay_reason"
+                                       string="Lý do trễ"
+                                       widget="text"
+                                       placeholder="Mô tả ngắn gọn nguyên nhân trễ…"
+                                       invisible="(not production_is_delayed) or ((order_state_custom in ['quotation','deposit']) and (not started_delivery))"
+                                       readonly="order_state_custom != 'production' or started_delivery"/>
                             </group>
                         </group>
                         <notebook>

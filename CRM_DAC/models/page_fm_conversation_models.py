@@ -301,7 +301,10 @@ class PageFmConversation(models.Model):
         
 
 
-    def _fetch_message_batch(self, page_specific_access_token, current_offset=0):
+    def _fetch_message_batch(self, page_specific_access_token, current_offset=0, retry_count=0):
+        """Fetch message batch với retry logic và timeout handling"""
+        import time
+        
         self.ensure_one()
         page_fm_id = self.page_fm_page_id.page_fm_id_str
         conv_fm_id = self.conversation_fm_id
@@ -320,34 +323,70 @@ class PageFmConversation(models.Model):
             'current_count': current_offset
         }
 
-        try:
-            response = requests.get(
-                messages_api_url,
-                headers={'Content-Type': 'application/json', 'Accept': 'application/json'},
-                params=params,
-                timeout=15
-            )
-            response.raise_for_status()
-            data = response.json()
-            
-            should_continue = True
-            all_msgs = data.get('messages', [])
-            filtered_msgs = []
+        max_retries = 3
+        timeout_seconds = 25  # Tăng timeout lên 25 giây
+        
+        for attempt in range(max_retries):
+            try:
+                if attempt > 0:
+                    # Exponential backoff: 2, 4, 8 giây
+                    delay = 2 ** attempt
+                    _logger.info(f"Retry attempt {attempt} after {delay}s delay for conversation {conv_fm_id}")
+                    time.sleep(delay)
 
-            # If we are not loading all, stop when we see the last saved message
-            if self.last_message_id and not self.env.context.get('load_all', False):
-                for msg in all_msgs:
-                    if msg.get('id') == self.last_message_id:
-                        should_continue = False
-                        break # Stop here, don't add this message or any older ones
-                    filtered_msgs.append(msg)
-            else:
-                filtered_msgs = all_msgs
+                response = requests.get(
+                    messages_api_url,
+                    headers={'Content-Type': 'application/json', 'Accept': 'application/json'},
+                    params=params,
+                    timeout=timeout_seconds
+                )
+                response.raise_for_status()
+                data = response.json()
+                
+                should_continue = True
+                all_msgs = data.get('messages', [])
+                filtered_msgs = []
 
-            return (should_continue, filtered_msgs)
-        except Exception as e:
-            _logger.error(f"Lỗi khi fetch tin nhắn (offset={current_offset}): {e}", exc_info=True)
-            return (False, [])
+                # If we are not loading all, stop when we see the last saved message
+                if self.last_message_id and not self.env.context.get('load_all', False):
+                    for msg in all_msgs:
+                        if msg.get('id') == self.last_message_id:
+                            should_continue = False
+                            break # Stop here, don't add this message or any older ones
+                        filtered_msgs.append(msg)
+                else:
+                    filtered_msgs = all_msgs
+
+                # Success - log if this was a retry
+                if attempt > 0:
+                    _logger.info(f"Successfully fetched messages for {conv_fm_id} on retry attempt {attempt}")
+                
+                return (should_continue, filtered_msgs)
+                
+            except requests.exceptions.Timeout as e:
+                _logger.warning(f"Timeout fetching messages (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt == max_retries - 1:
+                    _logger.error(f"Final timeout for conversation {conv_fm_id} after {max_retries} attempts")
+                    return (False, [])
+                    
+            except requests.exceptions.RequestException as e:
+                error_msg = str(e).lower()
+                if 'rate limit' in error_msg or 'too many requests' in error_msg:
+                    _logger.warning(f"Rate limit hit for {conv_fm_id} (attempt {attempt + 1})")
+                    if attempt < max_retries - 1:
+                        time.sleep(5 * (attempt + 1))  # Longer delay for rate limits
+                        continue
+                
+                _logger.error(f"Request error fetching messages (attempt {attempt + 1}): {e}")
+                if attempt == max_retries - 1:
+                    return (False, [])
+                    
+            except Exception as e:
+                _logger.error(f"Unexpected error fetching messages (attempt {attempt + 1}): {e}", exc_info=True)
+                if attempt == max_retries - 1:
+                    return (False, [])
+
+        return (False, [])
 
     def _fetch_all_messages(self, page_specific_access_token):
         self.ensure_one()
@@ -371,46 +410,139 @@ class PageFmConversation(models.Model):
 
         return all_messages
     
+
+    
     def sync_all_conversations_scheduled(self):
         recent_date = datetime.now() - timedelta(days=1)
         recent_month = datetime.now() - timedelta(days=30)
 
+        # Debug đơn giản
+        total_conversations = self.env['page.fm.conversation'].search_count([])
+        _logger.info(f"Bắt đầu sync scheduled - Tổng {total_conversations} conversations trong hệ thống")
+        
+        if total_conversations == 0:
+            _logger.warning("Không có conversation nào trong hệ thống! Hãy đồng bộ Pages và Conversations trước.")
+            return
+
+        # SIMPLIFIED DOMAIN - Chỉ dùng điều kiện thời gian cơ bản
         conversations = self.env['page.fm.conversation'].search([
-            # '|',
-            '|',
+            '&',  # AND operator  
+            '|',  # OR cho điều kiện thời gian
             ('updated_at_fm_by_hand', '=', False),
             ('updated_at_fm_by_hand', '<', recent_date.strftime('%Y-%m-%d %H:%M:%S')),
-            ('updated_at_fm', '>=', recent_month.strftime('%Y-%m-%d %H:%M:%S')),
-            ('last_message_sync_fm', 'not ilike', 'Sing nhật của'),
-            ('last_message_sync_fm', 'not ilike', 'Zalo chỉ hiển thị tin nhắn từ sau lần đăng nhập đầu tiên'),
+            ('updated_at_fm', '>=', recent_month.strftime('%Y-%m-%d %H:%M:%S')),  # AND với cập nhật gần đây
         ])
 
-        if len(self) > 1:
+        # Nếu có conversation được chọn cụ thể (từ UI), dùng chúng thay vì filter
+        if len(self) >= 1:  # Sửa từ > 1 thành >= 1 để hỗ trợ chọn 1 conversation
             conversations = self
-        _logger.info(f"Starting scheduled sync for {len(conversations)} recent conversations...")
+            _logger.info(f"User đã chọn {len(conversations)} cuộc hội thoại cụ thể để sync")
+        else:
+            _logger.info(f"Chế độ tự động: Tìm thấy {len(conversations)} cuộc hội thoại cần sync theo filter")
+        
+        _logger.info(f"Sẽ đồng bộ {len(conversations)} cuộc hội thoại")
+        
+        if len(conversations) == 0:
+            _logger.warning("Không có conversation nào cần đồng bộ sau khi áp dụng filter.")
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Thông báo',
+                    'message': 'Không có conversation nào cần đồng bộ',
+                    'type': 'warning'
+                }
+            }
+        
+        # Sử dụng helper method chung
+        self._perform_sync_batch(conversations)
+        
+        # Trả về reload action với thông báo
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'reload',
+        }
+
+
+
+    def _perform_sync_batch(self, conversations):
+        """Helper method để thực hiện sync một batch conversations"""
+        # Lấy main access token một lần cho tất cả
+        main_access_token = self.env['ir.config_parameter'].sudo().get_param('page_fm.access_token')
+        if not main_access_token:
+            _logger.error("Thiếu main_access_token trong system parameters.")
+            return
+
+        synced_count = 0
+        error_count = 0
+        consecutive_errors = 0
+        max_consecutive_errors = 5  # Circuit breaker threshold
+        
         for conv in conversations:
             try:
-                conv.action_sync_messages()
-                conv.updated_at_fm_by_hand = datetime.now()
-                self.env.cr.commit()
+                # Circuit breaker: Dừng nếu quá nhiều lỗi liên tiếp
+                if consecutive_errors >= max_consecutive_errors:
+                    _logger.error(f"Circuit breaker activated: {consecutive_errors} consecutive errors. Stopping sync.")
+                    break
+                
+                customer_name = conv.customer_name_fm or conv.name or f"Conversation {conv.id}"
+                _logger.info(f"Bắt đầu sync conversation cho khách hàng: {customer_name} (ID: {conv.id})")
+                
+                # Kiểm tra token trước khi sync
+                page = conv.page_fm_page_id
+                if not page:
+                    _logger.error(f"Conversation {conv.id} không có page_fm_page_id")
+                    error_count += 1
+                    consecutive_errors += 1
+                    continue
+                
+                try:
+                    page_token = page._generate_page_specific_access_token(main_access_token)
+                    if not page_token:
+                        _logger.error(f"Không thể tạo token cho page {page.name} (ID: {page.page_fm_id_str})")
+                        error_count += 1
+                        consecutive_errors += 1
+                        continue
+                    
+                    # Thực hiện sync
+                    result = conv.action_sync_messages()
+                    message_count = conv.message_count
+                    
+                    _logger.info(f"✓ Đã sync {message_count} tin nhắn cho cuộc hội thoại của khách hàng: {customer_name}")
+                    
+                    conv.updated_at_fm_by_hand = datetime.now()
+                    synced_count += 1
+                    consecutive_errors = 0  # Reset error counter on success
+                    self.env.cr.commit()
+                    
+                    # THÊM RATE LIMITING: Delay giữa các conversation
+                    import time
+                    time.sleep(0.5)  # Delay 500ms giữa mỗi conversation
+                    
+                except Exception as token_error:
+                    _logger.error(f"Lỗi token/API cho conversation {conv.id} ({customer_name}): {token_error}")
+                    error_count += 1
+                    consecutive_errors += 1
+                    self.env.cr.rollback()
+                    
+                    # Nếu lỗi timeout, delay lâu hơn trước khi tiếp tục
+                    if "timeout" in str(token_error).lower() or "connection" in str(token_error).lower():
+                        _logger.warning(f"Network error detected, waiting 5 seconds before continuing...")
+                        import time
+                        time.sleep(5)
+                    
             except Exception as e:
-                _logger.error(f"Lỗi khi sync hội thoại {conv.id}: {e}")
+                customer_name = getattr(conv, 'customer_name_fm', None) or getattr(conv, 'name', None) or f"Conversation {conv.id}"
+                _logger.error(f"Lỗi khi sync hội thoại {conv.id} ({customer_name}): {e}")
+                error_count += 1
+                consecutive_errors += 1
                 self.env.cr.rollback()
-        _logger.info(f"Finished scheduled sync for {len(conversations)} recent conversations.")
+        
+        _logger.info(f"Finished sync: {synced_count} thành công, {error_count} lỗi từ tổng {len(conversations)} conversations.")
+        
+        if error_count > 0:
+            _logger.warning(f"Có {error_count} lỗi trong quá trình sync. Kiểm tra: 1) Token API, 2) Kết nối mạng, 3) Log chi tiết ở trên.")
 
-
-
-    # def sync_all_conversations_scheduled(self):
-    #     dbname = self.env.cr.dbname
-    #     conversations = self.env['page.fm.conversation'].search([])
-
-    #     _logger.info(f"Starting scheduled sync for {len(conversations)} conversations...")
-
-    #     with ThreadPoolExecutor(max_workers=5) as executor:
-    #         for conv in conversations:
-    #             executor.submit(sync_one_conversation, conv.id, dbname)
-
-    #     _logger.info(f"Finished scheduled sync for {len(conversations)} recent conversations.")
     
 
     def action_sync_messages(self, date_from=None, date_to=None, unread_first=False, **kwargs):
@@ -621,7 +753,7 @@ class PageFmConversation(models.Model):
             try:
                 record._recompute_staff_links()
             except Exception:
-                _logger.exception("Lỗi khi cập nhật owner/participants cho conversation %s", record.id)
+                _logger.exception("Lỗi khi gán staff cho conversation %s", record.id)
             
             # >>> NEW: đẩy thông tin phụ trách sang Partner (nếu đã có partner)
             if record.partner_id:
@@ -661,12 +793,22 @@ class PageFmConversation(models.Model):
             if disallowed:
                 raise AccessError(_("Bạn không thể thực hiện thay đổi này. \nVui lòng liên hệ quản lý hoặc quản trị viên để hỗ trợ!"))
 
+        # Nếu sửa suggestion_note -> cập nhật mốc last_suggestion_at
+        if 'suggestion_note' in vals:
+            # chỉ set khi thực sự có thay đổi nội dung
+            now = fields.Datetime.now()
+            for rec in self:
+                old = (rec.suggestion_note or '').strip()
+                new = (vals.get('suggestion_note') or '').strip()
+                if old != new:
+                    vals = dict(vals)  # tránh mutate
+                    vals['last_suggestion_at'] = now
+                    break
+
         # Nếu có thay đổi thuộc nhóm “form”, set last_update_at = now
         if any(k in _FORM_TOUCH_FIELDS for k in vals.keys()):
             vals = dict(vals)  # tránh mutate context
             vals['updated_at_fm_by_hand'] = fields.Datetime.now()  # để compute gom mốc
-            # hoặc trực tiếp:
-            # vals['last_update_at'] = fields.Datetime.now()
 
         res = super(PageFmConversation, self).write(vals)
 
@@ -748,90 +890,201 @@ class PageFmConversation(models.Model):
         }
         
     # === BATCH & CRON SYNC =================================================
-    # Domain chọn hội thoại cần sync (tuỳ chỉnh nếu muốn)
-    def _get_batch_sync_domain(self):
-        # Gợi ý: sync những cuộc có require_processing hoặc có tin chưa đọc
-        domain = ['|', ('require_processing', '=', True), ('is_unread_fm', '=', True)]
-        return domain
+    # --- Helper: con trỏ tiến độ ---
+    def _get_conv_pointer(self):
+        ICP = self.env['ir.config_parameter'].sudo()
+        return int(ICP.get_param('pancake.last_conv_id', '0') or 0)
+
+    def _set_conv_pointer(self, value):
+        self.env['ir.config_parameter'].sudo().set_param('pancake.last_conv_id', str(int(value or 0)))
 
     def _get_batch_size(self, batch_size=None):
         ICP = self.env['ir.config_parameter'].sudo()
-        default_size = int(ICP.get_param('pancake.sync_batch_size', '10'))
-        return int(batch_size or default_size or 10)
+        default_size = int(ICP.get_param('pancake.sync_batch_size', '50'))  # 50 mặc định
+        return int(batch_size or default_size or 50)
 
     @api.model
     def cron_sync_conversations_batch(self, batch_size=None):
-        """Cron gọi hàm này: sync theo batch (mặc định 10). Chạy nền."""
+        """Đồng bộ theo batch:
+        - Pha 1: các conv mới (id > last_id) theo thứ tự tăng
+        - Pha 2: phần còn lại dành cho conv cần xử lý / chưa đọc (không ảnh hưởng con trỏ)
+        - Sau mỗi conv mới thành công -> cập nhật con trỏ
+        - Log ID cuối cùng đã đồng bộ
+        """
         size = self._get_batch_size(batch_size)
-        domain = self._get_batch_sync_domain()
-        # ưu tiên sort theo updated_at để “mới trước”
-        convs = self.search(
-            domain,
-            order="last_message_sync_fm asc, updated_at_fm desc, id asc",  # <-- NEW: ưu tiên record chưa/ lâu chưa sync
-            limit=size,
-        )
+        last_id = self._get_conv_pointer()
+        processed = 0
+        last_processed_id = last_id
 
+        # --- PHA 1: conv mới theo con trỏ, id tăng dần ---
+        new_convs = self.search([('id', '>', last_id)], order="id asc", limit=size)
+
+        # --- PHA 2: nếu còn quota, lấy conv cũ nhưng cần xử lý/chưa đọc ---
+        remainder = size - len(new_convs)
+        extra_convs = self.browse()
+        if remainder > 0:
+            extra_domain = [
+                ('id', '<=', last_id),
+                '|', ('require_processing', '=', True),
+                    ('is_unread_fm', '=', True),
+            ]
+            extra_convs = self.search(
+                extra_domain,
+                order="last_message_sync_fm asc, updated_at_fm desc, id asc",
+                limit=remainder,
+            )
+
+        # Gộp thứ tự: mới trước, rồi extra
+        convs = new_convs | extra_convs
         if not convs:
-            _logger.info("Pancake Sync: không có hội thoại nào cần đồng bộ.")
+            _logger.info("Pancake Sync: không có hội thoại nào cần đồng bộ. (pointer=%s)", last_id)
             return 0
 
-        processed = 0
+        # Chạy đồng bộ
         for conv in convs:
             try:
                 conv.action_sync_messages()
-                self.env.cr.commit()   # commit từng cái để an toàn
+                self.env.cr.commit()
                 processed += 1
+
+                # Nếu đây là conv mới (id > last_id), cập nhật con trỏ dần lên
+                if conv.id > last_processed_id:
+                    last_processed_id = conv.id
+                    self._set_conv_pointer(last_processed_id)
             except Exception:
                 _logger.exception("Pancake Sync: lỗi khi sync hội thoại id=%s", conv.id)
                 self.env.cr.rollback()
-        _logger.info("Pancake Sync: đã sync %s/%s hội thoại (batch).", processed, len(convs))
+
+        _logger.info(
+            "Pancake Sync: đã sync %s/%s hội thoại (pointer %s → %s). "
+            "ID cuối cùng đã đồng bộ: %s",
+            processed, len(convs), last_id, last_processed_id, last_processed_id
+        )
         return processed
 
-    def action_sync_conversations_batch_button(self, batch_size=None):
-        """Nút chạy tay: sync ngay 1 batch trong request web."""
-        processed = self.cron_sync_conversations_batch(batch_size=batch_size)
-        remain = self.search_count(self._get_batch_sync_domain())
-        return {
-            "type": "ir.actions.client",
-            "tag": "display_notification",
-            "params": {
-                "title": _("Đồng bộ hội thoại"),
-                "message": _("Đã xử lý %s hội thoại. Còn lại: %s") % (processed, remain),
-                "type": "success" if processed else "warning",
-                "sticky": False,
-            },
-        }
+    @api.model
+    def cron_sync_conversations_batch_with_circuit_breaker(self, batch_size=None):
+        """Cron sync với circuit breaker - xử lý lỗi token/timeout mạnh mẽ hơn
+        
+        Circuit Breaker Logic:
+        - Nếu có > 3 lỗi liên tiếp → tạm dừng 15 phút
+        - Nếu timeout/token error → clear cache và retry
+        - Rate limiting: delay giữa các request
+        """
+        import time
+        
+        # Kiểm tra circuit breaker
+        circuit_key = 'page_fm_circuit_breaker_until'
+        circuit_until = self.env['ir.config_parameter'].sudo().get_param(circuit_key)
+        
+        if circuit_until:
+            circuit_datetime = datetime.fromisoformat(circuit_until)
+            if datetime.now() < circuit_datetime:
+                remaining = (circuit_datetime - datetime.now()).seconds // 60
+                _logger.info(f"Circuit breaker active - còn {remaining} phút")
+                return 0
+        
+        # Reset circuit breaker
+        self.env['ir.config_parameter'].sudo().set_param(circuit_key, '')
+        
+        size = self._get_batch_size(batch_size)
+        last_id = self._get_conv_pointer()
+        processed = 0
+        error_count = 0
+        consecutive_errors = 0
+        last_processed_id = last_id
 
-    def action_enqueue_sync_now(self):
-        """Nút tạo/đặt lại cron để chạy NGAY (nextcall = now())."""
-        IrCron = self.env['ir.cron'].sudo()
-        # cố gắng lấy theo xml_id nếu đã cài từ data/cron.xml
-        cron = self.env.ref('CRM_DAC.cron_pancake_sync_conversations', raise_if_not_found=False)
-        if not cron:
-            model_id = self.env['ir.model']._get('page.fm.conversation').id
-            cron = IrCron.create({
-                'name': 'CRM_DAC: Sync Conversations (batch)',
-                'model_id': model_id,
-                'state': 'code',
-                'code': "model.cron_sync_conversations_batch()",
-                'interval_number': 5,
-                'interval_type': 'minutes',
-                'active': True,
-            })
-        cron.write({'nextcall': fields.Datetime.now(), 'active': True})
-        return {
-            "type": "ir.actions.client",
-            "tag": "display_notification",
-            "params": {
-                "title": _("Đã enqueue job đồng bộ"),
-                "message": _("Cron sẽ chạy trong giây lát."),
-                "type": "success",
-                "sticky": False,
-            },
-        }
+        # Cho phép batch size lên đến 50, chỉ giảm nếu quá lớn
+        if size > 50:
+            size = 50
+            _logger.info("Giảm batch size xuống 50 để tránh rate limit")
         
+        _logger.info(f"Pancake Circuit Breaker Sync: sẽ xử lý tối đa {size} conversations")
+
+        # Lấy conversations cần sync
+        new_convs = self.search([('id', '>', last_id)], order="id asc", limit=size)
+        remainder = size - len(new_convs)
+        extra_convs = self.browse()
         
-        # --- NEW: helper hiển thị thông báo ---
+        if remainder > 0:
+            extra_domain = [
+                ('id', '<=', last_id),
+                '|', ('require_processing', '=', True),
+                    ('is_unread_fm', '=', True),
+            ]
+            extra_convs = self.search(extra_domain, order="last_message_sync_fm asc", limit=remainder)
+
+        convs = new_convs | extra_convs
+        if not convs:
+            _logger.info("Pancake Circuit Breaker Sync: không có hội thoại nào cần đồng bộ")
+            return 0
+
+        _logger.info(f"Pancake Circuit Breaker Sync: bắt đầu sync {len(convs)} conversations")
+
+        for i, conv in enumerate(convs):
+            try:
+                # Rate limiting: delay giữa các request - giảm delay cho batch size lớn hơn
+                if i > 0:
+                    delay = 1.5 if len(convs) <= 50 else 2  # 1.5s cho ≤50, 2s cho >50
+                    time.sleep(delay)
+                
+                # Sync conversation
+                result = conv.action_sync_messages()
+                
+                if result:
+                    self.env.cr.commit()
+                    processed += 1
+                    consecutive_errors = 0  # Reset consecutive error count
+                    
+                    # Cập nhật pointer cho conv mới
+                    if conv.id > last_processed_id:
+                        last_processed_id = conv.id
+                        self._set_conv_pointer(last_processed_id)
+                else:
+                    _logger.warning(f"Sync failed for conversation {conv.id} - no result")
+                    consecutive_errors += 1
+                    
+            except Exception as e:
+                error_msg = str(e).lower()
+                error_count += 1
+                consecutive_errors += 1
+                
+                _logger.error(f"Circuit Breaker Sync: lỗi conversation {conv.id}: {e}")
+                
+                # Xử lý lỗi timeout/token đặc biệt
+                if any(keyword in error_msg for keyword in ['timeout', 'token', 'rate limit', 'too many requests']):
+                    _logger.warning(f"Detected timeout/token error - clearing token cache")
+                    
+                    # Clear token cache
+                    try:
+                        conv.page_fm_page_id.action_clear_token_cache()
+                        time.sleep(5)  # Đợi 5 giây sau khi clear cache
+                    except:
+                        pass
+                
+                # Circuit breaker: nếu > 3 lỗi liên tiếp → dừng 15 phút
+                if consecutive_errors >= 3:
+                    circuit_until = (datetime.now() + timedelta(minutes=15)).isoformat()
+                    self.env['ir.config_parameter'].sudo().set_param(circuit_key, circuit_until)
+                    
+                    _logger.error(f"Circuit breaker TRIGGERED after {consecutive_errors} consecutive errors - pausing for 15 minutes")
+                    break
+                
+                # Rollback và tiếp tục với conversation tiếp theo
+                self.env.cr.rollback()
+                time.sleep(3)  # Delay lâu hơn sau lỗi
+
+        final_message = (f"Circuit Breaker Sync completed: {processed}/{len(convs)} success, "
+                        f"{error_count} errors, pointer: {last_id} → {last_processed_id}")
+        
+        if consecutive_errors >= 3:
+            final_message += f" - CIRCUIT BREAKER ACTIVE (15 min pause)"
+        
+        _logger.info(final_message)
+        return processed
+
+
+       # --- NEW: helper hiển thị thông báo ---
     def _notify(self, title, message, notif_type='warning'):
         return {
             'type': 'ir.actions.client',
@@ -886,30 +1139,48 @@ class PageFmConversation(models.Model):
     )
 
     def _recompute_staff_links(self):
-        """Lấy staff từ message để xác định owner & participants."""
+        """Gán owner/participants từ message NHƯNG chỉ khi đang TRỐNG.
+        Không xóa/đè giá trị đã gán tay.
+        """
         Message = self.env['page.fm.message'].sudo()
+        Users   = self.env['res.users'].sudo()
+
         for rec in self:
-            # người gửi staff mới nhất -> owner
-            last_staff_msg = Message.search(
-                [('conversation_id', '=', rec.id), ('staff', '!=', False)],
-                order='inserted_at_fm desc, id desc', limit=1
-            )
-            new_owner = last_staff_msg.staff if last_staff_msg else False
+            need_owner        = not rec.owner_id
+            need_participants = not rec.participant_user_ids
 
-            # tập hợp tất cả staff đã từng nhắn
-            rows = Message.read_group(
-                [('conversation_id', '=', rec.id), ('staff', '!=', False)],
-                ['staff'], ['staff']
-            )
-            participants = self.env['res.users']
-            for r in rows:
-                if r.get('staff'):
-                    participants |= self.env['res.users'].browse(r['staff'][0])
+            # nếu cả 2 đều đã có -> bỏ qua
+            if not (need_owner or need_participants):
+                continue
 
-            rec.write({
-                'owner_id': new_owner.id if new_owner else False,
-                'participant_user_ids': [(6, 0, participants.ids)],
-            })
+            # lấy tin có staff mới nhất (để đề xuất owner)
+            last_staff_msg = False
+            if need_owner:
+                last_staff_msg = Message.search(
+                    [('conversation_id', '=', rec.id), ('staff', '!=', False)],
+                    order='inserted_at_fm desc, id desc', limit=1
+                )
+
+            # lấy full danh sách staff đã từng nhắn (để làm participants)
+            candidates = Users.browse()
+            if need_participants:
+                rows = Message.read_group(
+                    [('conversation_id', '=', rec.id), ('staff', '!=', False)],
+                    ['staff'], ['staff']
+                )
+                if rows:
+                    # rows[i]['staff'] = [id, display_name]
+                    candidates = Users.browse([r['staff'][0] for r in rows if r.get('staff')])
+
+            vals = {}
+            if need_owner and last_staff_msg and last_staff_msg.staff:
+                vals['owner_id'] = last_staff_msg.staff.id
+
+            if need_participants and candidates:
+                vals['participant_user_ids'] = [(6, 0, candidates.ids)]
+
+            if vals:
+                rec.write(vals)
 
     def action_assign_to_me(self):
         for rec in self:
@@ -953,4 +1224,217 @@ class PageFmConversation(models.Model):
                 r.updated_at_fm_by_hand,
             ]
             r.last_update_at = max([c for c in candidates if c]) if any(candidates) else False
+            
+            
+    @api.onchange('owner_id')
+    def _onchange_owner_push_to_participants(self):
+        """Khi người dùng chọn/chỉnh owner trên form:
+        - Không đụng gì khác
+        - Chỉ đảm bảo owner có mặt trong participant_user_ids
+        """
+        for rec in self:
+            if rec.owner_id and rec.owner_id not in rec.participant_user_ids:
+                rec.participant_user_ids |= rec.owner_id
+
+    # === Methods for view buttons ===
+    
+    def action_refresh_conversation(self):
+        """Refresh conversation data from Pages.fm"""
+        for record in self:
+            if record.conversation_fm_id:
+                try:
+                    # Sync lại conversation này từ API
+                    self.env['page.fm.conversation'].with_context(
+                        force_sync_conversation_id=record.conversation_fm_id
+                    ).sync_all_conversations_scheduled()
+                    # Show success message
+                    return {
+                        'type': 'ir.actions.client',
+                        'tag': 'display_notification',
+                        'params': {
+                            'title': _('Success'),
+                            'message': _('Conversation refreshed successfully'),
+                            'type': 'success'
+                        }
+                    }
+                except Exception as e:
+                    _logger.error(f"Error refreshing conversation {record.conversation_fm_id}: {e}")
+                    return {
+                        'type': 'ir.actions.client',
+                        'tag': 'display_notification',
+                        'params': {
+                            'title': _('Error'),
+                            'message': _('Error refreshing conversation: %s') % str(e),
+                            'type': 'danger'
+                        }
+                    }
+
+    def action_mark_as_read(self):
+        """Mark conversation as read"""
+        for record in self:
+            record.write({'is_unread': False})
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Success'),
+                'message': _('Conversation(s) marked as read'),
+                'type': 'success'
+            }
+        }
+
+    def action_mark_as_unread(self):
+        """Mark conversation as unread"""
+        for record in self:
+            record.write({'is_unread': True})
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Success'),
+                'message': _('Conversation(s) marked as unread'),
+                'type': 'success'
+            }
+        }
+
+    def action_sync_messages_button(self):
+        """Nút sync tin nhắn cho form - có thông báo và reload"""
+        for record in self:
+            try:
+                _logger.info(f"Bắt đầu sync tin nhắn cho conversation {record.id} ({record.name})")
+                result = record.action_sync_messages()
+                
+                # Hiển thị thông báo thành công và reload
+                self.env.cr.commit()  # Đảm bảo dữ liệu được lưu
+                
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'reload',
+                }
+            except Exception as e:
+                _logger.error(f"Lỗi khi sync tin nhắn cho conversation {record.id}: {e}")
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification', 
+                    'params': {
+                        'title': 'Lỗi đồng bộ',
+                        'message': f'Lỗi: {str(e)}',
+                        'type': 'danger'
+                    }
+                }
+
+    def action_debug_conversation(self):
+        """Debug conversation - hiển thị thông tin hữu ích"""
+        self.ensure_one()
+        
+        # Lấy thông tin debug
+        main_token = self.env['ir.config_parameter'].sudo().get_param('page_fm.access_token')
+        page_token = None
+        
+        try:
+            if self.page_fm_page_id and main_token:
+                page_token = self.page_fm_page_id._generate_page_specific_access_token(main_token)
+        except Exception as e:
+            page_token = f"Error: {e}"
+        
+        message = f"""
+📋 Thông tin Debug:
+• Conversation ID: {self.conversation_fm_id}
+• Customer ID: {self.customer_fm_id}
+• Page ID: {self.page_fm_id_str_related}
+• Platform: {self.platform_fm}
+• Message Count: {self.message_count}
+• Last Sync: {self.last_message_sync_fm or 'Chưa sync'}
+• Main Token: {'✅ Có' if main_token else '❌ Thiếu'}
+• Page Token: {'✅ Có' if page_token and 'Error' not in str(page_token) else f'❌ {page_token}'}
+        """
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': '🔍 Debug Info',
+                'message': message,
+                'type': 'info',
+                'sticky': True
+            }
+        }
+
+    def action_sync_all_conversations_force(self):
+        """Force sync ALL conversations without any filters"""
+        all_conversations = self.env['page.fm.conversation'].search([])
+        
+        if not all_conversations:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _('No Data'),
+                    'message': _('No conversations found in system!'),
+                    'type': 'warning'
+                }
+            }
+        
+        _logger.info(f"FORCE SYNC: Starting sync for ALL {len(all_conversations)} conversations...")
+        
+        synced_count = 0
+        error_count = 0
+        
+        for conv in all_conversations:
+            try:
+                customer_name = getattr(conv, 'customer_name_fm', None) or getattr(conv, 'name', None) or f"Conversation {conv.id}"
+                
+                # Get page info
+                page = conv.page_fm_page_id
+                if not page:
+                    _logger.warning(f"Conversation {conv.id} ({customer_name}) không có page liên kết")
+                    error_count += 1
+                    continue
+                
+                try:
+                    # Sync messages using existing method
+                    result = conv.action_sync_messages()
+                    message_count = conv.message_count
+                    
+                    _logger.info(f"✓ FORCE SYNC: {message_count} tin nhắn cho cuộc hội thoại: {customer_name}")
+                    
+                    conv.updated_at_fm_by_hand = datetime.now()
+                    synced_count += 1
+                    self.env.cr.commit()
+                    
+                except Exception as sync_error:
+                    _logger.error(f"FORCE SYNC error for conversation {conv.id} ({customer_name}): {sync_error}")
+                    error_count += 1
+                    self.env.cr.rollback()
+                    
+            except Exception as e:
+                customer_name = getattr(conv, 'customer_name_fm', None) or f"Conversation {conv.id}"
+                _logger.error(f"FORCE SYNC outer error for conversation {conv.id} ({customer_name}): {e}")
+                error_count += 1
+                self.env.cr.rollback()
+        
+        _logger.info(f"FORCE SYNC finished: {synced_count} thành công, {error_count} lỗi từ tổng {len(all_conversations)} conversations.")
+        
+        # Sau khi sync xong, reload để hiển thị dữ liệu mới
+        self.env.cr.commit()
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'reload',
+        }
+
+    def action_clear_token_cache(self):
+        """Xóa token cache để giải quyết vấn đề timeout"""
+        if hasattr(self, 'page_fm_page_id') and self.page_fm_page_id:
+            self.page_fm_page_id.clear_token_cache()
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'reload',
+            }
+        else:
+            # Clear all cache
+            self.env['page.fm.page'].clear_all_token_cache()
+            return {
+                'type': 'ir.actions.client', 
+                'tag': 'reload',
+            }
 

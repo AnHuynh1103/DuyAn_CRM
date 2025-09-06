@@ -183,13 +183,14 @@
                             <field name="last_message_snippet" string="Đoạn tin nhắn cuối" readonly="1" groups="dac_erp.group_dac_erp_manager"/>
                             <field name="updated_at_fm" string="Thời gian cập nhật" readonly="1" groups="dac_erp.group_dac_erp_manager"/>
                             <field name="last_message_sync_fm" string="Thời gian đồng bộ tin nhắn cuối" readonly="1" groups="dac_erp.group_dac_erp_manager"/>
+                            <field name="last_update_at" string="Cập nhật lần cuối" widget="datetime" readonly="1"/>
                         </group>
                         <group>
                             <field name="status_state" string="Trạng thái"/>
                             <field name="require_processing" string="Có yêu cầu xử lý" widget="boolean_toggle"/>
                             <field name="status_label" string="Nhãn hiển thị" readonly="1"/>
                             <field name="suggestion_note" string="Ghi chú &amp; Gợi ý"/>
-                            <field name="last_update_at" string="Cập nhật lần cuối" widget="datetime" readonly="1"/>
+                            <field name="last_suggestion_at" string="Thời gian cập nhật ghi chú" widget="datetime" readonly="1"/>
                         </group>
                     </group>
                     <notebook>

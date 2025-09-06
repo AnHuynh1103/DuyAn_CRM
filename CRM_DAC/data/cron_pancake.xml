@@ -6,7 +6,7 @@
             <field name="name">CRM_DAC: Sync Conversations (batch)</field>
             <field name="model_id" ref="CRM_DAC.model_page_fm_conversation"/>
             <field name="state">code</field>
-            <field name="code">model.cron_sync_conversations_batch()</field>
+            <field name="code">model.cron_sync_conversations_batch_with_circuit_breaker()</field>
             <field name="interval_number">5</field>
             <field name="interval_type">minutes</field>
             <field name="active">True</field>

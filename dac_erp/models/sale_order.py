@@ -1,6 +1,7 @@
 from odoo import models, fields, api, _
-from odoo.exceptions import UserError, AccessError
+from odoo.exceptions import UserError, AccessError, ValidationError
 import logging
+from datetime import date
 
 _logger = logging.getLogger(__name__)
 
@@ -12,8 +13,9 @@ class SaleOrder(models.Model):
         ('deposit', 'Đặt cọc'),
         ('production', 'Sản xuất'),
         ('delivery', 'Giao hàng'),
-        ('payment', 'Thu tiền')
-    ], string='Trạng thái đơn hàng', default='quotation')
+        ('payment', 'Thu tiền'),
+        ('completed', 'Hoàn thành'),
+    ], string='Trạng thái đơn hàng', default='quotation', tracking=True)
 
     date = fields.Date(string='Ngày đơn hàng')
 
@@ -30,6 +32,60 @@ class SaleOrder(models.Model):
     
     # Tiến trình sản xuất
     production_deadline = fields.Date(string="Deadline sản xuất")
+    
+    # --- flags đánh dấu đã chạm các mốc quy trình ---
+    reached_production = fields.Boolean(default=False, copy=False)
+    started_delivery   = fields.Boolean(default=False, copy=False)
+    
+    # --- Sản xuất trễ ---
+    production_is_delayed = fields.Boolean(
+        string="Sản xuất bị trễ?"
+    )
+    production_delay_date = fields.Date(
+        string="Ngày trễ"
+    )
+    production_delay_reason = fields.Text(
+        string="Lý do trễ"
+    )
+
+    @api.onchange('production_is_delayed')
+    def _onchange_production_is_delayed(self):
+        for o in self:
+            if not o.production_is_delayed:
+                o.production_delay_date = False
+                o.production_delay_reason = False
+
+    @api.constrains('production_is_delayed',
+                'production_delay_date',
+                'production_delay_reason',
+                'production_deadline')
+    def _check_production_delay(self):
+        """
+        - KHÔNG ép người dùng phải nhập ngay khi bật công tắc.
+        - Chỉ validate nếu đã nhập MỘT TRONG HAI trường (date/reason),
+        còn thiếu thì yêu cầu đủ cặp.
+        - Các ràng buộc so sánh ngày vẫn giữ.
+        """
+        for o in self:
+            if not o.production_is_delayed:
+                continue
+
+            # Nếu chưa nhập gì -> cho phép lưu tạm, không raise ở đây
+            if not o.production_delay_date and not (o.production_delay_reason or '').strip():
+                continue
+
+            # Đã nhập 1 trong 2 thì bắt buộc đủ cặp
+            if not o.production_delay_date or not (o.production_delay_reason or '').strip():
+                raise ValidationError(_("Khi nhập thông tin trễ, phải điền cả 'Ngày trễ' và 'Lý do trễ'."))
+
+            # Ngày trễ PHẢI LỚN HƠN deadline (không được bằng/nhỏ hơn)
+            if o.production_deadline and o.production_delay_date <= o.production_deadline:
+                raise ValidationError(_("Ngày trễ phải sau 'Ngày hoàn tất'."))
+
+            # Nếu chưa có deadline thì ngày trễ phải lớn hơn hôm nay
+            if not o.production_deadline and o.production_delay_date <= date.today():
+                raise ValidationError(_("Ngày trễ phải sau ngày hiện tại."))
+
     
     # Tiến trình giao hàng
     delivery_address = fields.Text(string="Địa chỉ giao hàng")
@@ -260,6 +316,12 @@ class SaleOrder(models.Model):
 
     def write(self, vals):
         """Override write để trigger kiểm tra deposit khi cần"""
+        protected_keys = {'production_is_delayed', 'production_delay_date', 'production_delay_reason'}
+        if protected_keys.intersection(vals.keys()):
+            for rec in self:
+                if rec.is_delivery_confirmed or rec.order_state_custom in ('delivery', 'payment', 'completed'):
+                    raise UserError(_("Không thể sửa thông tin trễ sau khi đơn đã chuyển sang Giao hàng."))
+
         result = super().write(vals)
         
         # Nếu có thay đổi order_line, kiểm tra lại deposit
@@ -364,6 +426,14 @@ class SaleOrder(models.Model):
                 # Kiểm tra deadline sản xuất trước khi xác nhận
                 if not order.production_deadline:
                     raise UserError("Vui lòng nhập 'Ngày hoàn tất' trước khi xác nhận sản xuất!")
+                # Nếu bật trễ thì yêu cầu đủ và đúng ngày
+                if order.production_is_delayed:
+                    if not order.production_delay_date or not (order.production_delay_reason or '').strip():
+                        raise UserError(_("Bật 'Có trễ' thì phải nhập 'Ngày trễ' và 'Lý do trễ'."))
+                    if order.production_deadline and order.production_delay_date <= order.production_deadline:
+                        raise UserError(_("Ngày trễ phải sau 'Ngày hoàn tất'."))
+                    if not order.production_deadline and order.production_delay_date <= date.today():
+                        raise UserError(_("Ngày trễ phải sau ngày hiện tại."))
                 order.is_production_confirmed = True
             elif order.order_state_custom == 'delivery':
                 # Kiểm tra địa chỉ giao hàng trước khi xác nhận
@@ -379,68 +449,72 @@ class SaleOrder(models.Model):
         return True
 
     def action_proceed_to_production(self):
-        """Tiến hành sản xuất với logic mới:
-        - Nếu KHÔNG có đặt cọc (has_deposit=False): Chỉ cần nhập deadline sản xuất
-        - Nếu CÓ đặt cọc (has_deposit=True): Cần đầy đủ 3 bước như cũ
+        """Tiến hành sản xuất:
+        - Không cọc: chỉ cần 'production_deadline'
+        - Có cọc: phải xác nhận cọc + đã thanh toán hóa đơn cọc + 'production_deadline'
         """
         for order in self:
             if order.order_state_custom != 'deposit':
                 raise UserError("Chỉ có thể tiến hành sản xuất từ trạng thái đặt cọc!")
             
-            # TRƯỜNG HỢP 1: KHÔNG cần đặt cọc
+            # KHÔNG CỌC
             if not order.has_deposit:
-                # Chỉ cần kiểm tra deadline sản xuất
                 if not order.production_deadline:
                     raise UserError("Vui lòng nhập 'Ngày hoàn tất' trước khi tiến hành sản xuất!")
-                
-                # Chuyển sang trạng thái sản xuất ngay và set confirmed
                 order.order_state_custom = 'production'
                 order.is_production_confirmed = True
+                order.reached_production = True          # <— thêm dòng này
                 return True
-            
-            # TRƯỜNG HỢP 2: CÓ đặt cọc - giữ nguyên logic cũ
+
+            # CÓ CỌC
             if not order.is_deposit_confirmed:
                 raise UserError("Vui lòng xác nhận đặt cọc trước khi tiến hành sản xuất!")
-            
-            # RÀNG BUỘC 1: Kiểm tra đã thanh toán hóa đơn cọc
+
             if not order.has_paid_deposit_invoice:
                 raise UserError("Vui lòng thanh toán hóa đơn đặt cọc trước khi tiến hành sản xuất!")
-            
-            # RÀNG BUỘC 2: Kiểm tra đã nhập ngày hoàn tất
+
             if not order.production_deadline:
                 raise UserError("Vui lòng nhập 'Ngày hoàn tất' trước khi tiến hành sản xuất!")
-            
-            # RÀNG BUỘC 3: Double-check lại 2 điều kiện trên
+
             deposit_invoices = self.env['account.move'].search([
                 ('move_type', '=', 'out_invoice'),
                 ('invoice_origin', '=', order.name),
                 ('dac_deposit_invoice', '=', True),
                 ('payment_state', '=', 'paid')
             ])
-            
             if not deposit_invoices:
                 raise UserError("Không tìm thấy hóa đơn cọc đã thanh toán!")
-            
-            # Chuyển sang trạng thái sản xuất và set confirmed
+
             order.order_state_custom = 'production'
             order.is_production_confirmed = True
-            
-            
+            order.reached_production = True              # <— thêm dòng này
         return True
 
     def action_proceed_to_delivery(self):
         """Tiến hành giao hàng từ trạng thái sản xuất"""
         for order in self:
             if order.order_state_custom != 'production':
-                raise UserError("Chỉ có thể tiến hành giao hàng từ trạng thái sản xuất!")
-            
-            # Kiểm tra đã xác nhận sản xuất chưa
+                raise UserError(_("Chỉ có thể tiến hành giao hàng từ trạng thái sản xuất!"))
+
+            # Đã xác nhận sản xuất (được set khi bấm “Tiến hành sản xuất”)
             if not order.is_production_confirmed:
-                raise UserError("Vui lòng xác nhận sản xuất trước khi tiến hành giao hàng!")
-            
-            # Chuyển sang trạng thái giao hàng
+                raise UserError(_("Vui lòng xác nhận sản xuất trước khi tiến hành giao hàng!"))
+
+            # Nếu có trễ -> bắt buộc đủ & ngày trễ phải LỚN HƠN
+            if order.production_is_delayed:
+                if not order.production_delay_date or not (order.production_delay_reason or '').strip():
+                    raise UserError(_("Vui lòng chọn ngày trễ và lý do trễ."))
+
+                if order.production_deadline:
+                    if order.production_delay_date <= order.production_deadline:
+                        raise UserError(_("Ngày trễ phải sau 'Ngày hoàn tất'."))
+                else:
+                    if order.production_delay_date <= date.today():
+                        raise UserError(_("Ngày trễ phải sau ngày hiện tại."))
+
+            # Cho phép chuyển bước
+            order.started_delivery = True                  # <— thêm dòng này
             order.order_state_custom = 'delivery'
-            
         return True
 
     def action_deposit_invoice(self):
@@ -1134,3 +1208,9 @@ class SaleOrder(models.Model):
             'target': 'current',
         }
         
+    
+    # Đảm bảo cho import file ở trạng thái báo giá
+    @api.model
+    def create(self, vals):
+        vals.setdefault('order_state_custom', 'quotation')
+        return super().create(vals)

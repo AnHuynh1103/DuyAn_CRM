@@ -38,9 +38,10 @@
         'security/ir.model.access.csv',
         'security/user_access_rule.xml',
         'data/cron_pancake.xml',
-        'views/page_fm_views.xml',
+        # Tách riêng views cho Pages và Conversations
+        'views/page_fm_page_views.xml',                    # Quản lý Pages đã đồng bộ
+        'views/page_fm_conversation_views.xml',            # Quản lý Conversations  
         'views/KPI_View.xml',
-        'views/page_fm_conversation_views_inherit.xml',
         'views/res_partner_views_inherit_pancake.xml',
         'views/conversation_message_sync_wizard_views.xml',
         'views/menuitem.xml',

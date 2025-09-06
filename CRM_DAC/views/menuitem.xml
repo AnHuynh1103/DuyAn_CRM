@@ -10,14 +10,14 @@
                 groups="dac_erp.group_dac_erp_manager,base.group_system"/>
 
         <menuitem id="menu_page_fm_synced_pages_main"
-                name="Các trang đã đồng bộ"
+                name="📄 Trang đã đồng bộ"
                 parent="menu_page_fm_sync_root"
                 action="action_page_fm_page_simplified"
                 sequence="10"
                 groups="dac_erp.group_dac_erp_manager,base.group_system"/>
 
         <menuitem id="menu_page_fm_all_conversations_optional"
-                name="Các cuộc trò chuyện"
+                name="💬 Cuộc trò chuyện"
                 parent="menu_page_fm_sync_root"
                 action="action_page_fm_conversation_all"
                 sequence="20"
