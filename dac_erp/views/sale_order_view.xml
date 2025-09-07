@@ -427,5 +427,50 @@
                 </list>
             </field>
         </record>
+
+        <!-- View riêng cho sale.order.line với khả năng import -->
+        <record id="sale_order_line_tree_import" model="ir.ui.view">
+            <field name="name">sale.order.line.tree.import</field>
+            <field name="model">sale.order.line</field>
+            <field name="arch" type="xml">
+                <list string="Dòng đơn hàng" create="true" import="true">
+                    <field name="order_id" string="Đơn hàng"/>
+                    <field name="sequence" widget="handle"/>
+                    <field name="product_id" string="Sản phẩm"/>
+                    <field name="name" string="Mô tả"/>
+                    <field name="product_uom_qty" string="Số lượng"/>
+                    <field name="price_unit" string="Đơn giá"/>
+                    <field name="product_uom" string="Đơn vị tính"/>
+                    <field name="price_subtotal" string="Thành tiền" sum="Tổng"/>
+                    <field name="display_type" invisible="1"/>
+                </list>
+            </field>
+        </record>
+
+        <!-- Action để import Sale Order Lines -->
+        <record id="action_sale_order_line_import" model="ir.actions.act_window">
+            <field name="name">Dòng đơn hàng</field>
+            <field name="res_model">sale.order.line</field>
+            <field name="view_mode">list,form</field>
+            <field name="view_id" ref="sale_order_line_tree_import"/>
+            <field name="context">{}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    Không có dòng đơn hàng nào!
+                </p>
+                <p>
+                    Bạn có thể import dữ liệu bằng cách nhấn nút "Import" ở trên.
+                </p>
+            </field>
+        </record>
+
+        <!-- Menu cho Sale Order Lines -->
+        <menuitem id="menu_sale_order_line_import"
+                  name="Dòng đơn hàng"
+                  parent="home_menu.home_root"
+                  action="action_sale_order_line_import"
+                  sequence="50"
+                  groups="sales_team.group_sale_manager"/>
+
     </data>
 </odoo>
