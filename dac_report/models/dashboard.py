@@ -23,15 +23,15 @@ class SaleOrderDashboardService(models.Model):
         # đã từng sync dữ liệu
         base_dom = [('last_message_sync_fm', '!=', False)]
 
-        # Lọc 'done' > 2 ngày dựa vào last_suggestion_at
+        # Lọc 'done' > 2 ngày dựa vào last_processing_change_at
         cutoff = fields.Datetime.to_string(fields.Datetime.now() - timedelta(days=2))
         not_stale_done = ['|',
             ('status_state', '!=', 'done'),
             '&', 
             ('status_state', '=', 'done'), 
             '|',
-            ('last_suggestion_at', '=', False),  # Không có ngày gợi ý -> hiển thị
-            ('last_suggestion_at', '>=', cutoff),  # Có gợi ý trong 2 ngày -> hiển thị
+            ('last_processing_change_at', '=', False),  # Không có thời điểm thay đổi -> hiển thị
+            ('last_processing_change_at', '>=', cutoff),  # Thay đổi trong 2 ngày -> hiển thị
         ]
 
         # GHÉP DOMAIN CUỐI:

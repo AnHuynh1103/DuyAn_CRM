@@ -349,3 +349,66 @@
   color: #fff !important; /* Icon trắng */
   border-color: #007bff !important;
 }
+
+/* =========================================================
+   CONVERSATION FORM VIEW - Text area styling
+   ========================================================= */
+
+/* Đảm bảo text area trong form conversation hiển thị đầy đủ */
+.o_form_view .o_field_widget[name="last_message_snippet"] textarea,
+.o_form_view .o_field_widget[name="last_message_snippet_clean"] textarea,
+.o_form_view .o_field_widget[name="suggestion_note"] textarea {
+  min-height: 80px !important; /* Chiều cao tối thiểu */
+  max-height: 200px !important; /* Chiều cao tối đa */
+  resize: vertical !important; /* Cho phép kéo dãn theo chiều dọc */
+  overflow-y: auto !important; /* Cuộn khi nội dung dài */
+  white-space: pre-wrap !important; /* Giữ nguyên xuống dòng */
+  word-wrap: break-word !important; /* Xuống dòng khi từ quá dài */
+}
+
+/* Text field readonly trong form - hiển thị đầy đủ tin nhắn gốc */
+.o_form_view .o_field_widget[name="last_message_snippet"] .o_field_text,
+.o_form_view .o_field_widget[name="last_message_snippet_clean"] .o_field_text {
+  max-height: none !important; /* Không giới hạn chiều cao */
+  overflow: visible !important; /* Hiển thị đầy đủ */
+  white-space: pre-wrap !important; /* Giữ nguyên xuống dòng và format */
+  word-wrap: break-word !important; /* Xuống dòng khi từ quá dài */
+  border: 1px solid #ccc !important; /* Thêm viền để dễ nhận biết */
+  padding: 8px !important; /* Thêm padding cho dễ đọc */
+  background-color: #f8f9fa !important; /* Nền nhạt để phân biệt */
+  border-radius: 4px !important; /* Bo góc nhẹ */
+}
+
+/* =========================================================
+   MESSAGE LIST VIEW - Hiển thị đầy đủ nội dung tin nhắn
+   ========================================================= */
+
+/* Đảm bảo cột nội dung tin nhắn hiển thị đầy đủ trong list view */
+.o_list_view .o_field_widget[name="name"] {
+  max-width: none !important; /* Không giới hạn độ rộng */
+  width: auto !important; /* Tự động điều chỉnh độ rộng */
+  white-space: pre-wrap !important; /* Giữ nguyên xuống dòng */
+  word-wrap: break-word !important; /* Xuống dòng khi từ quá dài */
+  overflow: visible !important; /* Hiển thị đầy đủ */
+}
+
+/* Styling cho text widget trong message list */
+.o_list_view .o_field_widget[name="name"] .o_field_text {
+  max-height: none !important; /* Không giới hạn chiều cao */
+  white-space: pre-wrap !important; /* Giữ nguyên format */
+  word-wrap: break-word !important; /* Xuống dòng */
+  overflow: visible !important; /* Hiển thị đầy đủ */
+  line-height: 1.4 !important; /* Tăng khoảng cách dòng cho dễ đọc */
+}
+
+/* Tăng chiều cao của các dòng trong message list để chứa nội dung dài */
+.o_list_view[data-name="page.fm.message"] .o_data_row {
+  min-height: auto !important; /* Cho phép dòng giãn theo nội dung */
+}
+
+/* Đặc biệt cho cột nội dung tin nhắn - làm cho rộng hơn */
+.o_list_view[data-name="page.fm.message"] th:nth-child(5),
+.o_list_view[data-name="page.fm.message"] td:nth-child(5) {
+  width: 40% !important; /* Chiếm 40% độ rộng bảng */
+  min-width: 300px !important; /* Tối thiểu 300px */
+}

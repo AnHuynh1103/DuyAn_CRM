@@ -89,7 +89,7 @@
                 <field name="require_processing" widget="boolean_toggle" string="Cần Xử Lý"/>
                 <field name="is_internal_conversation" widget="boolean_toggle" string="Nội Bộ"/>
                 <field name="status_state" string="Trạng Thái"/>
-                <field name="last_suggestion_at" string="Gợi ý lần cuối" optional="show"/>
+                <field name="last_processing_change_at" string="Thay đổi xử lý lần cuối" optional="show"/>
                 <field name="page_fm_page_id" optional="show" string="Page (Odoo)"/>
                 <field name="page_fm_id_str_related" optional="hidden"/>
             </list>
@@ -154,7 +154,7 @@
                     
                     <group string="Chi tiết">
                         <group>
-                            <field name="last_message_snippet_clean" string="Tin nhắn cuối" readonly="1"/>
+                            <field name="last_message_snippet_clean" string="Tin nhắn cuối (đã xử lý)" readonly="1" widget="text" nolabel="0"/>
                             <field name="updated_at_fm" string="Thời gian cập nhật" readonly="1"/>
                             <field name="is_unread_fm" string="Chưa đọc"/>
                             <field name="last_message_sync_fm" string="Thời gian đồng bộ tin nhắn cuối" readonly="1" groups="dac_erp.group_dac_erp_manager"/>
@@ -164,8 +164,8 @@
                             <field name="status_state" string="Trạng thái"/>
                             <field name="require_processing" string="Có yêu cầu xử lý" widget="boolean_toggle"/>
                             <field name="status_label" string="Nhãn hiển thị" readonly="1"/>
-                            <field name="suggestion_note" string="Ghi chú &amp; Gợi ý"/>
-                            <field name="last_suggestion_at" widget="datetime" string="Gợi ý lần cuối"/>
+                            <field name="suggestion_note" string="Ghi chú &amp; Gợi ý" widget="text"/>
+                            <field name="last_processing_change_at" widget="datetime" string="Xử lý lần cuối" readonly="1"/>
                         </group>
                     </group>
                     
@@ -280,7 +280,7 @@
                 <field name="previous_time" string="Tin nhắn trước" optional="hidden" readonly="1"/>
                 <field name="sender_name_fm" string="Sender" readonly="1"/>
                 <field name="staff" string="Staff" readonly="1" widget="many2one_avatar"/>
-                <field name="name" string="Nội dung tin nhắn" />
+                <field name="name" string="Nội dung tin nhắn" widget="text" />
                 <field name="url_content" string="Đường dẫn" widget="url" readonly="1"/>
                 <field name="attachments_json" optional="hidden" readonly="1"/>
             </list>

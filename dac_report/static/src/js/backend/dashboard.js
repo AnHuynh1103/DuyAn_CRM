@@ -74,8 +74,16 @@ class DacSaleDashboard extends Component {
       it.last_message ||
       "";
 
-    // Làm sạch HTML tags và format đặc biệt
-    return this.cleanText(rawText);
+    // Làm sạch HTML tags và format đặc biệt, sau đó cắt ngắn cho dashboard
+    let cleanedText = this.cleanText(rawText);
+    return this.truncateText(cleanedText, 100); // Cắt ngắn tối đa 100 ký tự cho dashboard
+  }
+
+  // Hàm cắt ngắn text với "..."
+  truncateText(text, maxLength = 100) {
+    if (!text) return "";
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength).trim() + "...";
   }
 
   // Hàm làm sạch text - loại bỏ HTML tags, stickers, format đặc biệt

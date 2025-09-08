@@ -103,6 +103,9 @@ class PageFmConversation(models.Model):
     suggestion_note = fields.Text(string="Ghi chú & Gợi ý xử lý", help="Ghi chú trạng thái, gợi ý từ AI hoặc external system", tracking=True)
     last_suggestion_at = fields.Datetime(string="Thời điểm cập nhật ghi chú")
     
+    # Trường mới: theo dõi lần cuối thay đổi trạng thái xử lý
+    last_processing_change_at = fields.Datetime(string="Thời điểm thay đổi xử lý cuối", help="Thời điểm cuối cùng thay đổi require_processing (dùng để ẩn conversation đã xử lý sau 2 ngày)")
+    
     status_set_by_id = fields.Many2one('res.users', "Người cập nhật", tracking=True)
     status_set_at = fields.Datetime("Thời điểm cập nhật", tracking=True)
 
@@ -173,6 +176,7 @@ class PageFmConversation(models.Model):
         vals = {
             'require_processing': new_val,
             'is_unread_fm': False,  # đánh dấu là đã đọc khi toggle
+            'last_processing_change_at': fields.Datetime.now(),  # Cập nhật thời điểm thay đổi xử lý
         }
 
         # Bật/ Tắt yêu cầu xử lý
