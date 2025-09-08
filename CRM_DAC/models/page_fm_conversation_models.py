@@ -898,6 +898,12 @@ class PageFmConversation(models.Model):
     def _set_conv_pointer(self, value):
         self.env['ir.config_parameter'].sudo().set_param('pancake.last_conv_id', str(int(value or 0)))
 
+    def _reset_conv_pointer(self):
+        """Reset con trỏ về 0 để bắt đầu đồng bộ lại từ đầu"""
+        self._set_conv_pointer(0)
+        _logger.info("Reset con trỏ đồng bộ conversation về 0")
+        return True
+
     def _get_batch_size(self, batch_size=None):
         ICP = self.env['ir.config_parameter'].sudo()
         default_size = int(ICP.get_param('pancake.sync_batch_size', '50'))  # 50 mặc định
@@ -905,10 +911,11 @@ class PageFmConversation(models.Model):
 
     @api.model
     def cron_sync_conversations_batch(self, batch_size=None):
-        """Đồng bộ theo batch:
+        """Đồng bộ theo batch với cơ chế reset con trỏ:
         - Pha 1: các conv mới (id > last_id) theo thứ tự tăng
+        - Nếu không có conv mới → Reset con trỏ về 0 và bắt đầu lại từ đầu
         - Pha 2: phần còn lại dành cho conv cần xử lý / chưa đọc (không ảnh hưởng con trỏ)
-        - Sau mỗi conv mới thành công -> cập nhật con trỏ
+        - Sau mỗi conv mới thành công → cập nhật con trỏ
         - Log ID cuối cùng đã đồng bộ
         """
         size = self._get_batch_size(batch_size)
@@ -918,6 +925,15 @@ class PageFmConversation(models.Model):
 
         # --- PHA 1: conv mới theo con trỏ, id tăng dần ---
         new_convs = self.search([('id', '>', last_id)], order="id asc", limit=size)
+        
+        # *** FIX: Nếu không có conversation mới, reset con trỏ về 0 ***
+        if not new_convs and last_id > 0:
+            _logger.info(f"Pancake Sync: Đã đồng bộ hết conversations (pointer={last_id}). Reset về 0 để bắt đầu lại.")
+            self._set_conv_pointer(0)
+            last_id = 0
+            last_processed_id = 0
+            # Lấy lại conversations từ đầu
+            new_convs = self.search([('id', '>', 0)], order="id asc", limit=size)
 
         # --- PHA 2: nếu còn quota, lấy conv cũ nhưng cần xử lý/chưa đọc ---
         remainder = size - len(new_convs)
@@ -1003,6 +1019,16 @@ class PageFmConversation(models.Model):
 
         # Lấy conversations cần sync
         new_convs = self.search([('id', '>', last_id)], order="id asc", limit=size)
+        
+        # *** FIX: Nếu không có conversation mới, reset con trỏ về 0 ***
+        if not new_convs and last_id > 0:
+            _logger.info(f"Circuit Breaker Sync: Đã đồng bộ hết conversations (pointer={last_id}). Reset về 0 để bắt đầu lại.")
+            self._set_conv_pointer(0)
+            last_id = 0
+            last_processed_id = 0
+            # Lấy lại conversations từ đầu
+            new_convs = self.search([('id', '>', 0)], order="id asc", limit=size)
+        
         remainder = size - len(new_convs)
         extra_convs = self.browse()
         
