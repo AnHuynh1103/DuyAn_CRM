@@ -18,6 +18,13 @@ class SaleOrderLine(models.Model):
             if not line.display_type and line.product_id and line.order_id:
                 order = line.order_id
                 
+                # Kiểm tra đã có hóa đơn cọc nào được tạo chưa
+                if order.deposit_invoice_count > 0:
+                    raise UserError(
+                        f"Không thể xóa dòng sản phẩm vì đơn hàng {order.name} "
+                        "đã có hóa đơn cọc được tạo!"
+                    )
+                
                 # Nếu user là sale và đơn hàng đã xác nhận đặt cọc -> không cho xóa
                 if (self.env.user.has_group('dac_erp.group_dac_erp_sale') and 
                     not self.env.user.has_group('dac_erp.group_dac_erp_manager') and
@@ -31,7 +38,6 @@ class SaleOrderLine(models.Model):
     
     @api.model_create_multi
     def create(self, vals_list):
-        _logger.info(f"---------------------------->Creating sale.order.line with values: {vals_list}")
         for vals in vals_list:
             # Nếu là dòng ghi chú (không sản phẩm, giá = 0, có tên, không display_type) thì gán là line_note
             if (not vals.get('product_id') and vals.get('name') and 
@@ -50,7 +56,6 @@ class SaleOrderLine(models.Model):
         return super().create(vals_list)
 
     def write(self, vals):
-        _logger.info(f"---------------------------->Writing sale.order.line with values: {vals}")
         # Ngăn việc xóa display_type
         if 'display_type' in vals and not vals['display_type']:
             current_display_type = self.display_type

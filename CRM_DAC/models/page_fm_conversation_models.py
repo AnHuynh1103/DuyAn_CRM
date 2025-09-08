@@ -112,6 +112,44 @@ class PageFmConversation(models.Model):
     # COMPUTED: status_label được tính toán thay vì lưu trữ
     status_label = fields.Char(string="Nhãn trạng thái", compute='_compute_status_label', help="Text hiển thị trạng thái")
 
+    # COMPUTED: Cleaned text fields for display
+    last_message_snippet_clean = fields.Text(string="Last Message (Clean)", compute='_compute_clean_texts', help="Tin nhắn cuối đã làm sạch HTML tags")
+    suggestion_note_clean = fields.Text(string="Note (Clean)", compute='_compute_clean_texts', help="Ghi chú đã làm sạch HTML tags")
+    customer_name_clean = fields.Char(string="Customer Name (Clean)", compute='_compute_clean_texts', help="Tên khách hàng đã làm sạch")
+
+    @api.depends('last_message_snippet', 'suggestion_note', 'customer_name_fm')
+    def _compute_clean_texts(self):
+        """Làm sạch HTML tags và format đặc biệt từ text"""
+        for record in self:
+            record.last_message_snippet_clean = self._clean_text(record.last_message_snippet or '')
+            record.suggestion_note_clean = self._clean_text(record.suggestion_note or '')
+            record.customer_name_clean = self._clean_text(record.customer_name_fm or '')
+
+    def _clean_text(self, text):
+        """Helper function để làm sạch HTML tags và format đặc biệt"""
+        if not text:
+            return ""
+        
+        # Loại bỏ HTML tags
+        text = re.sub(r'<[^>]*>', ' ', text)
+        
+        # Loại bỏ stickers và emojis trong []
+        text = re.sub(r'\[sticker\]', '[Sticker]', text, flags=re.IGNORECASE)
+        text = re.sub(r'\[emoji\]', '[Emoji]', text, flags=re.IGNORECASE)
+        text = re.sub(r'\[.*?\]', '', text)
+        
+        # Loại bỏ các ký tự HTML entities
+        text = text.replace('&nbsp;', ' ')
+        text = text.replace('&amp;', '&')
+        text = text.replace('&lt;', '<')
+        text = text.replace('&gt;', '>')
+        text = text.replace('&quot;', '"')
+        
+        # Loại bỏ khoảng trắng thừa
+        text = re.sub(r'\s+', ' ', text)
+        
+        return text.strip()
+
     @api.depends('status_state', 'require_processing')
     def _compute_status_label(self):
         """Tính toán nhãn hiển thị dựa trên trạng thái và yêu cầu xử lý"""

@@ -60,9 +60,10 @@ class ResPartner(models.Model):
                     'sticky': False,
                 }
             }
-        action = self.env.ref('sale.action_orders').read()[0]
+        # Sử dụng action custom của DAC thay vì action gốc của Odoo
+        action = self.env.ref('dac_erp.dac_sale_order_custom_action').read()[0]
         action['domain'] = domain
-        action['context'] = {'search_default_customer': commercial.id}
+        action['context'] = {'search_default_partner_id': commercial.id}
         return action
     
     

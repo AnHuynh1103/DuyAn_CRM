@@ -82,13 +82,14 @@
                 </header>
                 
                 <field name="partner_id" string="Khách Hàng" widget="many2one_avatar"/>
-                <field name="last_message_snippet" string="Tin Nhắn Cuối"/>
+                <field name="last_message_snippet_clean" string="Tin Nhắn Cuối"/>
                 <field name="platform_fm" string="Platform"/>
                 <field name="last_update_at" string="Cập nhật mới nhất"/>
                 <field name="is_unread_fm" widget="boolean_toggle" string="Chưa Đọc"/>
                 <field name="require_processing" widget="boolean_toggle" string="Cần Xử Lý"/>
                 <field name="is_internal_conversation" widget="boolean_toggle" string="Nội Bộ"/>
                 <field name="status_state" string="Trạng Thái"/>
+                <field name="last_suggestion_at" string="Gợi ý lần cuối" optional="show"/>
                 <field name="page_fm_page_id" optional="show" string="Page (Odoo)"/>
                 <field name="page_fm_id_str_related" optional="hidden"/>
             </list>
@@ -153,7 +154,7 @@
                     
                     <group string="Chi tiết">
                         <group>
-                            <field name="last_message_snippet" string="Đoạn tin nhắn cuối" readonly="1"/>
+                            <field name="last_message_snippet_clean" string="Tin nhắn cuối" readonly="1"/>
                             <field name="updated_at_fm" string="Thời gian cập nhật" readonly="1"/>
                             <field name="is_unread_fm" string="Chưa đọc"/>
                             <field name="last_message_sync_fm" string="Thời gian đồng bộ tin nhắn cuối" readonly="1" groups="dac_erp.group_dac_erp_manager"/>
@@ -197,6 +198,7 @@
                 <field name="name"/>
                 <field name="conversation_fm_id"/>
                 <field name="customer_name_fm"/>    
+                <field name="last_message_snippet_clean"/>
                 <field name="last_message_snippet"/>
                 <field name="updated_at_fm"/>
                 <field name="is_unread_fm"/>
@@ -230,7 +232,7 @@
                             </div>
                             <div class="oe_kanban_content">
                                 <div><strong>Cập nhật:</strong> <field name="updated_at_fm"/></div>
-                                <div><strong>Tin nhắn:</strong> <field name="last_message_snippet"/></div>
+                                <div><strong>Tin nhắn:</strong> <field name="last_message_snippet_clean"/></div>
                                 <div><strong>Trạng thái:</strong> <field name="status_state"/></div>
                             </div>
                             <div class="oe_clear"/>

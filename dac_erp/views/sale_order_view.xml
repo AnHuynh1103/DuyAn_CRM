@@ -11,6 +11,7 @@
                         <field name="order_state_custom" 
                                 widget="statusbar" 
                                 statusbar_visible="quotation,deposit,production,delivery,payment,completed"
+                                statusbar_colors='{"cancel":"red"}'
                             />
                     </header>
                     <sheet>
@@ -35,6 +36,13 @@
                                     icon="fa-refresh"
                                     string="Cập nhật"
                                     help="Kiểm tra, cập nhật trạng thái và tải lại view"
+                                    groups="base.group_system"/>
+                            <button name="action_reset_completion_status_if_only_deposit"
+                                    type="object"
+                                    class="oe_stat_button"
+                                    icon="fa-undo"
+                                    string="Reset"
+                                    help="Reset trạng thái nếu đơn bị set sai khi chỉ thanh toán cọc"
                                     groups="base.group_system"/>
                             <button name="action_open_conversation"
                                     type="object"
@@ -145,7 +153,7 @@
                                 <field name="production_delay_reason"
                                        string="Lý do trễ"
                                        widget="text"
-                                       placeholder="Mô tả ngắn gọn nguyên nhân trễ…"
+                                       placeholder="Hãy điền nguyên nhân trễ…"
                                        invisible="(not production_is_delayed) or ((order_state_custom in ['quotation','deposit']) and (not started_delivery))"
                                        readonly="order_state_custom != 'production' or started_delivery"/>
                             </group>
@@ -235,21 +243,35 @@
                                     Đơn hàng đã thanh toán
                                 </span>
                             </div>
+                            <div invisible="order_state_custom != 'cancel'" style="text-align: center; padding: 10px; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 5px; margin: 10px 0;">
+                                <span style="font-weight: bold; color: #721c24; font-size: 1.2em;">
+                                    Đơn hàng đã hủy
+                                </span>
+                            </div>
                             <field name="is_order_completed" invisible="1"/>
                             <field name="remaining_amount_display" invisible="1"/>
                             <div style="display: flex; gap: 16px; justify-content: flex-end; margin-top: 16px;">
+                                <!-- Nút Hủy đơn hàng - chỉ hiện ở trạng thái báo giá và đã lưu và chưa có hóa đơn cọc -->
+                                <button name="action_cancel_order"
+                                    string="Hủy đơn hàng"
+                                    type="object"
+                                    class="btn-danger"
+                                    invisible="not id or order_state_custom != 'quotation' or deposit_invoice_count > 0"
+                                    confirm="Bạn có chắc chắn muốn hủy đơn hàng này không?"/>
+
                                 <!-- Nút Lưu -->
                                 <button name="action_save_custom"
                                     string="Lưu" 
                                     type="object"  
-                                    class="btn-primary"/>
+                                    class="btn-primary"
+                                    invisible="is_order_completed or order_state_custom == 'cancel'"/>
 
                                 <!-- Nút Quay lại tiến trình trước: Dùng chung cho mọi tiến trình (trừ báo giá) -->
                                 <button name="action_back_custom_step"
                                     string="Quay lại"
                                     type="object"
                                     class="btn-secondary"
-                                    invisible="order_state_custom == 'quotation'"/>
+                                    invisible="order_state_custom == 'quotation' or is_order_completed or order_state_custom == 'cancel'"/>
 
                                 <!-- Nút Xác nhận cho tiến trình báo giá -->
                                 <button name="action_confirm_info"
@@ -266,6 +288,7 @@
                                     string="Tiến hành sản xuất"
                                     type="object"
                                     class="btn-primary"
+                                    context="{'from_ui_button': True}"
                                     invisible="
                                         order_state_custom != 'deposit'
                                         or not production_deadline
@@ -342,8 +365,8 @@
                 <list string="Báo giá" default_order="date desc">
                     <field name="latest_quotation_info" string="Báo giá mới nhất" readonly="1"/>
                     <field name="name"/>
-                    <field name="create_date" string="Ngày tạo"/>
-                    <field name="date" string="Ngày đặt hàng"/>
+                    <field name="create_date" string="Ngày tạo đơn (hệ thống)"/>
+                    <field name="date" string="Ngày đơn hàng"/>
                     <field name="partner_id"/>
                     <field name="user_id" widget="many2one_avatar_user"/>
                     <field name="company_id" invisible="1" optional="hide"/>
@@ -355,10 +378,10 @@
                     <field name="order_state_custom" widget="badge"
                         decoration-info="order_state_custom == 'quotation' and not is_order_completed"
                         decoration-warning="order_state_custom == 'deposit' and not is_order_completed"
-                        decoration-primary="order_state_custom == 'production' and not is_order_completed"
-                        decoration-danger="order_state_custom == 'delivery' and not is_order_completed"
+                        decoration-primary="order_state_custom in ['production', 'delivery'] and not is_order_completed"
                         decoration-success="order_state_custom == 'payment' and not is_order_completed"
-                        decoration-muted="is_order_completed"/>
+                        decoration-muted="is_order_completed or order_state_custom == 'completed'"
+                        decoration-danger="order_state_custom == 'cancel'"/>
                 </list>
             </field>
         </record>

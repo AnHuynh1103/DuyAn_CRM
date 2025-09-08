@@ -101,8 +101,8 @@
                               <button t-att-class="{
                                                     'btn': true,
                                                     'btn-icon': true,
-                                                    'btn-checklist-done': it.checklist_ok,
-                                                    'btn-checklist-pending': !it.checklist_ok
+                                                    'btn-checklist-done': it.status_state === 'done',
+                                                    'btn-checklist-pending': it.status_state !== 'done'
                                                   }"
                                       title="Đánh dấu đã kiểm checklist"
                                       t-on-click="(ev)=>this.toggleChecklist(it, ev)">
@@ -160,7 +160,7 @@
                           <div class="d-flex justify-content-between">
                             <div class="ticket-title text-truncate"><t t-esc="so.title"/></div>
                             <div class="ticket-sub text-end">
-                                <!-- Nếu đã trễ: đỏ -->
+                                <!-- Nếu đã trễ: đỏ đậm -->
                                 <t t-if="so.late_days &gt; 0">
                                   <span class="text-danger">Trễ <t t-esc="so.late_days"/> ngày</span>
                                 </t>
@@ -213,7 +213,7 @@
                             <div class="col-3 text-end"><t t-esc="m.amount"/></div>
                             <div class="col-3 text-end">
                               <t t-if="m.due_days &gt;= 0">
-                                <span class="text-danger">Quá <t t-esc="m.due_days"/> ngày</span>
+                                <span class="badge-late">Quá <t t-esc="m.due_days"/> ngày</span>
                               </t>
                               <t t-else="">
                                 <span class="text-muted">Còn <t t-esc="Math.abs(m.due_days)"/> ngày</span>
@@ -248,8 +248,8 @@
 
                     <!-- THÂN: cuộn -->
                     <div class="bottom-scroll">
-                      <t t-if="(state.data.lists.recent_customers||[]).length">
-                        <t t-foreach="state.data.lists.recent_customers" t-as="s" t-key="s.id">
+                      <t t-if="(state.data.lists.completed_customers||[]).length">
+                        <t t-foreach="state.data.lists.completed_customers" t-as="s" t-key="s.id">
                           <div class="row py-1 list-row"
                               t-on-click.stop.prevent="(ev)=>this.openForm('sale.order', s.id)">
                             <div class="col-6 text-truncate"><t t-esc="s.name"/></div>
@@ -267,7 +267,7 @@
                     <div class="row bottom-foot pt-2 mt-2">
                       <div class="col-6 text-end fw-bold">Tổng</div>
                       <div class="col-3 text-end fw-bold text-success">
-                        <t t-esc="state.data.sums.recent_total_str"/>
+                        <t t-esc="state.data.sums.completed_total_str"/>
                       </div>
                       <div class="col-3"></div>
                     </div>

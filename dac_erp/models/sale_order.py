@@ -18,6 +18,7 @@ class SaleOrder(models.Model):
         ('delivery', 'Giao hàng'),
         ('payment', 'Thu tiền'),
         ('completed', 'Hoàn thành'),
+        ('cancel', 'Hủy'),
     ], string='Trạng thái đơn hàng', default='quotation', tracking=True)
 
     date = fields.Date(string='Ngày đơn hàng')
@@ -42,13 +43,13 @@ class SaleOrder(models.Model):
     
     # --- Sản xuất trễ ---
     production_is_delayed = fields.Boolean(
-        string="Sản xuất bị trễ?"
+        string="Sản xuất bị trễ?", tracking=True,  default=False,
     )
     production_delay_date = fields.Date(
-        string="Ngày trễ"
+        string="Ngày trễ" , tracking=True ,
     )
     production_delay_reason = fields.Text(
-        string="Lý do trễ"
+        string="Lý do trễ" , tracking=True ,
     )
 
     @api.onchange('production_is_delayed')
@@ -378,6 +379,34 @@ class SaleOrder(models.Model):
     def action_save_custom(self):
         return True
     
+    def action_cancel_order(self):
+        """Hủy đơn hàng - chỉ cho phép ở trạng thái báo giá và chưa có hóa đơn cọc"""
+        for order in self:
+            if order.order_state_custom != 'quotation':
+                raise UserError("Chỉ có thể hủy đơn hàng ở trạng thái báo giá!")
+            
+            # Kiểm tra đã có hóa đơn cọc nào được tạo chưa
+            if order.deposit_invoice_count > 0:
+                raise UserError("Không thể hủy đơn hàng đã có hóa đơn cọc!")
+            
+            # Kiểm tra đã có hóa đơn nào khác được tạo chưa
+            existing_invoices = self.env['account.move'].search([
+                ('move_type', '=', 'out_invoice'),
+                ('invoice_origin', '=', order.name),
+                ('dac_deposit_invoice', '!=', True)  # Loại trừ hóa đơn cọc vì đã check ở trên
+            ])
+            
+            if existing_invoices:
+                raise UserError("Không thể hủy đơn hàng đã có hóa đơn!")
+            
+            # Hủy đơn hàng
+            order.order_state_custom = 'cancel'
+            
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'reload',
+        }
+    
     
     def action_back_custom_step(self):
         """Quay lại xem tiến trình trước đó - CHỈ ĐỂ XEM, KHÔNG THAY ĐỔI TRẠNG THÁI XÁC NHẬN"""
@@ -456,6 +485,10 @@ class SaleOrder(models.Model):
         - Không cọc: chỉ cần 'production_deadline'
         - Có cọc: phải xác nhận cọc + đã thanh toán hóa đơn cọc + 'production_deadline'
         """
+        # SAFETY CHECK: Ngăn chặn tự động trigger khi không có context UI
+        if not self.env.context.get('from_ui_button'):
+            return False
+            
         for order in self:
             if order.order_state_custom != 'deposit':
                 raise UserError("Chỉ có thể tiến hành sản xuất từ trạng thái đặt cọc!")
@@ -621,9 +654,8 @@ class SaleOrder(models.Model):
                     'list_price': 0.0,
                     'taxes_id': [(6, 0, [])],
                 })
-                #_logger.info(f"Đã tạo sản phẩm DEPOSIT: {product.id}")
             else:
-                _logger.info(f"Sử dụng sản phẩm DEPOSIT có sẵn: {product.id} - {product.name}")
+                pass  # Sử dụng sản phẩm DEPOSIT có sẵn
         
         # Kiểm tra đã có dòng đặt cọc chưa (linh hoạt - kiểm tra tất cả dòng có giá âm)
         existing_deposit_line = self.order_line.filtered(
@@ -783,7 +815,11 @@ class SaleOrder(models.Model):
                 if final_invoices:
                     # Có hóa đơn cuối -> có thể set hoàn thành
                     order.is_order_completed = True
-                    #_logger.info(f"Tự động set is_order_completed = True cho order {order.name} - có hóa đơn cuối đã thanh toán")
+                    # TỰ ĐỘNG CHUYỂN SANG TRẠNG THÁI COMPLETED
+                    if order.order_state_custom != 'completed':
+                        order.order_state_custom = 'completed'
+                        order.is_payment_confirmed = True
+                    #_logger.info(f"Tự động set is_order_completed = True và chuyển sang completed cho order {order.name}")
                 else:
                     # Chỉ có hóa đơn cọc -> KHÔNG set hoàn thành
                     _logger.info(f"Order {order.name}: Chỉ có hóa đơn cọc đã thanh toán, chưa set hoàn thành")
@@ -807,13 +843,20 @@ class SaleOrder(models.Model):
             paid_invoices = order_invoices.filtered(lambda inv: inv.payment_state == 'paid')
             unpaid_invoices = order_invoices - paid_invoices
             
-            # LOGIC: Kiểm tra có final invoice paid không
+            # LOGIC: Kiểm tra có final invoice paid không (CHẮC CHẮN KHÔNG PHẢI CỌC)
             final_paid_invoices = paid_invoices.filtered(lambda inv: not inv.dac_deposit_invoice)
             
-            # CHỈ UPDATE KHI CẦN THIẾT
+            # CHỈ UPDATE KHI THỰC SỰ CÓ HÓA ĐƠN CUỐI ĐÃ THANH TOÁN (không phải cọc)
             if final_paid_invoices and not order.is_order_completed:
-                order.is_order_completed = True
-                #_logger.info(f"OPTIMIZED CHECK: Set completed cho order {order.name}")
+                # KIỂM TRA THÊM: Đảm bảo có ít nhất 1 hóa đơn không phải cọc
+                non_deposit_invoices = order_invoices.filtered(lambda inv: not inv.dac_deposit_invoice)
+                if non_deposit_invoices:
+                    order.is_order_completed = True
+                    # TỰ ĐỘNG CHUYỂN SANG TRẠNG THÁI COMPLETED CHỈ KHI CÓ HÓA ĐƠN CUỐI
+                    if order.order_state_custom != 'completed':
+                        order.order_state_custom = 'completed'
+                        order.is_payment_confirmed = True
+                    #_logger.info(f"OPTIMIZED CHECK: Set completed cho order {order.name} - có final invoice")
 
             # CHỈ INVALIDATE MỘT LẦN
             order.invalidate_recordset()
@@ -823,6 +866,37 @@ class SaleOrder(models.Model):
             'type': 'ir.actions.client',
             'tag': 'reload',
         }
+
+    def action_reset_completion_status_if_only_deposit(self):
+        """Method để reset trạng thái đơn hàng bị set sai khi chỉ thanh toán cọc"""
+        for order in self:
+            # Tìm tất cả invoices của order
+            order_invoices = self.env['account.move'].search([
+                ('move_type', '=', 'out_invoice'),
+                ('invoice_origin', '=', order.name),
+                ('state', '=', 'posted')
+            ])
+            
+            # Kiểm tra có final invoice không
+            non_deposit_invoices = order_invoices.filtered(lambda inv: not inv.dac_deposit_invoice)
+            final_paid_invoices = order_invoices.filtered(lambda inv: not inv.dac_deposit_invoice and inv.payment_state == 'paid')
+            
+            # Nếu KHÔNG CÓ final invoice đã thanh toán nhưng đơn đã bị set completed
+            if not final_paid_invoices and order.order_state_custom == 'completed':
+                # Reset về trạng thái deposit (vì chỉ có cọc)
+                if order_invoices.filtered(lambda inv: inv.dac_deposit_invoice and inv.payment_state == 'paid'):
+                    order.order_state_custom = 'deposit'
+                    order.is_order_completed = False
+                    order.is_payment_confirmed = False
+                    _logger.info(f"RESET: Order {order.name} from completed back to deposit (only deposit paid)")
+                else:
+                    # Không có invoice nào được thanh toán
+                    order.order_state_custom = 'quotation'
+                    order.is_order_completed = False
+                    order.is_payment_confirmed = False
+                    _logger.info(f"RESET: Order {order.name} from completed back to quotation (no payment)")
+        
+        return True
 
 
     def check_and_add_deposit_line(self):
@@ -865,9 +939,8 @@ class SaleOrder(models.Model):
                             'list_price': 0.0,
                             'taxes_id': [(6, 0, [])],
                         })
-                        #_logger.info(f"Đã tạo sản phẩm DEPOSIT: {product.id}")
                     else:
-                        _logger.info(f"Sử dụng sản phẩm DEPOSIT có sẵn: {product.id} - {product.name}")
+                        pass  # Sử dụng sản phẩm DEPOSIT có sẵn
                 
                 #_logger.info(f"Sản phẩm sử dụng: {product.name} (ID: {product.id})")
                 
@@ -1253,45 +1326,11 @@ class SaleOrder(models.Model):
         if 'date' not in vals or not vals['date']:
             today = date.today()
             vals['date'] = today
-            _logger.info(f"✅ Setting default date to today: {today}")
         
         return super().create(vals)
     
 
     
-    @api.model 
-    def force_update_dates_on_import(self, update_existing=True):
-        """
-        Method để force update dates cho records đã tồn tại
-        Dùng sau khi import để đảm bảo tất cả dates được cập nhật đúng
-        """
-        if not update_existing:
-            return {'message': 'Skipped existing records update'}
-            
-        updated_count = 0
-        orders = self.search([('client_order_ref', '!=', False)])
-        
-        for order in orders:
-            # Nếu có date_order và create_date chưa match
-            if order.date_order:
-                target_date = order.date_order
-                current_create_date = order.create_date.date() if order.create_date else None
-                
-                if current_create_date != target_date:
-                    try:
-                        order.write({
-                            'create_date': datetime.combine(target_date, datetime.min.time()),
-                            'date': target_date  # Sync custom date field
-                        })
-                        updated_count += 1
-                    except Exception as e:
-                        _logger.error(f"Error updating order {order.name}: {e}")
-        
-        return {
-            'updated_count': updated_count,
-            'total_orders': len(orders),
-            'message': f'Synced create_date with date_order for {updated_count} orders'
-        }
     
     def write(self, vals):
         """Override write để cho phép cập nhật create_date và sync date với date_order"""
@@ -1329,4 +1368,3 @@ class SaleOrder(models.Model):
                     pass  # Giữ nguyên giá trị nếu không parse được
         
         return super().write(vals)
-    

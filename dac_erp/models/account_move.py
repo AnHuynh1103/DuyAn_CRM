@@ -119,11 +119,22 @@ class AccountMove(models.Model):
                             sale_order.add_deposit_order_line(deposit_amount, invoice=deposit_inv)
                             order_updated = True
                     
-                    # Xử lý final invoices
+                    # Xử lý final invoices - CHỈ GỌI KHI THỰC SỰ CÓ HÓA ĐƠN CUỐI
                     if final_invoices:
-                        _logger.info(f"WRITE HOOK OPTIMIZED: Final invoice paid for order {order_name}")
-                        sale_order.check_and_update_completion_status()
-                        order_updated = True
+                        # KIỂM TRA THÊM: Đảm bảo không phải chỉ có deposit invoice
+                        all_invoices = self.env['account.move'].search([
+                            ('move_type', '=', 'out_invoice'),
+                            ('invoice_origin', '=', order_name),
+                            ('state', '=', 'posted')
+                        ])
+                        non_deposit_invoices = all_invoices.filtered(lambda inv: not inv.dac_deposit_invoice)
+                        
+                        if non_deposit_invoices:
+                            _logger.info(f"WRITE HOOK OPTIMIZED: Final invoice paid for order {order_name}")
+                            sale_order.check_and_update_completion_status()
+                            order_updated = True
+                        else:
+                            _logger.info(f"WRITE HOOK OPTIMIZED: Only deposit invoice paid for order {order_name}, not calling completion check")
                     
                     # CHỈ INVALIDATE MỘT LẦN cho mỗi order
                     if order_updated:
@@ -219,13 +230,24 @@ class AccountMove(models.Model):
                 sale_order.invalidate_recordset()
                 self.env.cr.commit()
         else:
-            # Hóa đơn cuối - gọi method update completion
-            _logger.info(f"OPTIMIZED CHECK: Final invoice paid, updating completion for order {sale_order.name}")
-            try:
-                sale_order.check_and_update_completion_status()
-                self.env.cr.commit()
-            except Exception as e:
-                _logger.error(f"OPTIMIZED CHECK: Error updating completion: {e}")
+            # Hóa đơn cuối - CHỈ GỌI KHI THỰC SỰ CÓ HÓA ĐƠN CUỐI (không chỉ deposit)
+            _logger.info(f"OPTIMIZED CHECK: Final invoice paid for order {sale_order.name}")
+            # KIỂM TRA THÊM: Đảm bảo thực sự có hóa đơn cuối
+            all_invoices = self.env['account.move'].search([
+                ('move_type', '=', 'out_invoice'),
+                ('invoice_origin', '=', self.invoice_origin),
+                ('state', '=', 'posted')
+            ])
+            non_deposit_invoices = all_invoices.filtered(lambda inv: not inv.dac_deposit_invoice)
+            
+            if non_deposit_invoices:
+                try:
+                    sale_order.check_and_update_completion_status()
+                    self.env.cr.commit()
+                except Exception as e:
+                    _logger.error(f"OPTIMIZED CHECK: Error updating completion: {e}")
+            else:
+                _logger.info(f"OPTIMIZED CHECK: Only deposit invoice exists for order {sale_order.name}, not calling completion check")
 
     @api.model
     def _cron_check_deposit_payments(self):

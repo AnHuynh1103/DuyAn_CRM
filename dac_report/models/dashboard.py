@@ -23,11 +23,15 @@ class SaleOrderDashboardService(models.Model):
         # đã từng sync dữ liệu
         base_dom = [('last_message_sync_fm', '!=', False)]
 
-        # Lọc 'done' > 2 ngày
+        # Lọc 'done' > 2 ngày dựa vào last_suggestion_at
         cutoff = fields.Datetime.to_string(fields.Datetime.now() - timedelta(days=2))
         not_stale_done = ['|',
             ('status_state', '!=', 'done'),
-            '&', ('status_state', '=', 'done'), ('last_update_at', '>=', cutoff),
+            '&', 
+            ('status_state', '=', 'done'), 
+            '|',
+            ('last_suggestion_at', '=', False),  # Không có ngày gợi ý -> hiển thị
+            ('last_suggestion_at', '>=', cutoff),  # Có gợi ý trong 2 ngày -> hiển thị
         ]
 
         # GHÉP DOMAIN CUỐI:
@@ -49,9 +53,9 @@ class SaleOrderDashboardService(models.Model):
             
             out.append({
                 'id': c.id,
-                'title': c.display_name or c.name or '',
-                'snippet': c.last_message_snippet or '',
-                'note': c.suggestion_note or '',  # <— ƯU TIÊN suggestion từ AI/n8n
+                'title': getattr(c, 'customer_name_clean', None) or c.display_name or c.name or '',
+                'snippet': getattr(c, 'last_message_snippet_clean', None) or c.last_message_snippet or '',
+                'note': getattr(c, 'suggestion_note_clean', None) or c.suggestion_note or '',  # <— ƯU TIÊN suggestion từ AI/n8n
                 'status_label': label,        # <— DÒNG TRẠNG THÁI
                 'status_state': c.status_state,  # <— TRẠNG THÁI GỐC
                 'status_color': color,        # <— MÀU: danger / warning / success
@@ -86,31 +90,65 @@ class SaleOrderDashboardService(models.Model):
     def _dashboard_domains(self):
         # hỗ trợ state chuẩn + field tùy biến order_state_custom (nếu có)
         has_custom = "order_state_custom" in self._fields
+        
+        # QUOTATIONS - chỉ hiện đơn ở trạng thái báo giá và đặt cọc
         quo_dom = [("state", "in", ("draft", "sent"))]
+        if has_custom:
+            quo_dom = [("order_state_custom", "in", ["quotation", "deposit"])]
+
+        # SALE CONFIRMED/DONE - bao gồm tất cả đơn đã xác nhận (sale/done) 
+        # HOẶC các trạng thái tùy chỉnh từ production trở đi (chưa completed)
         sal_dom = [("state", "in", ("sale", "done"))]
         if has_custom:
-            quo_dom = ["|"] + quo_dom + [("order_state_custom", "=", "quotation")]
-            sal_dom = ["|"] + sal_dom + [("order_state_custom", "in", ["delivery", "payment"])]
+            sal_dom = [
+                "|",
+                ("state", "in", ("sale", "done")),
+                ("order_state_custom", "in", ["production", "delivery", "payment"])
+            ]
 
-        man_dom = [("order_state_custom", "=", "production")] if has_custom else []
+        # MANUFACTURING - chỉ hiện đơn ở trạng thái sản xuất
+        man_dom = []
+        if has_custom:
+            man_dom = [("order_state_custom", "=", "production")]
+        
+        # COMPLETED - chỉ hiện đơn ở trạng thái completed (thực sự hoàn thành)
+        completed_dom = []
+        if has_custom:
+            completed_dom = [("order_state_custom", "=", "completed")]
+        
         return {
             "consulting": [],
             "quotation": quo_dom,
             "sale_confirmed": sal_dom,
             "manufacturing": man_dom,
+            "completed": completed_dom,
         }
 
     @api.model
     def _dashboard_expected_revenue(self, date_from, date_to, company):
         """Doanh thu dự kiến từ quotation."""
+        doms = self._dashboard_domains()
         dom = [
             ("company_id", "=", company.id),
             ("date_order", ">=", date_from),
             ("date_order", "<=", date_to),
-            ("state", "in", ("draft", "sent")),
-        ]
+        ] + doms["quotation"]
         orders = self.search(dom)
         return sum(orders.mapped("amount_total"))
+
+    @api.model
+    def _dashboard_month_goal(self, year, month, company):
+        """Lấy mục tiêu doanh thu tháng"""
+        # Tìm mục tiêu trong sales_goal model
+        Goal = self.env.get('dac_report.sales_goal')
+        if Goal:
+            goal = Goal.search([
+                ('year', '=', year),
+                ('month', '=', month),
+                ('company_id', '=', company.id)
+            ], limit=1)
+            return goal.target_amount if goal else 0.0
+        return 0.0
 
     
 
@@ -139,14 +177,26 @@ class SaleOrderDashboardService(models.Model):
             q_dom.append(("user_id", "=", uid))              # <- cá nhân
         quotation_amount = self._safe_sum_amount_total(q_dom)
 
-        # ---- CONFIRMED/DONE ----
+        # ---- CONFIRMED/DONE (doanh thu thực) ----
+        # Bao gồm tất cả đơn đã xác nhận: state sale/done HOẶC các trạng thái tùy chỉnh đã xác nhận
         s_dom = [
             ("company_id", "=", company.id),
             ("date_order", ">=", date_from),
             ("date_order", "<=", date_to),
-        ] + doms["sale_confirmed"]
+        ]
+        # Thêm điều kiện state: tất cả đơn từ sale trở đi (bao gồm cả completed)
+        if "order_state_custom" in self._fields:
+            s_dom += [
+                "|",
+                ("state", "in", ("sale", "done")),
+                ("order_state_custom", "in", ["production", "delivery", "payment", "completed"])
+            ]
+        else:
+            s_dom += [("state", "in", ("sale", "done"))]
+        
         if not manager:
             s_dom.append(("user_id", "=", uid))              # <- cá nhân
+        
         total_revenue = self._safe_sum_amount_total(s_dom)
         closed_count = self._rg_count(self, s_dom, "id")
 
@@ -206,6 +256,27 @@ class SaleOrderDashboardService(models.Model):
                     "late_days": late_days,
                 })
 
+        # ---- COMPLETED CUSTOMERS ----
+        completed_list = []
+        completed_orders = self.env['sale.order']  # khởi tạo empty recordset
+        if doms.get("completed"):
+            comp_dom = [
+                ("company_id", "=", company.id),
+                ("date_order", ">=", date_from),
+                ("date_order", "<=", date_to),
+            ] + doms["completed"]
+            if not manager:
+                comp_dom.append(("user_id", "=", uid))
+            
+            completed_orders = self.search(comp_dom, limit=50, order="date_order desc")
+            
+            completed_list = [{
+                "id": so.id,
+                "name": so.partner_id.display_name,
+                "amount": fmt(so.amount_total),
+                "date": (so.date_order or fields.Datetime.now()).date().isoformat(),
+            } for so in completed_orders[:5]]  # Chỉ lấy 5 đơn đầu
+
         receivables_dom = [
             ('move_type', '=', 'out_invoice'),
             ('state', '=', 'posted'),
@@ -232,14 +303,17 @@ class SaleOrderDashboardService(models.Model):
             "date": (so.date_order or fields.Datetime.now()).date().isoformat(),
         } for so in recent]
 
-        # Tổng tiền cho 2 bảng dưới
+        # Tổng tiền cho các bảng dưới
         receivables_total_val = sum(m.amount_residual for m in receivables)
         recent_total_val      = sum(o.amount_total     for o in recent)
+        completed_total_val   = sum(o.amount_total     for o in completed_orders) if 'completed_orders' in locals() else 0
         sums = {
             "receivables_total": receivables_total_val,
             "receivables_total_str": fmt(receivables_total_val),
             "recent_total": recent_total_val,
             "recent_total_str": fmt(recent_total_val),
+            "completed_total": completed_total_val,
+            "completed_total_str": fmt(completed_total_val),
         }
 
         return {
@@ -261,6 +335,7 @@ class SaleOrderDashboardService(models.Model):
                 "manufacturing": manuf_list,
                 "receivables": receivables_list,
                 "recent_customers": recent_list,
+                "completed_customers": completed_list,
             },
             "sums": sums,  # <<< NEW
         }

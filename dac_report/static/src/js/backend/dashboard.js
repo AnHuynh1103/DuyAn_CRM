@@ -52,25 +52,53 @@ class DacSaleDashboard extends Component {
   //--------------------------------------------------------------------
   // Helpers: đọc dữ liệu linh hoạt theo nhiều key khác nhau
   getTitle(it) {
-    return (
+    let rawTitle =
       it.partner_name ||
       it.customer_name ||
       it.name ||
       it.title ||
       it.display_name ||
-      "—"
-    );
+      "—";
+
+    // Làm sạch title
+    return this.cleanText(rawTitle);
   }
 
   getSnippet(it) {
     // Ưu tiên: note (suggestion từ AI/n8n) > snippet (tin nhắn cuối) > các field khác
-    return (
+    let rawText =
       it.note ||
       it.suggestion_note ||
       it.last_message_snippet ||
       it.snippet ||
       it.last_message ||
-      ""
+      "";
+
+    // Làm sạch HTML tags và format đặc biệt
+    return this.cleanText(rawText);
+  }
+
+  // Hàm làm sạch text - loại bỏ HTML tags, stickers, format đặc biệt
+  cleanText(text) {
+    if (!text) return "";
+
+    return (
+      text
+        // Loại bỏ HTML tags
+        .replace(/<[^>]*>/g, " ")
+        // Loại bỏ stickers và emojis trong []
+        .replace(/\[sticker\]/gi, "[Sticker]")
+        .replace(/\[emoji\]/gi, "[Emoji]")
+        .replace(/\[.*?\]/g, "")
+        // Loại bỏ các ký tự đặc biệt liên tiếp
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        // Loại bỏ khoảng trắng thừa
+        .replace(/\s+/g, " ")
+        .trim()
     );
   }
 
@@ -143,22 +171,18 @@ class DacSaleDashboard extends Component {
     try {
       const res = await this.orm.call(
         "page.fm.conversation",
-        "action_toggle_checklist_ok",
+        "action_toggle_require_processing",
         [item.id]
       );
+
+      // Cập nhật item với response từ server
       Object.assign(item, res);
-      // cập nhật lại label
-      if (item.checklist_ok) {
-        item.status_state = "done";
-        item.is_unread_fm = false;
-        item.status_label = "Đã xử lý";
-        item.require_processing = false;
-      }
+
       // Trigger OWL update bằng cách thay đổi object state gốc
       this.state.data = { ...this.state.data };
     } catch (err) {
       console.error("toggleChecklist failed:", err);
-      this.notification.add(_t("Không cập nhật được Checklist."), {
+      this.notification.add(_t("Không cập nhật được trạng thái xử lý."), {
         type: "danger",
       });
     }
