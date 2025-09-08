@@ -339,11 +339,11 @@
             <field name="model">sale.order</field>
             <field name="priority">1</field>
             <field name="arch" type="xml">
-                <list string="Báo giá" import="1" default_order="create_date desc">
-                    <field name="latest_quotation_info" string="Báo giá mới nhất"/>
+                <list string="Báo giá" default_order="date desc">
+                    <field name="latest_quotation_info" string="Báo giá mới nhất" readonly="1"/>
                     <field name="name"/>
-                    <field name="create_date" string="Ngày backup file"/>
-                    <field name="date" string="Ngày tạo đơn"/>
+                    <field name="create_date" string="Ngày tạo"/>
+                    <field name="date" string="Ngày đặt hàng"/>
                     <field name="partner_id"/>
                     <field name="user_id" widget="many2one_avatar_user"/>
                     <field name="company_id" invisible="1" optional="hide"/>

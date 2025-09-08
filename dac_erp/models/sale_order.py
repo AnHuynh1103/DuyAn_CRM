@@ -1,12 +1,15 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError, AccessError, ValidationError
 import logging
-from datetime import date
+from datetime import date, datetime
 
 _logger = logging.getLogger(__name__)
 
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
+    
+    # Override create_date để có thể chỉnh sửa được
+    create_date = fields.Datetime(string='Ngày tạo', readonly=False)
 
     order_state_custom = fields.Selection([
         ('quotation', 'Báo giá'),
@@ -1209,8 +1212,121 @@ class SaleOrder(models.Model):
         }
         
     
-    # Đảm bảo cho import file ở trạng thái báo giá
+    # Đảm bảo cho import file ở trạng thái báo giá và cập nhật date từ CSV
     @api.model
     def create(self, vals):
         vals.setdefault('order_state_custom', 'quotation')
+        
+        # Logic 1: Nếu có date_order từ CSV, cập nhật create_date theo đó
+        if 'date_order' in vals and vals['date_order']:
+            try:
+                # Parse date_order (có thể là string hoặc date object)
+                if isinstance(vals['date_order'], str):
+                    csv_date = datetime.strptime(vals['date_order'], '%Y-%m-%d').date()
+                else:
+                    csv_date = vals['date_order']
+                
+                # Cập nhật create_date và date để khớp với date_order
+                vals['create_date'] = datetime.combine(csv_date, datetime.min.time())
+                vals['date'] = csv_date  # Custom field
+                
+                _logger.info(f"✅ Setting create_date and date from CSV date_order: {csv_date}")
+                
+            except Exception as e:
+                _logger.warning(f"Error parsing date_order in create(): {e}")
+        
+        # Logic 2: Nếu tạo trên UI và có date_order, sync với trường date
+        elif 'date_order' in vals and vals['date_order']:
+            try:
+                if isinstance(vals['date_order'], str):
+                    order_date = datetime.strptime(vals['date_order'], '%Y-%m-%d').date()
+                else:
+                    order_date = vals['date_order']
+                
+                vals['date'] = order_date
+                _logger.info(f"✅ Auto-setting date field from date_order: {order_date}")
+                
+            except Exception as e:
+                _logger.warning(f"Error setting date from date_order: {e}")
+        
+        # Logic 3: Nếu không có date_order, set date = ngày hiện tại
+        if 'date' not in vals or not vals['date']:
+            today = date.today()
+            vals['date'] = today
+            _logger.info(f"✅ Setting default date to today: {today}")
+        
         return super().create(vals)
+    
+
+    
+    @api.model 
+    def force_update_dates_on_import(self, update_existing=True):
+        """
+        Method để force update dates cho records đã tồn tại
+        Dùng sau khi import để đảm bảo tất cả dates được cập nhật đúng
+        """
+        if not update_existing:
+            return {'message': 'Skipped existing records update'}
+            
+        updated_count = 0
+        orders = self.search([('client_order_ref', '!=', False)])
+        
+        for order in orders:
+            # Nếu có date_order và create_date chưa match
+            if order.date_order:
+                target_date = order.date_order
+                current_create_date = order.create_date.date() if order.create_date else None
+                
+                if current_create_date != target_date:
+                    try:
+                        order.write({
+                            'create_date': datetime.combine(target_date, datetime.min.time()),
+                            'date': target_date  # Sync custom date field
+                        })
+                        updated_count += 1
+                    except Exception as e:
+                        _logger.error(f"Error updating order {order.name}: {e}")
+        
+        return {
+            'updated_count': updated_count,
+            'total_orders': len(orders),
+            'message': f'Synced create_date with date_order for {updated_count} orders'
+        }
+    
+    def write(self, vals):
+        """Override write để cho phép cập nhật create_date và sync date với date_order"""
+        
+        # Sync trường date với date_order khi thay đổi
+        if 'date_order' in vals:
+            try:
+                if vals['date_order']:  # Nếu có giá trị
+                    if isinstance(vals['date_order'], str):
+                        order_date = datetime.strptime(vals['date_order'], '%Y-%m-%d').date()
+                    else:
+                        order_date = vals['date_order']
+                    
+                    vals['date'] = order_date
+                    _logger.info(f"✅ Auto-sync date field with date_order: {order_date}")
+                else:  # Nếu xóa date_order, giữ nguyên date hoặc set today
+                    if 'date' not in vals:
+                        vals['date'] = date.today()
+                        _logger.info(f"✅ Setting date to today when date_order is empty")
+                
+            except Exception as e:
+                _logger.warning(f"Error syncing date with date_order: {e}")
+        
+        # Nếu có create_date trong vals, cho phép cập nhật
+        if 'create_date' in vals:
+            # Chuyển đổi string thành datetime nếu cần
+            if isinstance(vals['create_date'], str):
+                try:
+                    vals['create_date'] = datetime.strptime(
+                        vals['create_date'], '%Y-%m-%d %H:%M:%S'
+                    ) if ' ' in vals['create_date'] else datetime.strptime(
+                        vals['create_date'], '%Y-%m-%d'
+                    )
+                except ValueError:
+                    pass  # Giữ nguyên giá trị nếu không parse được
+        
+        return super().write(vals)
+    

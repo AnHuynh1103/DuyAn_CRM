@@ -205,7 +205,7 @@ class DataExportController(http.Controller):
         date=None,                  # YYYY-MM-DD (lấy đúng 1 ngày)
         date_from=None,             # YYYY-MM-DD hoặc YYYY-MM-DD HH:MM:SS
         date_to=None,
-        date_field='date_order',    # 'date_order' | 'create_date' | 'date' (custom)
+        date_field='date',          # 'date' (custom) | 'date_order' | 'create_date' 
         # bộ lọc cơ bản
         user_id=None,               # id người phụ trách – cho phép 'me'
         partner_id=None,            # id khách hàng
@@ -218,7 +218,7 @@ class DataExportController(http.Controller):
         min_total=None,             # số: tổng tối thiểu
         max_total=None,             # số: tổng tối đa
         # hiển thị
-        order='date_order desc',    # cột sắp xếp
+        order='date desc',          # cột sắp xếp
         include_lines='1',          # '1' trả kèm dòng hàng, '0' bỏ để nhẹ
         format=None,                # 'flat' => trả list thuần (tương thích cũ)
         **kwargs
@@ -241,7 +241,7 @@ class DataExportController(http.Controller):
         domain = []
 
         # Chọn field ngày hợp lệ
-        df = date_field if date_field in ('date_order', 'create_date', 'date') else 'date_order'
+        df = date_field if date_field in ('date', 'date_order', 'create_date') else 'date'
 
         # Hỗ trợ ?date=YYYY-MM-DD
         if date and (not date_from and not date_to):
@@ -300,7 +300,7 @@ class DataExportController(http.Controller):
         # Truy vấn
         limit = int(limit) if limit else 100
         offset = int(offset) if offset else 0
-        order = order or 'date_order desc'
+        order = order or 'date desc'
 
         Order = request.env['sale.order'].sudo()  # giữ sudo như hiện tại
         orders = Order.search(domain, limit=limit, offset=offset, order=order)
@@ -312,6 +312,7 @@ class DataExportController(http.Controller):
             row = {
                 'id': so.id,
                 'name': so.name,
+                'client_order_ref': so.client_order_ref,  # Thêm field này để map CSV
                 'partner_id': {'id': so.partner_id.id, 'name': so.partner_id.name} if so.partner_id else None,
                 'user_id': {'id': so.user_id.id, 'name': so.user_id.name} if so.user_id else None,
                 'company_id': {'id': so.company_id.id, 'name': so.company_id.name} if so.company_id else None,
