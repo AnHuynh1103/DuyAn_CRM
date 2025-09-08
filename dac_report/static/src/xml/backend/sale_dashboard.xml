@@ -97,14 +97,14 @@
                             </div>
 
                             <div class="ticket__actions">
-                              <!-- Nút checklist -->
+                              <!-- Nút checklist - CHỈ 2 TRẠNG THÁI -->
                               <button t-att-class="{
                                                     'btn': true,
                                                     'btn-icon': true,
-                                                    'btn-checklist-done': it.status_state === 'done',
-                                                    'btn-checklist-pending': it.status_state !== 'done'
+                                                    'btn-checklist-done': !it.require_processing,
+                                                    'btn-checklist-pending': it.require_processing
                                                   }"
-                                      title="Đánh dấu đã kiểm checklist"
+                                      t-att-title="it.require_processing ? 'Đánh dấu đã xử lý' : 'Đánh dấu cần xử lý'"
                                       t-on-click="(ev)=>this.toggleChecklist(it, ev)">
                                 <i class="fa fa-check"/>
                               </button>

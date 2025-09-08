@@ -331,39 +331,16 @@
   min-width: 40px; /* Đảm bảo có đủ chỗ cho nút */
 }
 
-/* Màu nút checklist theo trạng thái conversation */
+/* Màu nút checklist theo trạng thái xử lý - CHỈ 2 TRẠNG THÁI */
 .btn-checklist-pending {
-  background-color: #28a745 !important; /* Màu xanh lá mặc định */
+  background-color: #28a745 !important; /* Màu xanh lá - Chưa xử lý */
   color: white !important;
   border: none !important;
 }
 
 .btn-checklist-done {
-  background-color: #6c757d !important; /* Màu xám khi đã xử lý */
+  background-color: #6c757d !important; /* Màu xám - Đã xử lý */
   color: white !important;
-  border: none !important;
-}
-
-/* Màu nút khi trạng thái là mới (new) hoặc chăm lại khách (recontact) */
-.ticket--state-new .btn-checklist-pending,
-.ticket--state-recontact .btn-checklist-pending {
-  background-color: #28a745 !important; /* Màu xanh lá */
-  color: white !important;
-  border: none !important;
-}
-
-/* Màu nút khi đã xử lý (done) */
-.ticket--state-done .btn-checklist-pending,
-.ticket--state-done .btn-checklist-done {
-  background-color: #6c757d !important; /* Màu xám */
-  color: white !important;
-  border: none !important;
-}
-
-/* Màu nút khi đang chờ (waiting) */
-.ticket--state-waiting .btn-checklist-pending {
-  background-color: #ffc107 !important; /* Màu vàng */
-  color: #000 !important;
   border: none !important;
 }
 
