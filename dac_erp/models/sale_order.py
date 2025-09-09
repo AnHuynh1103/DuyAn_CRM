@@ -1283,6 +1283,23 @@ class SaleOrder(models.Model):
             'res_id': conv.id,
             'target': 'current',
         }
+
+    def _auto_link_conversation(self):
+        """Tự động link conversation dựa trên partner_id"""
+        self.ensure_one()
+        if self.conversation_id or not self.partner_id:
+            return False
+            
+        # Tìm conversation gần nhất của partner này
+        conversation = self.env['page.fm.conversation'].search([
+            ('partner_id', '=', self.partner_id.id)
+        ], order='updated_at_fm desc, write_date desc', limit=1)
+        
+        if conversation:
+            self.conversation_id = conversation.id
+            _logger.info(f"🔗 Auto-linked sale order {self.name} to conversation {conversation.conversation_fm_id}")
+            return True
+        return False
         
     
     # Đảm bảo cho import file ở trạng thái báo giá và cập nhật date từ CSV
@@ -1327,7 +1344,14 @@ class SaleOrder(models.Model):
             today = date.today()
             vals['date'] = today
         
-        return super().create(vals)
+        # Tạo record
+        record = super().create(vals)
+        
+        # Auto-link conversation sau khi tạo
+        if record.partner_id and not record.conversation_id:
+            record._auto_link_conversation()
+        
+        return record
     
 
     
@@ -1368,3 +1392,46 @@ class SaleOrder(models.Model):
                     pass  # Giữ nguyên giá trị nếu không parse được
         
         return super().write(vals)
+
+    def action_link_conversation_manually(self):
+        """Button action để link conversation thủ công"""
+        for record in self:
+            if record._auto_link_conversation():
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {
+                        'title': _('Đã liên kết'),
+                        'message': _(f'Đã liên kết đơn hàng {record.name} với conversation {record.conversation_id.conversation_fm_id}'),
+                        'type': 'success',
+                        'sticky': False,
+                    }
+                }
+            else:
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {
+                        'title': _('Không thể liên kết'),
+                        'message': _('Không tìm thấy conversation nào cho khách hàng này'),
+                        'type': 'warning',
+                        'sticky': False,
+                    }
+                }
+
+    @api.model
+    def cron_auto_link_conversations(self):
+        """Cron job để tự động link các đơn hàng chưa có conversation"""
+        orders_without_conv = self.search([
+            ('conversation_id', '=', False),
+            ('partner_id', '!=', False),
+            ('create_date', '>=', fields.Datetime.now() - timedelta(days=30))  # Chỉ check đơn trong 30 ngày
+        ])
+        
+        linked_count = 0
+        for order in orders_without_conv:
+            if order._auto_link_conversation():
+                linked_count += 1
+                
+        _logger.info(f"🔗 Auto-linked {linked_count} sale orders to conversations")
+        return linked_count

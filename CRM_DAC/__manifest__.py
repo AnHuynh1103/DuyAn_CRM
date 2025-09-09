@@ -41,6 +41,7 @@
         # Tách riêng views cho Pages và Conversations
         'views/page_fm_page_views.xml',                    # Quản lý Pages đã đồng bộ
         'views/page_fm_conversation_views.xml',            # Quản lý Conversations  
+        'views/page_fm_tag_view.xml',                     # Quản lý Tag
         'views/KPI_View.xml',
         'views/res_partner_views_inherit_pancake.xml',
         'views/conversation_message_sync_wizard_views.xml',

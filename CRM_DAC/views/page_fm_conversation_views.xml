@@ -108,6 +108,12 @@
                             class="btn-success" 
                             context="{'load_all': False}"
                             groups="dac_erp.group_dac_erp_manager"/>
+                    <button name="action_test_pancake_tag_sync"
+                            type="object"
+                            string="Kiểm tra Tags"
+                            class="btn-info"
+                            icon="fa-tags"
+                            groups="dac_erp.group_dac_erp_manager"/>
                     <button name="action_debug_conversation"
                             type="object"
                             string="Debug"
@@ -175,6 +181,30 @@
                                     mode="list,form"
                                     views="[(list, 'CRM_DAC.view_page_fm_message_list'), (form, 'CRM_DAC.view_page_fm_message_form')]">
                             </field>
+                        </page>
+                        <page string="Pancake Tags" groups="dac_erp.group_dac_erp_manager">
+                            <group>
+                                <div class="oe_button_box">
+                                    <button name="action_sync_pancake_tags_manual"
+                                            type="object"
+                                            string="Sync Tags lên Pancake"
+                                            class="btn-primary"
+                                            icon="fa-cloud-upload"/>
+                                </div>
+                                <field name="pancake_tag_ids" widget="many2many_tags" 
+                                       options="{'no_create': True, 'no_open': True}"
+                                       placeholder="Chọn tags để sync lên Pancake..."/>
+                            </group>
+                            <div class="alert alert-info" role="alert">
+                                <strong>Hướng dẫn sử dụng:</strong> 
+                                <ul>
+                                    <li><strong>Sync Tags:</strong> Chọn tags và bấm "Sync Tags lên Pancake" để áp dụng</li>
+                                    <li><strong>Gỡ hoàn toàn:</strong> Bỏ chọn tất cả tags và bấm "Sync" để gỡ hết tags trên Pancake</li>
+                                    <li><strong>Thông báo chi tiết:</strong> Sẽ hiển thị trạng thái thay đổi từ [cũ] → [mới]</li>
+                                    <li><strong>Quyền hạn:</strong> Chỉ Manager mới có thể chỉnh sửa và sync tags này</li>
+                                    <li><strong>Tự động sync:</strong> Tags này không bị ảnh hưởng bởi việc đồng bộ conversation từ Pancake</li>
+                                </ul>
+                            </div>
                         </page>
                         <page string="Phân công" groups="dac_erp.group_dac_erp_manager">
                             <group>

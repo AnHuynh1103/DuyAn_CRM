@@ -28,6 +28,11 @@
                             class="btn-primary" 
                             context="{'load_all': True}"
                             groups="dac_erp.group_dac_erp_manager"/>
+                    <button name="action_sync_tags"
+                            string="🏷️ Đồng bộ Tag"
+                            type="object"
+                            class="btn-secondary"
+                            groups="dac_erp.group_dac_erp_manager"/>
                     <button name="action_refresh_page"
                             string="🔃 Làm Mới Page"
                             type="object"

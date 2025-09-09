@@ -23,7 +23,12 @@
                 sequence="20"
                 groups="dac_erp.group_dac_erp_manager,base.group_system"/>
 
-                
+        <menuitem id="menu_page_fm_all_tags_optional"
+                name="🏷️ Tất cả Tag"
+                parent="menu_page_fm_sync_root"
+                action="action_page_fm_tag"
+                sequence="30"
+                groups="dac_erp.group_dac_erp_manager,base.group_system"/>
 
         <!-- Báo cáo và KPI -->
         <menuitem 

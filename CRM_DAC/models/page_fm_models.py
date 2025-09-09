@@ -17,6 +17,7 @@ class PageFmPage(models.Model):
     _name = 'page.fm.page'
     _description = 'Page.fm Page'
     _order = 'name asc'
+    _inherit = ['mail.thread', 'mail.activity.mixin']
 
     name = fields.Char(string="Page Name", index=True)
     page_fm_id_str = fields.Char(string="Page.fm ID", index=True, required=False, copy=False)

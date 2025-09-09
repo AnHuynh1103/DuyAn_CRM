@@ -125,13 +125,42 @@ class DataExportController(http.Controller):
                 status=500
             )
 
+    @http.route('/dac_erp/api/debug/simple', type='http', auth='public', csrf=False, methods=['GET'])
+    def debug_simple(self, **kwargs):
+        """Debug endpoint đơn giản"""
+        try:
+            partners = request.env['res.partner'].sudo().search([('is_company', '=', False)], limit=1)
+            if partners:
+                partner = partners[0]
+                orders = request.env['sale.order'].sudo().search([('partner_id', '=', partner.id)])
+                result = {
+                    'partner_id': partner.id,
+                    'partner_name': partner.name,
+                    'orders_count': len(orders),
+                    'orders_data': [{'id': o.id, 'name': o.name} for o in orders[:2]]
+                }
+            else:
+                result = {'error': 'No partners found'}
+            
+            return http.Response(
+                json.dumps(result, ensure_ascii=False, default=str),
+                content_type='application/json',
+                status=200
+            )
+        except Exception as e:
+            return http.Response(
+                json.dumps({'error': str(e)}),
+                content_type='application/json',
+                status=500
+            )
+
     @http.route('/dac_erp/api/export/customers', type='http', auth='public', csrf=False, methods=['GET', 'POST'])
     def export_customers_data(self, **kwargs):
-        """API endpoint để get dữ liệu khách hàng"""
+        """API endpoint để get dữ liệu khách hàng với filter và limit mặc định"""
         try:
-            data = self._get_customers_data(**kwargs)
+            result = self._get_customers_data(**kwargs)
             return http.Response(
-                json.dumps(data, ensure_ascii=False, default=str),
+                json.dumps(result, ensure_ascii=False, default=str),
                 content_type='application/json',
                 status=200
             )
@@ -209,6 +238,8 @@ class DataExportController(http.Controller):
         # bộ lọc cơ bản
         user_id=None,               # id người phụ trách – cho phép 'me'
         partner_id=None,            # id khách hàng
+        conversation_id=None,       # id conversation liên kết (Odoo ID)
+        pancake_conversation_id=None, # id conversation từ Pancake
         state=None,                 # CSV: draft,sent,sale,done,cancel
         custom_state=None,          # CSV: quotation,deposit,production,delivery,payment
         company_id=None,            # id công ty
@@ -220,6 +251,7 @@ class DataExportController(http.Controller):
         # hiển thị
         order='date desc',          # cột sắp xếp
         include_lines='1',          # '1' trả kèm dòng hàng, '0' bỏ để nhẹ
+        include_conversation='1',   # '1' trả kèm dữ liệu conversation, '0' bỏ
         format=None,                # 'flat' => trả list thuần (tương thích cũ)
         **kwargs
     ):
@@ -265,13 +297,23 @@ class DataExportController(http.Controller):
             if pid:
                 domain.append(('partner_id', '=', pid))
 
-        # Trạng thái chuẩn
+        # Conversation ID (Odoo)
+        if conversation_id:
+            cid = _as_int(conversation_id)
+            if cid:
+                domain.append(('conversation_id', '=', cid))
+
+        # Pancake Conversation ID
+        if pancake_conversation_id:
+            domain.append(('conversation_id.conversation_fm_id', '=', str(pancake_conversation_id)))
+
+        # Trạng thái custom (sử dụng order_state_custom thay vì core state)
         if state:
             states = [s.strip() for s in str(state).split(',') if s.strip()]
             if states:
-                domain.append(('state', 'in', states))
+                domain.append(('order_state_custom', 'in', states))
 
-        # Trạng thái custom
+        # Trạng thái custom (backward compatibility)
         if custom_state:
             csts = [s.strip() for s in str(custom_state).split(',') if s.strip()]
             if csts:
@@ -316,7 +358,7 @@ class DataExportController(http.Controller):
                 'partner_id': {'id': so.partner_id.id, 'name': so.partner_id.name} if so.partner_id else None,
                 'user_id': {'id': so.user_id.id, 'name': so.user_id.name} if so.user_id else None,
                 'company_id': {'id': so.company_id.id, 'name': so.company_id.name} if so.company_id else None,
-                'state': so.state,
+                'state': getattr(so, 'order_state_custom', None),
                 'order_state_custom': getattr(so, 'order_state_custom', None),
                 'date_order': so.date_order.isoformat() if so.date_order else None,
                 'create_date': so.create_date.isoformat() if so.create_date else None,
@@ -330,6 +372,71 @@ class DataExportController(http.Controller):
                 'production_deadline': so.production_deadline.isoformat() if hasattr(so, 'production_deadline') and so.production_deadline else None,
                 'delivery_address': getattr(so, 'delivery_address', None),
             }
+            
+            # Safe access cho conversation_id
+            conversation = None
+            conversation_id_val = None
+            pancake_conversation_id_val = None
+            
+            # Phương pháp 1: Thử access field conversation_id trực tiếp
+            try:
+                if hasattr(so, 'conversation_id'):
+                    conversation_field = getattr(so, 'conversation_id', None)
+                    if conversation_field and hasattr(conversation_field, 'id'):
+                        conversation = conversation_field
+                        conversation_id_val = conversation_field.id
+                        if hasattr(conversation_field, 'conversation_fm_id'):
+                            pancake_conversation_id_val = conversation_field.conversation_fm_id
+            except Exception as e:
+                _logger.warning(f"Error accessing conversation_id for order {so.name}: {str(e)}")
+            
+            # Phương pháp 2: Nếu không có conversation_id, tìm theo partner_id
+            if not conversation and so.partner_id:
+                try:
+                    Conv = request.env['page.fm.conversation'].sudo()
+                    conversation = Conv.search([
+                        ('partner_id', '=', so.partner_id.id)
+                    ], order='updated_at_fm desc, write_date desc', limit=1)
+                    
+                    if conversation:
+                        conversation_id_val = conversation.id
+                        if hasattr(conversation, 'conversation_fm_id'):
+                            pancake_conversation_id_val = conversation.conversation_fm_id
+                        _logger.info(f"Found conversation for order {so.name} via partner {so.partner_id.name}")
+                except Exception as e:
+                    _logger.warning(f"Error finding conversation by partner for order {so.name}: {str(e)}")
+                
+            row.update({
+                'conversation_id': conversation_id_val,
+                'pancake_conversation_id': pancake_conversation_id_val,
+            })
+            
+            # Thêm dữ liệu conversation nếu có
+            if conversation and hasattr(conversation, 'exists') and conversation.exists():
+                try:
+                    row['conversation'] = {
+                        'id': conversation.id,
+                        'name': getattr(conversation, 'name', '') or '',
+                        'pancake_conversation_id': getattr(conversation, 'conversation_fm_id', None),
+                        'status': getattr(conversation, 'status', None),
+                        'created_date': conversation.created_date.isoformat() if hasattr(conversation, 'created_date') and conversation.created_date else None,
+                        'last_activity_date': conversation.last_activity_date.isoformat() if hasattr(conversation, 'last_activity_date') and conversation.last_activity_date else None,
+                        'assigned_user_id': {
+                            'id': conversation.assigned_user_id.id,
+                            'name': conversation.assigned_user_id.name
+                        } if hasattr(conversation, 'assigned_user_id') and conversation.assigned_user_id else None,
+                        'partner_id': {
+                            'id': conversation.partner_id.id,
+                            'name': conversation.partner_id.name
+                        } if conversation.partner_id else None,
+                        'tags': [{'id': tag.id, 'name': tag.name} for tag in conversation.tag_ids] if hasattr(conversation, 'tag_ids') else [],
+                        'description': getattr(conversation, 'description', '') or ''
+                    }
+                except Exception as e:
+                    _logger.warning(f"Failed to load conversation data for order {so.name}: {str(e)}")
+                    row['conversation'] = None
+            else:
+                row['conversation'] = None
             if send_lines:
                 row['order_lines'] = [{
                     'id': l.id,
@@ -356,16 +463,169 @@ class DataExportController(http.Controller):
         }
 
 
-    def _get_customers_data(self, limit=None, **kwargs):
-        """Get dữ liệu khách hàng"""
-        limit = int(limit) if limit else 1000
-        partners = request.env['res.partner'].sudo().search([
-            ('is_company', '=', False),  # Chỉ lấy khách hàng cá nhân
-            ('customer_rank', '>', 0)    # Chỉ lấy customer
-        ], limit=limit, order='create_date desc')
+    def _get_customers_data(self, 
+                           limit=None, 
+                           include_conversation='1', 
+                           include_orders='1', 
+                           include_order_details='0', 
+                           has_orders_only='0', 
+                           has_conversation_only='0',
+                           # Filters for orders
+                           state=None,  # Filter by order state
+                           order_state_custom=None,  # Filter by custom order state
+                           **kwargs):
+        """Get dữ liệu khách hàng - với filter theo trạng thái đơn hàng"""
+        # Giới hạn mặc định 100-200 như yêu cầu
+        limit = int(limit) if limit else 150  
+        
+        # Bước 1: Lấy partners có orders thỏa mãn điều kiện filter
+        if state or order_state_custom:
+            # Tìm orders thỏa mãn điều kiện state
+            order_domain = []
+            if state:
+                states = [s.strip() for s in str(state).split(',') if s.strip()]
+                if states:
+                    order_domain.append(('order_state_custom', 'in', states))
+            
+            if order_state_custom:
+                custom_states = [s.strip() for s in str(order_state_custom).split(',') if s.strip()]
+                if custom_states:
+                    order_domain.append(('order_state_custom', 'in', custom_states))
+            
+            # Lấy partner_ids từ orders thỏa mãn
+            orders_with_filter = request.env['sale.order'].sudo().search(order_domain)
+            partner_ids_with_orders = orders_with_filter.mapped('partner_id.id')
+            
+            _logger.info(f"🔍 Filter Debug: Found {len(orders_with_filter)} orders matching state filter, {len(set(partner_ids_with_orders))} unique partners")
+            
+            if not partner_ids_with_orders:
+                return []  # Không có khách hàng nào có orders thỏa mãn
+            
+            # Domain để lấy partners có orders thỏa mãn filter
+            domain = [
+                ('is_company', '=', False),
+                ('id', 'in', partner_ids_with_orders)
+            ]
+        else:
+            # Domain để lấy TẤT CẢ khách hàng nếu không có filter
+            domain = [
+                ('is_company', '=', False), 
+            ]
+        
+        partners = request.env['res.partner'].sudo().search(domain, limit=limit, order='create_date desc')
+        
+        # Debug info
+        total_partners = request.env['res.partner'].sudo().search_count([])
+        total_individual = request.env['res.partner'].sudo().search_count([('is_company', '=', False)])
+        #_logger.info(f"🔍 Customer API Debug: Total partners: {total_partners}, Individual: {total_individual}, Found with filter: {len(partners)}, Limit: {limit}")
         
         customers_data = []
         for partner in partners:
+            # Lấy người phụ trách từ đơn hàng gần nhất
+            latest_order = request.env['sale.order'].sudo().search([
+                ('partner_id', '=', partner.id)
+            ], limit=1, order='create_date desc')
+            
+            responsible_user = None
+            if latest_order and latest_order.user_id:
+                responsible_user = {
+                    'id': latest_order.user_id.id,
+                    'name': latest_order.user_id.name,
+                    'login': latest_order.user_id.login
+                }
+            
+            # Lấy thông tin conversation nếu có
+            conversation_data = None
+            if str(include_conversation).lower() in ('1', 'true'):
+                try:
+                    Conv = request.env['page.fm.conversation'].sudo()
+                    conversation = Conv.search([
+                        ('partner_id', '=', partner.id)
+                    ], order='updated_at_fm desc, write_date desc', limit=1)
+                    
+                    if conversation:
+                        conversation_data = {
+                            'id': conversation.id,
+                            'name': getattr(conversation, 'name', '') or '',
+                            'pancake_conversation_id': getattr(conversation, 'conversation_fm_id', None),
+                            'status': getattr(conversation, 'status_state', None),
+                            'require_processing': getattr(conversation, 'require_processing', False),
+                            'is_unread': getattr(conversation, 'is_unread_fm', False),
+                            'last_message_snippet': getattr(conversation, 'last_message_snippet', ''),
+                            'updated_at_fm': conversation.updated_at_fm.isoformat() if hasattr(conversation, 'updated_at_fm') and conversation.updated_at_fm else None,
+                            'owner_id': {
+                                'id': conversation.owner_id.id,
+                                'name': conversation.owner_id.name
+                            } if hasattr(conversation, 'owner_id') and conversation.owner_id else None,
+                        }
+                except Exception as e:
+                    _logger.warning(f"Error loading conversation for partner {partner.name}: {str(e)}")
+            
+            # Get orders data if requested
+            orders_data = None
+            total_orders = 0
+            total_invoiced = 0.0
+            orders_by_state = {}
+            try:
+                # Áp dụng filter cho orders nếu có
+                order_domain = [('partner_id', '=', partner.id)]
+                if state or order_state_custom:
+                    if state:
+                        states = [s.strip() for s in str(state).split(',') if s.strip()]
+                        if states:
+                            order_domain.append(('order_state_custom', 'in', states))
+                    if order_state_custom:
+                        custom_states = [s.strip() for s in str(order_state_custom).split(',') if s.strip()]
+                        if custom_states:
+                            order_domain.append(('order_state_custom', 'in', custom_states))
+                
+                orders = request.env['sale.order'].sudo().search(order_domain, order='create_date desc')
+                
+                total_orders = len(orders)
+                total_invoiced = sum(orders.mapped('amount_total')) if orders else 0.0
+                
+                # Thống kê orders theo state
+                for order in orders:
+                    order_state = getattr(order, 'order_state_custom', 'unknown')
+                    orders_by_state[order_state] = orders_by_state.get(order_state, 0) + 1
+                
+                if str(include_orders).lower() in ('1', 'true'):
+                    orders_data = []
+                    for order in orders:
+                        order_data = {
+                            'id': order.id,
+                            'name': order.name,
+                            'state': getattr(order, 'order_state_custom', None),
+                            'amount_total': order.amount_total,
+                            'create_date': order.create_date.isoformat() if order.create_date else None,
+                            'conversation_id': getattr(order, 'conversation_id', {}).id if hasattr(getattr(order, 'conversation_id', None), 'id') else None,
+                        }
+                        
+                        # Add detailed lines if requested
+                        if str(include_order_details).lower() in ('1', 'true'):
+                            order_data['lines'] = [
+                                {
+                                    'id': line.id,
+                                    'product_id': {'id': line.product_id.id, 'name': line.product_id.name} if line.product_id else None,
+                                    'name': line.name,
+                                    'product_uom_qty': line.product_uom_qty,
+                                    'price_unit': line.price_unit,
+                                    'price_subtotal': line.price_subtotal
+                                } for line in order.order_line
+                            ]
+                        
+                        orders_data.append(order_data)
+            except Exception as e:
+                _logger.warning(f"Error loading orders for partner {partner.name}: {str(e)}")
+                total_orders = 0
+                total_invoiced = 0.0
+            
+            # Apply filters
+            if str(has_orders_only).lower() in ('1', 'true') and total_orders == 0:
+                continue
+            if str(has_conversation_only).lower() in ('1', 'true') and conversation_data is None:
+                continue
+            
             customer_data = {
                 'id': partner.id,
                 'name': partner.name,
@@ -390,13 +650,36 @@ class DataExportController(http.Controller):
                 'customer_rank': partner.customer_rank,
                 'supplier_rank': partner.supplier_rank,
                 'is_company': partner.is_company,
-                # Thống kê đơn hàng
-                'total_orders': request.env['sale.order'].sudo().search_count([('partner_id', '=', partner.id)]),
-                'total_invoiced': sum(request.env['sale.order'].sudo().search([('partner_id', '=', partner.id)]).mapped('amount_total'))
+                # Người phụ trách (từ đơn hàng gần nhất)
+                'responsible_user': responsible_user,
+                # Thông tin conversation
+                'conversation': conversation_data,
+                # Thông tin orders
+                'orders': orders_data,
+                # Thống kê đơn hàng với filter áp dụng
+                'total_orders': total_orders,
+                'total_invoiced': total_invoiced,
+                'orders_by_state': orders_by_state,  # Thống kê theo state
+                # Thống kê conversation
+                'has_conversation': conversation_data is not None,
+                'total_conversations': request.env['page.fm.conversation'].sudo().search_count([('partner_id', '=', partner.id)]) if 'page.fm.conversation' in request.env else 0,
             }
             customers_data.append(customer_data)
         
-        return customers_data
+        # Trả kết quả với metadata
+        result = {
+            'count': len(customers_data),
+            'limit': limit,
+            'applied_filters': {
+                'state': state,
+                'order_state_custom': order_state_custom,
+                'has_orders_only': has_orders_only,
+                'has_conversation_only': has_conversation_only,
+            },
+            'items': customers_data
+        }
+        
+        return result
 
     def _get_invoices_data(self, limit=None, date_from=None, date_to=None, **kwargs):
         """Get dữ liệu hóa đơn"""
@@ -493,45 +776,59 @@ class DataExportController(http.Controller):
         return payments_data
 
     def _get_employees_data(self, limit=None, **kwargs):
-        """Get dữ liệu nhân viên"""
-        # Kiểm tra xem module HR có được cài đặt không
-        if 'hr.employee' not in request.env:
-            _logger.warning("Module HR chưa được cài đặt, bỏ qua dữ liệu employees")
-            return []
-            
+        """Get dữ liệu nhân viên - Lấy từ res.users (người phụ trách đơn hàng)"""
         limit = int(limit) if limit else 500
-        employees = request.env['hr.employee'].sudo().search([], limit=limit, order='create_date desc')
+        
+        # Lấy các users có phụ trách đơn hàng
+        users_with_orders = request.env['res.users'].sudo().search([
+            ('active', '=', True),
+            ('share', '=', False),  # Chỉ lấy internal users
+        ], limit=limit, order='create_date desc')
         
         employees_data = []
-        for employee in employees:
+        for user in users_with_orders:
+            # Đếm số đơn hàng phụ trách
+            order_count = request.env['sale.order'].sudo().search_count([
+                ('user_id', '=', user.id)
+            ])
+            
+            # Lấy thông tin từ employee record nếu có
+            employee = request.env['hr.employee'].sudo().search([('user_id', '=', user.id)], limit=1) if 'hr.employee' in request.env else None
+            
             employee_data = {
-                'id': employee.id,
-                'name': employee.name,
-                'work_email': employee.work_email,
-                'work_phone': employee.work_phone,
-                'mobile_phone': employee.mobile_phone,
-                'job_title': employee.job_title,
-                'department_id': {
-                    'id': employee.department_id.id,
-                    'name': employee.department_id.name
-                } if employee.department_id else None,
-                'manager_id': {
-                    'id': employee.parent_id.id,
-                    'name': employee.parent_id.name
-                } if employee.parent_id else None,
-                'user_id': {
-                    'id': employee.user_id.id,
-                    'name': employee.user_id.name,
-                    'login': employee.user_id.login
-                } if employee.user_id else None,
-                'create_date': employee.create_date.isoformat() if employee.create_date else None,
-                'active': employee.active,
+                'id': user.id,
+                'name': user.name,
+                'login': user.login,
+                'email': user.email,
+                'phone': user.phone,
+                'mobile': user.mobile,
+                'active': user.active,
+                'create_date': user.create_date.isoformat() if user.create_date else None,
+                'last_login': user.login_date.isoformat() if user.login_date else None,
                 'company_id': {
-                    'id': employee.company_id.id,
-                    'name': employee.company_id.name
-                }
+                    'id': user.company_id.id,
+                    'name': user.company_id.name
+                } if user.company_id else None,
+                # Thống kê đơn hàng
+                'total_orders_managed': order_count,
+                # Thông tin từ HR Employee nếu có
+                'hr_info': {
+                    'job_title': employee.job_title if employee else None,
+                    'department_id': {
+                        'id': employee.department_id.id,
+                        'name': employee.department_id.name
+                    } if employee and employee.department_id else None,
+                    'manager_id': {
+                        'id': employee.parent_id.id,
+                        'name': employee.parent_id.name
+                    } if employee and employee.parent_id else None,
+                    'work_email': employee.work_email if employee else None,
+                    'work_phone': employee.work_phone if employee else None,
+                } if employee else None
             }
             employees_data.append(employee_data)
+        
+        return employees_data
         
         return employees_data
 
@@ -1021,6 +1318,66 @@ class DataExportController(http.Controller):
     
 
     # --- /UPDATE CONVERSATION STATUS -------------------------------------------
+    
+    @http.route('/dac_erp/api/debug/link_order_conversation', type='http', auth='public', csrf=False, methods=['GET', 'POST'])
+    def debug_link_order_conversation(self, order_id=None, conversation_id=None, **kwargs):
+        """Debug API để link order với conversation"""
+        try:
+            if not order_id or not conversation_id:
+                return http.Response(
+                    json.dumps({'error': 'Cần truyền order_id và conversation_id'}),
+                    content_type='application/json',
+                    status=400
+                )
+            
+            order = request.env['sale.order'].sudo().browse(int(order_id))
+            conversation = request.env['page.fm.conversation'].sudo().browse(int(conversation_id))
+            
+            if not order.exists():
+                return http.Response(
+                    json.dumps({'error': f'Không tìm thấy order ID {order_id}'}),
+                    content_type='application/json',
+                    status=404
+                )
+                
+            if not conversation.exists():
+                return http.Response(
+                    json.dumps({'error': f'Không tìm thấy conversation ID {conversation_id}'}),
+                    content_type='application/json',
+                    status=404
+                )
+            
+            # Link conversation
+            order.conversation_id = conversation.id
+            
+            result = {
+                'success': True,
+                'order': {
+                    'id': order.id,
+                    'name': order.name,
+                    'partner': order.partner_id.name,
+                },
+                'conversation': {
+                    'id': conversation.id,
+                    'pancake_id': conversation.conversation_fm_id,
+                    'partner': conversation.partner_id.name if conversation.partner_id else None,
+                },
+                'linked': True
+            }
+            
+            return http.Response(
+                json.dumps(result, ensure_ascii=False),
+                content_type='application/json',
+                status=200
+            )
+            
+        except Exception as e:
+            _logger.error(f"Error in debug_link_order_conversation: {str(e)}", exc_info=True)
+            return http.Response(
+                json.dumps({'error': str(e)}),
+                content_type='application/json',
+                status=500
+            )
 class DacConversationApi(http.Controller):
 
     @http.route('/dac_erp/api/conversation/update_status', type='json', auth='public', methods=['POST'], csrf=False)
