@@ -478,9 +478,12 @@ class DataExportController(http.Controller):
         # Giới hạn mặc định 100-200 như yêu cầu
         limit = int(limit) if limit else 150  
         
-        # Bước 1: Lấy partners có orders thỏa mãn điều kiện filter
+        # Bước 1: Xây dựng domain lọc partners
+        domain = [('is_company', '=', False)]
+        partner_ids_to_include = None
+        
+        # Filter theo orders state nếu có
         if state or order_state_custom:
-            # Tìm orders thỏa mãn điều kiện state
             order_domain = []
             if state:
                 states = [s.strip() for s in str(state).split(',') if s.strip()]
@@ -494,30 +497,60 @@ class DataExportController(http.Controller):
             
             # Lấy partner_ids từ orders thỏa mãn
             orders_with_filter = request.env['sale.order'].sudo().search(order_domain)
-            partner_ids_with_orders = orders_with_filter.mapped('partner_id.id')
+            partner_ids_with_orders = set(orders_with_filter.mapped('partner_id.id'))
             
-            _logger.info(f"🔍 Filter Debug: Found {len(orders_with_filter)} orders matching state filter, {len(set(partner_ids_with_orders))} unique partners")
+            _logger.info(f"🔍 Order Filter Debug: Found {len(orders_with_filter)} orders matching state filter, {len(partner_ids_with_orders)} unique partners")
             
             if not partner_ids_with_orders:
-                return []  # Không có khách hàng nào có orders thỏa mãn
+                return {'count': 0, 'limit': limit, 'applied_filters': {'state': state, 'order_state_custom': order_state_custom}, 'items': []}
             
-            # Domain để lấy partners có orders thỏa mãn filter
-            domain = [
-                ('is_company', '=', False),
-                ('id', 'in', partner_ids_with_orders)
-            ]
-        else:
-            # Domain để lấy TẤT CẢ khách hàng nếu không có filter
-            domain = [
-                ('is_company', '=', False), 
-            ]
+            partner_ids_to_include = partner_ids_with_orders
+        
+        # Filter theo has_orders_only nếu có
+        if str(has_orders_only).lower() in ('1', 'true'):
+            # Lấy tất cả partner có ít nhất 1 order
+            all_partners_with_orders = request.env['sale.order'].sudo().search([]).mapped('partner_id.id')
+            all_partners_with_orders = set(all_partners_with_orders)
+            
+            if partner_ids_to_include is not None:
+                partner_ids_to_include = partner_ids_to_include.intersection(all_partners_with_orders)
+            else:
+                partner_ids_to_include = all_partners_with_orders
+                
+            _logger.info(f"🔍 Has Orders Filter Debug: Found {len(partner_ids_to_include)} partners with orders")
+        
+        # Filter theo has_conversation_only nếu có
+        if str(has_conversation_only).lower() in ('1', 'true'):
+            # Lấy tất cả partner có conversation
+            try:
+                Conv = request.env['page.fm.conversation'].sudo()
+                all_partners_with_conversations = Conv.search([]).mapped('partner_id.id')
+                all_partners_with_conversations = set(all_partners_with_conversations)
+                
+                if partner_ids_to_include is not None:
+                    partner_ids_to_include = partner_ids_to_include.intersection(all_partners_with_conversations)
+                else:
+                    partner_ids_to_include = all_partners_with_conversations
+                    
+                _logger.info(f"🔍 Has Conversation Filter Debug: Found {len(partner_ids_to_include)} partners with conversations")
+            except Exception as e:
+                _logger.warning(f"Error filtering partners with conversations: {str(e)}")
+                if partner_ids_to_include is None:
+                    partner_ids_to_include = set()
+        
+        # Áp dụng filter partner_ids vào domain
+        if partner_ids_to_include is not None:
+            if not partner_ids_to_include:
+                return {'count': 0, 'limit': limit, 'applied_filters': {'state': state, 'has_orders_only': has_orders_only, 'has_conversation_only': has_conversation_only}, 'items': []}
+            domain.append(('id', 'in', list(partner_ids_to_include)))
         
         partners = request.env['res.partner'].sudo().search(domain, limit=limit, order='create_date desc')
         
         # Debug info
         total_partners = request.env['res.partner'].sudo().search_count([])
         total_individual = request.env['res.partner'].sudo().search_count([('is_company', '=', False)])
-        #_logger.info(f"🔍 Customer API Debug: Total partners: {total_partners}, Individual: {total_individual}, Found with filter: {len(partners)}, Limit: {limit}")
+        _logger.info(f"🔍 Customer API Debug: Total partners: {total_partners}, Individual: {total_individual}, Found with filter: {len(partners)}, Limit: {limit}")
+        _logger.info(f"🔍 Applied Filters: state={state}, has_orders_only={has_orders_only}, has_conversation_only={has_conversation_only}")
         
         customers_data = []
         for partner in partners:
@@ -620,11 +653,7 @@ class DataExportController(http.Controller):
                 total_orders = 0
                 total_invoiced = 0.0
             
-            # Apply filters
-            if str(has_orders_only).lower() in ('1', 'true') and total_orders == 0:
-                continue
-            if str(has_conversation_only).lower() in ('1', 'true') and conversation_data is None:
-                continue
+            # Filters đã được áp dụng ở domain level, không cần filter thêm ở đây
             
             customer_data = {
                 'id': partner.id,
