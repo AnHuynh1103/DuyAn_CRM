@@ -7,12 +7,21 @@
               sequence="-100"/>
 
 
-    <!-- Menuitem cho menu Đơn hàng -->
-        <menuitem id="dac_sale_order_menu_root"
+    <!-- Menuitem cho menu Đơn hàng - Sale user chỉ xem đơn của mình -->
+        <menuitem id="dac_sale_order_menu_sale"
             name="Đơn hàng"
             parent="dac_sale_dashboard_menu_root"
             action="dac_erp.dac_sale_order_custom_action"
-            sequence="10"/>
+            sequence="10"
+            groups="dac_erp.group_dac_erp_sale"/>
+
+    <!-- Menuitem cho menu Đơn hàng - Manager xem tất cả -->
+        <menuitem id="dac_sale_order_menu_manager"
+            name="Đơn hàng"
+            parent="dac_sale_dashboard_menu_root"
+            action="dac_erp.dac_sale_order_manager_action"
+            sequence="10"
+            groups="dac_erp.group_dac_erp_manager"/>
 
 
         <!-- Menuitem cho manager Khách hàng -->

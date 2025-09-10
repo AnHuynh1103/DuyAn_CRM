@@ -360,12 +360,14 @@
             </field>
         </record>
 
-        <record id="dac_sale_order_custom_view_list" model="ir.ui.view">
-            <field name="name">sale.order.custom.list</field>
+        <!-- List view cho Sale users - không cho delete -->
+        <record id="dac_sale_order_custom_view_list_sale" model="ir.ui.view">
+            <field name="name">sale.order.custom.list.sale</field>
             <field name="model">sale.order</field>
-            <field name="priority">1</field>
+            <field name="priority">2</field>
+            <field name="groups_id" eval="[(6, 0, [ref('dac_erp.group_dac_erp_sale')])]"/>
             <field name="arch" type="xml">
-                <list string="Báo giá" default_order="date desc">
+                <list string="Báo giá" default_order="date desc" delete="false" create="true" edit="true">
                     <field name="latest_quotation_info" string="Báo giá mới nhất" readonly="1"/>
                     <field name="name"/>
                     <field name="create_date" string="Ngày tạo đơn (hệ thống)"/>
@@ -375,8 +377,35 @@
                     <field name="company_id" invisible="1" optional="hide"/>
                     <field name="currency_id" invisible="1" optional="hide"/>
                     <field name="pricelist_id" invisible="1" optional="hide"/>
-                    <!-- <field name="total_deposit_paid" widget="monetary" optional="hide"/>
-                    <field name="remaining_amount_display" widget="monetary" string="Còn lại"/> -->
+                    <field name="amount_total" sum="Total" widget="monetary"/>
+                    <field name="order_state_custom" widget="badge"
+                        decoration-info="order_state_custom == 'quotation' and not is_order_completed"
+                        decoration-warning="order_state_custom == 'deposit' and not is_order_completed"
+                        decoration-primary="order_state_custom in ['production', 'delivery'] and not is_order_completed"
+                        decoration-success="order_state_custom == 'payment' and not is_order_completed"
+                        decoration-muted="is_order_completed or order_state_custom == 'completed'"
+                        decoration-danger="order_state_custom == 'cancel'"/>
+                </list>
+            </field>
+        </record>
+
+        <!-- List view cho Manager - có full quyền -->
+        <record id="dac_sale_order_custom_view_list" model="ir.ui.view">
+            <field name="name">sale.order.custom.list</field>
+            <field name="model">sale.order</field>
+            <field name="priority">1</field>
+            <field name="groups_id" eval="[(6, 0, [ref('dac_erp.group_dac_erp_manager')])]"/>
+            <field name="arch" type="xml">
+                <list string="Báo giá" default_order="date desc" delete="true" create="true" edit="true">
+                    <field name="latest_quotation_info" string="Báo giá mới nhất" readonly="1"/>
+                    <field name="name"/>
+                    <field name="create_date" string="Ngày tạo đơn (hệ thống)"/>
+                    <field name="date" string="Ngày đơn hàng"/>
+                    <field name="partner_id"/>
+                    <field name="user_id" widget="many2one_avatar_user"/>
+                    <field name="company_id" invisible="1" optional="hide"/>
+                    <field name="currency_id" invisible="1" optional="hide"/>
+                    <field name="pricelist_id" invisible="1" optional="hide"/>
                     <field name="amount_total" sum="Total" widget="monetary"/>
                     <field name="order_state_custom" widget="badge"
                         decoration-info="order_state_custom == 'quotation' and not is_order_completed"
@@ -420,9 +449,22 @@
             <field name="name">Báo giá</field>
             <field name="res_model">sale.order</field>
             <field name="view_mode">list,form</field>
+            <field name="view_id" ref="dac_sale_order_custom_view_list_sale"/>
+            <field name="search_view_id" ref="dac_sale_order_custom_search"/>
+            <field name="context">{}</field>
+            <field name="domain">[('user_id', '=', uid)]</field>
+            <field name="groups_id" eval="[(6, 0, [ref('dac_erp.group_dac_erp_sale')])]"/>
+        </record>
+
+        <!-- Action riêng cho Manager - xem tất cả đơn hàng -->
+        <record id="dac_sale_order_manager_action" model="ir.actions.act_window">
+            <field name="name">Báo giá (Tất cả)</field>
+            <field name="res_model">sale.order</field>
+            <field name="view_mode">list,form</field>
             <field name="view_id" ref="dac_sale_order_custom_view_list"/>
             <field name="search_view_id" ref="dac_sale_order_custom_search"/>
             <field name="context">{}</field>
+            <field name="groups_id" eval="[(6, 0, [ref('dac_erp.group_dac_erp_manager')])]"/>
         </record>
 
         
