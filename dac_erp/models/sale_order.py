@@ -1254,51 +1254,139 @@ class SaleOrder(models.Model):
     conversation_id = fields.Many2one(
         'page.fm.conversation', string='Conversation', index=True
     )
+    conversation_count = fields.Integer(
+        string='Conversations', compute='_compute_conversation_count'
+    )
 
-    def action_open_conversation(self):
+    @api.depends('partner_id')
+    def _compute_conversation_count(self):
+        for order in self:
+            try:
+                if order.partner_id and hasattr(order.partner_id, 'commercial_partner_id'):
+                    commercial_partner_id = order.partner_id.commercial_partner_id.id
+                    count = self.env['page.fm.conversation'].search_count([
+                        ('partner_id', 'child_of', commercial_partner_id)
+                    ])
+                    order.conversation_count = count
+                else:
+                    order.conversation_count = 0
+            except Exception as e:
+                _logger.warning(f"Error computing conversation count for order {order.name}: {str(e)}")
+                order.conversation_count = 0
+
+
+    def action_view_conversations(self):
+        """Xem tất cả conversations của khách hàng - tương tự như trong res.partner"""
         self.ensure_one()
-        conv = self.conversation_id
-        if not conv:
-            # fallback: lấy conversation mới nhất theo partner (nếu có)
-            conv = self.env['page.fm.conversation'].search(
-                [('partner_id', 'child_of', self.partner_id.commercial_partner_id.id)],
-                order='write_date desc', limit=1
-            )
-        if not conv:
+        
+        # Safe access partner information
+        partner_id = None
+        commercial_partner_id = None
+        
+        try:
+            if self.partner_id:
+                partner_id = self.partner_id.id
+                # Safe access to commercial_partner_id
+                try:
+                    if hasattr(self.partner_id, 'commercial_partner_id') and self.partner_id.commercial_partner_id:
+                        commercial_partner_id = self.partner_id.commercial_partner_id.id
+                    else:
+                        commercial_partner_id = partner_id
+                except:
+                    commercial_partner_id = partner_id
+        except Exception as e:
+            _logger.warning(f"Error accessing partner info for order {self.name}: {str(e)}")
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _('Lỗi'),
+                    'message': _('Không thể truy cập thông tin khách hàng.'),
+                    'type': 'warning',
+                    'sticky': False,
+                }
+            }
+        
+        if not commercial_partner_id:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _('Chưa có khách hàng'),
+                    'message': _('Đơn hàng này chưa có khách hàng được gắn.'),
+                    'type': 'warning',
+                    'sticky': False,
+                }
+            }
+        
+        # Check if any conversations exist for this partner
+        conv_count = self.env['page.fm.conversation'].search_count([
+            ('partner_id', 'child_of', commercial_partner_id)
+        ])
+        
+        if not conv_count:
             return {
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
                 'params': {
                     'title': _('Chưa có hội thoại'),
-                    'message': _('Đơn hàng này chưa gắn conversation Pancake (hoặc chưa đồng bộ).'),
+                    'message': _('Khách hàng này chưa có cuộc hội thoại Pancake nào.'),
                     'type': 'warning',
                     'sticky': False,
                 }
             }
-        return {
+        
+        # Return action similar to res.partner's action_view_conversations
+        action = {
             'type': 'ir.actions.act_window',
-            'name': _('Conversation'),
+            'name': _('Conversations - %s') % (self.partner_id.name or 'Unknown'),
             'res_model': 'page.fm.conversation',
-            'view_mode': 'form',
-            'res_id': conv.id,
+            'view_mode': 'list,form',
             'target': 'current',
+            'domain': [('partner_id', 'child_of', commercial_partner_id)],
+            'context': {'search_default_partner_id': partner_id},
         }
+        return action
 
     def _auto_link_conversation(self):
         """Tự động link conversation dựa trên partner_id"""
         self.ensure_one()
-        if self.conversation_id or not self.partner_id:
+        order_name = self.name  # Cache order name
+        
+        # Safe check conversation_id field
+        has_conversation = False
+        try:
+            if self.conversation_id and hasattr(self.conversation_id, 'exists') and self.conversation_id.exists():
+                has_conversation = True
+        except Exception as e:
+            _logger.warning(f"Error checking conversation_id for order {order_name}: {str(e)}")
+            has_conversation = False
+            
+        # Safe check partner_id
+        partner_id = None
+        try:
+            if self.partner_id:
+                partner_id = self.partner_id.id
+        except Exception as e:
+            _logger.warning(f"Error accessing partner_id for order {order_name}: {str(e)}")
+            partner_id = None
+            
+        if has_conversation or not partner_id:
             return False
             
         # Tìm conversation gần nhất của partner này
-        conversation = self.env['page.fm.conversation'].search([
-            ('partner_id', '=', self.partner_id.id)
-        ], order='updated_at_fm desc, write_date desc', limit=1)
-        
-        if conversation:
-            self.conversation_id = conversation.id
-            _logger.info(f"🔗 Auto-linked sale order {self.name} to conversation {conversation.conversation_fm_id}")
-            return True
+        try:
+            conversation = self.env['page.fm.conversation'].search([
+                ('partner_id', '=', partner_id)
+            ], order='updated_at_fm desc, write_date desc', limit=1)
+            
+            if conversation:
+                self.conversation_id = conversation.id
+                _logger.info(f"🔗 Auto-linked sale order {order_name} to conversation {conversation.conversation_fm_id}")
+                return True
+        except Exception as e:
+            _logger.warning(f"Error auto-linking conversation for order {order_name}: {str(e)}")
+            
         return False
         
     

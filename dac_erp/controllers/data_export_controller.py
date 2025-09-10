@@ -468,6 +468,7 @@ class DataExportController(http.Controller):
                            include_conversation='1', 
                            include_orders='1', 
                            include_order_details='0', 
+                           # Filters for conversations
                            has_orders_only='0', 
                            has_conversation_only='0',
                            # Filters for orders
@@ -475,7 +476,7 @@ class DataExportController(http.Controller):
                            order_state_custom=None,  # Filter by custom order state
                            **kwargs):
         """Get dữ liệu khách hàng - với filter theo trạng thái đơn hàng"""
-        # Giới hạn mặc định 100-200 như yêu cầu
+        # Giới hạn mặc định
         limit = int(limit) if limit else 150  
         
         # Bước 1: Xây dựng domain lọc partners
@@ -549,8 +550,8 @@ class DataExportController(http.Controller):
         # Debug info
         total_partners = request.env['res.partner'].sudo().search_count([])
         total_individual = request.env['res.partner'].sudo().search_count([('is_company', '=', False)])
-        _logger.info(f"🔍 Customer API Debug: Total partners: {total_partners}, Individual: {total_individual}, Found with filter: {len(partners)}, Limit: {limit}")
-        _logger.info(f"🔍 Applied Filters: state={state}, has_orders_only={has_orders_only}, has_conversation_only={has_conversation_only}")
+        #_logger.info(f"🔍 Customer API Debug: Total partners: {total_partners}, Individual: {total_individual}, Found with filter: {len(partners)}, Limit: {limit}")
+        #_logger.info(f"🔍 Applied Filters: state={state}, has_orders_only={has_orders_only}, has_conversation_only={has_conversation_only}")
         
         customers_data = []
         for partner in partners:
