@@ -208,15 +208,20 @@
                       <t t-if="(state.data.lists.receivables||[]).length">
                         <t t-foreach="state.data.lists.receivables" t-as="m" t-key="m.move_id">
                           <div class="row py-1 list-row"
-                              t-on-click.stop.prevent="(ev)=>this.openForm('account.move', m.move_id)">
+                              t-on-click.stop.prevent="(ev)=>this.openReceivable(m, ev)">
                             <div class="col-6 text-truncate"><t t-esc="m.partner"/></div>
                             <div class="col-3 text-end"><t t-esc="m.amount"/></div>
                             <div class="col-3 text-end">
-                              <t t-if="m.due_days &gt;= 0">
-                                <span class="badge-late">Quá <t t-esc="m.due_days"/> ngày</span>
+                              <t t-if="m.due_days === 'no_invoice'">
+                                <span class="text-info">Chưa có hóa đơn</span>
                               </t>
                               <t t-else="">
-                                <span class="text-muted">Còn <t t-esc="Math.abs(m.due_days)"/> ngày</span>
+                                <t t-if="m.due_days &gt;= 0">
+                                  <span class="badge-late">Quá <t t-esc="m.due_days"/> ngày</span>
+                                </t>
+                                <t t-else="">
+                                  <span class="text-warning">Còn <t t-esc="Math.abs(m.due_days)"/> ngày</span>
+                                </t>
                               </t>
                             </div>
                           </div>

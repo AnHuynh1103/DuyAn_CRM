@@ -30,3 +30,5 @@ access_ir_config_parameter_sale,access_ir_config_parameter_sale,base.model_ir_co
 access_ir_actions_act_window_sale,access_ir_actions_act_window_sale,base.model_ir_actions_act_window,group_dac_erp_sale,1,0,0,0
 access_ir_actions_act_window_view_sale,access_ir_actions_act_window_view_sale,base.model_ir_actions_act_window_view,group_dac_erp_sale,1,0,0,0
 access_res_partner_sale,access_res_partner_sale,base.model_res_partner,group_dac_erp_sale,1,1,1,0
+
+

@@ -12,28 +12,16 @@ class SaleOrderLine(models.Model):
     width = fields.Float(string='Chiều ngang')
 
     def unlink(self):
-        """Kiểm tra quyền xóa dòng sản phẩm"""
+        """Chỉ cho phép admin (base.group_system) xóa dòng sản phẩm sau khi đã xác nhận đặt cọc"""
         for line in self:
-            # Chỉ kiểm tra với dòng sản phẩm thực (không phải section/note)
-            if not line.display_type and line.product_id and line.order_id:
+            if line.order_id:
                 order = line.order_id
-                
-                # Kiểm tra đã có hóa đơn cọc nào được tạo chưa
-                if order.deposit_invoice_count > 0:
-                    raise UserError(
-                        f"Không thể xóa dòng sản phẩm vì đơn hàng {order.name} "
-                        "đã có hóa đơn cọc được tạo!"
-                    )
-                
-                # Nếu user là sale và đơn hàng đã xác nhận đặt cọc -> không cho xóa
-                if (self.env.user.has_group('dac_erp.group_dac_erp_sale') and 
-                    not self.env.user.has_group('dac_erp.group_dac_erp_manager') and
-                    order.is_deposit_confirmed):
+                # Nếu KHÔNG phải admin và đơn hàng đã xác nhận đặt cọc thì không cho xóa bất kỳ dòng nào
+                if (not self.env.user.has_group('base.group_system') and order.is_deposit_confirmed):
                     raise AccessError(
-                        "Không thể xóa sản phẩm sau khi đã lên cọc!\n"
-                        "Liên hệ quản lý để được hỗ trợ."
+                        "Không thể xóa dòng nào sau khi đã lên cọc!\n"
+                        "Liên hệ quản trị viên để được hỗ trợ."
                     )
-        
         return super().unlink()
     
     @api.model_create_multi

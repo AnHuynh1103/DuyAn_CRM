@@ -7,12 +7,28 @@
             <field name="name">DAC ROLE</field>
             <field name="sequence">500</field>
         </record>
+
+        <!-- Nhóm quản lý -->
         <record id="group_dac_erp_manager" model="res.groups">
             <field name="name">DAC Manager</field>
             <field name="category_id" ref="dac_erp.cate_groups_dac_erp"/>
         </record>
+
+        <!-- Nhóm bán hàng -->
         <record id="group_dac_erp_sale" model="res.groups">
             <field name="name">DAC Sale</field>
+            <field name="category_id" ref="dac_erp.cate_groups_dac_erp"/>
+        </record>
+
+        <!-- Nhóm sản xuất -->
+        <record id="group_dac_erp_production" model="res.groups">
+            <field name="name">DAC Production</field>
+            <field name="category_id" ref="dac_erp.cate_groups_dac_erp"/>
+        </record>
+
+        <!-- Nhóm thiết kế -->
+        <record id="group_dac_erp_design" model="res.groups">
+            <field name="name">DAC Design</field>
             <field name="category_id" ref="dac_erp.cate_groups_dac_erp"/>
         </record>
     </data>

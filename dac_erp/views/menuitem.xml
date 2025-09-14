@@ -1,7 +1,14 @@
 <odoo>
     <data>
         
-        
+        <!-- Menu cho Sale Order Lines -->
+        <menuitem id="menu_sale_order_line_import"
+                  name="Dòng đơn hàng"
+                  parent="home_menu.home_root"
+                  action="action_sale_order_line_import"
+                  sequence="50"
+                  groups="dac_erp.group_dac_erp_manager"/>
+                  
         <!-- Menu cho Phiếu chi -->
         <!-- <menuitem id="dac_account_payment_outbound_menu"
             name="Phiếu chi"

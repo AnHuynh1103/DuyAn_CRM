@@ -277,6 +277,7 @@ class SaleOrderDashboardService(models.Model):
                 "date": (so.date_order or fields.Datetime.now()).date().isoformat(),
             } for so in completed_orders[:5]]  # Chỉ lấy 5 đơn đầu
 
+        # ---- CÔNG NỢ THỰC TẾ (hóa đơn chưa thanh toán) ----
         receivables_dom = [
             ('move_type', '=', 'out_invoice'),
             ('state', '=', 'posted'),
@@ -287,13 +288,61 @@ class SaleOrderDashboardService(models.Model):
         if not manager and 'invoice_user_id' in Move._fields:
             receivables_dom.append(('invoice_user_id', '=', uid))
 
-        receivables = Move.search(receivables_dom, limit=5, order='invoice_date_due asc, id asc')
+        receivables = Move.search(receivables_dom, limit=10, order='invoice_date_due asc, id asc')
         receivables_list = [{
             "move_id": m.id,
             "partner": m.partner_id.display_name,
             "amount": fmt(m.amount_residual),
             "due_days": (fields.Date.today() - m.invoice_date_due).days if m.invoice_date_due else 0,
+            "source_type": "invoice",  # Đánh dấu từ hóa đơn
         } for m in receivables]
+
+        # ---- CÔNG NỢ TỪ ĐƠN HÀNG CHƯA CÓ HÓA ĐƠN CUỐI (bước Thu tiền) ----
+        if "order_state_custom" in self._fields:
+            # Tìm đơn hàng ở trạng thái 'payment' nhưng chưa có hóa đơn cuối
+            payment_orders_dom = [
+                ("company_id", "=", company.id),
+                ("order_state_custom", "=", "payment"),
+                # Không cần kiểm tra state vì đơn ở bước payment có thể vẫn draft
+            ]
+            if not manager:
+                payment_orders_dom.append(("user_id", "=", uid))
+
+            payment_orders = self.search(payment_orders_dom)
+            
+            for order in payment_orders:
+                # Kiểm tra xem đã có hóa đơn cuối ĐÃ XÁC NHẬN chưa (hóa đơn không phải cọc và đã posted)
+                final_invoices = Move.search([
+                    ('move_type', '=', 'out_invoice'),
+                    ('invoice_origin', '=', order.name),
+                    ('dac_deposit_invoice', '=', False),  # Không phải hóa đơn cọc
+                    ('state', '=', 'posted'),  # Chỉ tính hóa đơn đã xác nhận
+                ])
+                
+                if not final_invoices:  # Chưa có hóa đơn cuối đã xác nhận
+                    # Tính số tiền còn nợ
+                    order_total = order.amount_total or order.amount_untaxed or 0
+                    if hasattr(order, 'has_deposit') and order.has_deposit and hasattr(order, 'total_deposit_paid'):
+                        # Có cọc: số tiền còn nợ = tổng đơn hàng - tiền cọc đã thanh toán
+                        remaining_amount = order_total - (order.total_deposit_paid or 0)
+                    else:
+                        # Không cọc: số tiền còn nợ = toàn bộ đơn hàng
+                        remaining_amount = order_total
+                    
+                    if remaining_amount > 0:  # Chỉ thêm nếu còn nợ
+                        receivables_list.append({
+                            "move_id": f"order_{order.id}",  # ID đặc biệt cho đơn hàng
+                            "partner": order.partner_id.display_name,
+                            "amount": fmt(remaining_amount),
+                            "due_days": "no_invoice",  # Đánh dấu chưa có hóa đơn
+                            "source_type": "order",  # Đánh dấu từ đơn hàng
+                            "order_id": order.id,  # Để mở đơn hàng thay vì hóa đơn
+                        })
+
+        # Sắp xếp lại: hóa đơn trước (theo due date), sau đó đơn hàng chưa có hóa đơn
+        receivables_list_invoices = [r for r in receivables_list if r.get("source_type") == "invoice"]
+        receivables_list_orders = [r for r in receivables_list if r.get("source_type") == "order"]
+        receivables_list = receivables_list_invoices + receivables_list_orders
 
         recent = self.search(s_dom, limit=5, order="date_order desc")
         recent_list = [{
@@ -304,7 +353,25 @@ class SaleOrderDashboardService(models.Model):
         } for so in recent]
 
         # Tổng tiền cho các bảng dưới
-        receivables_total_val = sum(m.amount_residual for m in receivables)
+        receivables_total_val = sum(m.amount_residual for m in receivables)  # Từ hóa đơn
+        # Cộng thêm tiền từ đơn hàng chưa có hóa đơn cuối
+        if 'payment_orders' in locals():
+            for order in payment_orders:
+                final_invoices = Move.search([
+                    ('move_type', '=', 'out_invoice'),
+                    ('invoice_origin', '=', order.name),
+                    ('dac_deposit_invoice', '=', False),
+                    ('state', '=', 'posted'),  # Chỉ tính hóa đơn đã xác nhận
+                ])
+                if not final_invoices:  # Chưa có hóa đơn cuối đã xác nhận
+                    order_total = order.amount_total or order.amount_untaxed or 0
+                    if hasattr(order, 'has_deposit') and order.has_deposit and hasattr(order, 'total_deposit_paid'):
+                        remaining_amount = order_total - (order.total_deposit_paid or 0)
+                    else:
+                        remaining_amount = order_total
+                    if remaining_amount > 0:
+                        receivables_total_val += remaining_amount
+            
         recent_total_val      = sum(o.amount_total     for o in recent)
         completed_total_val   = sum(o.amount_total     for o in completed_orders) if 'completed_orders' in locals() else 0
         sums = {

@@ -166,6 +166,19 @@ class DacSaleDashboard extends Component {
     });
   }
 
+  // Xử lý click vào receivables - có thể là hóa đơn hoặc đơn hàng
+  openReceivable(item, ev) {
+    if (ev) ev.stopPropagation();
+
+    if (item.source_type === "order") {
+      // Mở đơn hàng
+      return this.openRecord("sale.order", item.order_id, ev);
+    } else {
+      // Mở hóa đơn (logic cũ)
+      return this.openRecord("account.move", item.move_id, ev);
+    }
+  }
+
   // Mở Pancake trên tab mới (không chặn click vào card)
   openPancake(item, ev) {
     ev && ev.stopPropagation();

@@ -1,16 +1,17 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError, AccessError, ValidationError
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 _logger = logging.getLogger(__name__)
 
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
-    
-    # Override create_date để có thể chỉnh sửa được
-    create_date = fields.Datetime(string='Ngày tạo', readonly=False)
 
+    design_link = fields.Char(string="Link thiết kế", 
+                              help="Nhập đường link thiết kế (Google Drive, Figma, v.v.)", 
+                              tracking=True)
+    
     order_state_custom = fields.Selection([
         ('quotation', 'Báo giá'),
         ('deposit', 'Đặt cọc'),
@@ -21,7 +22,37 @@ class SaleOrder(models.Model):
         ('cancel', 'Hủy'),
     ], string='Trạng thái đơn hàng', default='quotation', tracking=True)
 
-    date = fields.Date(string='Ngày đơn hàng')
+    date = fields.Datetime(string='Ngày đơn hàng', default=fields.Datetime.now)
+
+    # Người thiết kế
+    user_id_design = fields.Many2one(
+        'res.users',
+        string='Người thiết kế',
+        default=False,
+        copy=False,
+        domain=lambda self: self._get_user_design_domain(),
+    )
+
+    # Người sản xuất
+    user_id_production = fields.Many2one(
+        'res.users',
+        string='Người sản xuất',
+        default=False,
+        copy=False,
+        domain=lambda self: self._get_user_production_domain(),
+    )
+    
+    # Override trường user_id của sale.order để thêm domain
+    user_id = fields.Many2one(
+        'res.users', 
+        string='Sale phụ trách',
+        domain=lambda self: self._get_user_sale_domain(),
+        default=lambda self: self.env.user,
+        copy=True,
+    )
+    
+    # Trường so sánh với file số đơn excel
+    excel_order_number = fields.Char(string="Số đơn Excel", default=False, copy=False)
 
     # Trạng thái xác nhận
     is_quotation_confirmed = fields.Boolean(string="Đã xác nhận báo giá", default=False)
@@ -51,6 +82,60 @@ class SaleOrder(models.Model):
     production_delay_reason = fields.Text(
         string="Lý do trễ" , tracking=True ,
     )
+
+    def _get_user_sale_domain(self):
+        """Domain cho trường Sale phụ trách"""
+        user = self.env.user
+        
+        # Admin và Manager có toàn quyền
+        if user.has_group('base.group_system') or user.has_group('dac_erp.group_dac_erp_manager'):
+            return []
+        
+        # Sale user chỉ có thể chọn Sale users (cùng cấp, KHÔNG có Manager và Admin)
+        elif user.has_group('dac_erp.group_dac_erp_sale'):
+            return [('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_sale').id])]
+        
+        # Các user khác có thể chọn manager và sale
+        else:
+            return ['|', 
+                   ('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_manager').id]),
+                   ('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_sale').id])]
+
+    def _get_user_design_domain(self):
+        """Domain cho trường Người thiết kế"""
+        user = self.env.user
+        
+        # Admin và Manager có toàn quyền
+        if user.has_group('base.group_system') or user.has_group('dac_erp.group_dac_erp_manager'):
+            return []
+        
+        # Sale user chỉ có thể chọn Design users (KHÔNG có Manager và Admin)
+        elif user.has_group('dac_erp.group_dac_erp_sale'):
+            return [('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_design').id])]
+        
+        # Các user khác có thể chọn manager và design user
+        else:
+            return ['|', 
+                   ('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_manager').id]),
+                   ('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_design').id])]
+
+    def _get_user_production_domain(self):
+        """Domain cho trường Người sản xuất"""
+        user = self.env.user
+        
+        # Admin và Manager có toàn quyền
+        if user.has_group('base.group_system') or user.has_group('dac_erp.group_dac_erp_manager'):
+            return []
+        
+        # Sale user chỉ có thể chọn Production users (KHÔNG có Manager và Admin)
+        elif user.has_group('dac_erp.group_dac_erp_sale'):
+            return [('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_production').id])]
+        
+        # Các user khác có thể chọn manager và production user
+        else:
+            return ['|', 
+                   ('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_manager').id]),
+                   ('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_production').id])]
 
     @api.onchange('production_is_delayed')
     def _onchange_production_is_delayed(self):
@@ -89,6 +174,32 @@ class SaleOrder(models.Model):
             # Nếu chưa có deadline thì ngày trễ phải lớn hơn hôm nay
             if not o.production_deadline and o.production_delay_date <= date.today():
                 raise ValidationError(_("Ngày trễ phải sau ngày hiện tại."))
+
+
+    @api.constrains('user_id')
+    def _check_user_id_in_sale_group(self):
+        """Backend validation: user_id must be a Sale user or Manager."""
+        for order in self:
+            if order.user_id:
+                # Allow if the assigned user is in Sale group or Manager
+                if not (order.user_id.has_group('dac_erp.group_dac_erp_sale') or order.user_id.has_group('dac_erp.group_dac_erp_manager')):
+                    raise ValidationError(_("Người phụ trách phải thuộc nhóm 'DAC Sale' hoặc 'DAC Manager'."))
+
+    @api.constrains('user_id_design')
+    def _check_user_id_design_group(self):
+        """Backend validation: user_id_design must be a Design user or Manager."""
+        for order in self:
+            if order.user_id_design:
+                if not (order.user_id_design.has_group('dac_erp.group_dac_erp_design') or order.user_id_design.has_group('dac_erp.group_dac_erp_manager')):
+                    raise ValidationError(_("Người thiết kế phải thuộc nhóm 'DAC Design' hoặc 'DAC Manager'."))
+
+    @api.constrains('user_id_production')
+    def _check_user_id_production_group(self):
+        """Backend validation: user_id_production must be a Production user or Manager."""
+        for order in self:
+            if order.user_id_production:
+                if not (order.user_id_production.has_group('dac_erp.group_dac_erp_production') or order.user_id_production.has_group('dac_erp.group_dac_erp_manager')):
+                    raise ValidationError(_("Người sản xuất phải thuộc nhóm 'DAC Production' hoặc 'DAC Manager'."))
 
     
     # Tiến trình giao hàng
@@ -364,12 +475,14 @@ class SaleOrder(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
-        """Override create để đảm bảo người tạo đơn hàng sẽ là người phụ trách"""
+        """Override create để đảm bảo người tạo đơn hàng sẽ là người phụ trách và set đúng giờ cho trường date"""
         for vals in vals_list:
             # Nếu không có user_id được set, gán người tạo làm người phụ trách
             if not vals.get('user_id'):
                 vals['user_id'] = self.env.user.id
-        
+            # Nếu chưa có date, set date đúng giờ hiện tại
+            if not vals.get('date'):
+                vals['date'] = fields.Datetime.now()
         return super().create(vals_list)
 
     def _check_auto_deposit_on_load(self):
@@ -1347,179 +1460,3 @@ class SaleOrder(models.Model):
             'context': {'search_default_partner_id': partner_id},
         }
         return action
-
-    def _auto_link_conversation(self):
-        """Tự động link conversation dựa trên partner_id"""
-        self.ensure_one()
-        order_name = self.name  # Cache order name
-        
-        # Safe check conversation_id field
-        has_conversation = False
-        try:
-            if self.conversation_id and hasattr(self.conversation_id, 'exists') and self.conversation_id.exists():
-                has_conversation = True
-        except Exception as e:
-            _logger.warning(f"Error checking conversation_id for order {order_name}: {str(e)}")
-            has_conversation = False
-            
-        # Safe check partner_id
-        partner_id = None
-        try:
-            if self.partner_id:
-                partner_id = self.partner_id.id
-        except Exception as e:
-            _logger.warning(f"Error accessing partner_id for order {order_name}: {str(e)}")
-            partner_id = None
-            
-        if has_conversation or not partner_id:
-            return False
-            
-        # Tìm conversation gần nhất của partner này
-        try:
-            conversation = self.env['page.fm.conversation'].search([
-                ('partner_id', '=', partner_id)
-            ], order='updated_at_fm desc, write_date desc', limit=1)
-            
-            if conversation:
-                self.conversation_id = conversation.id
-                _logger.info(f"🔗 Auto-linked sale order {order_name} to conversation {conversation.conversation_fm_id}")
-                return True
-        except Exception as e:
-            _logger.warning(f"Error auto-linking conversation for order {order_name}: {str(e)}")
-            
-        return False
-        
-    
-    # Đảm bảo cho import file ở trạng thái báo giá và cập nhật date từ CSV
-    @api.model
-    def create(self, vals):
-        vals.setdefault('order_state_custom', 'quotation')
-        
-        # Logic 1: Nếu có date_order từ CSV, cập nhật create_date theo đó
-        if 'date_order' in vals and vals['date_order']:
-            try:
-                # Parse date_order (có thể là string hoặc date object)
-                if isinstance(vals['date_order'], str):
-                    csv_date = datetime.strptime(vals['date_order'], '%Y-%m-%d').date()
-                else:
-                    csv_date = vals['date_order']
-                
-                # Cập nhật create_date và date để khớp với date_order
-                vals['create_date'] = datetime.combine(csv_date, datetime.min.time())
-                vals['date'] = csv_date  # Custom field
-                
-                _logger.info(f"✅ Setting create_date and date from CSV date_order: {csv_date}")
-                
-            except Exception as e:
-                _logger.warning(f"Error parsing date_order in create(): {e}")
-        
-        # Logic 2: Nếu tạo trên UI và có date_order, sync với trường date
-        elif 'date_order' in vals and vals['date_order']:
-            try:
-                if isinstance(vals['date_order'], str):
-                    order_date = datetime.strptime(vals['date_order'], '%Y-%m-%d').date()
-                else:
-                    order_date = vals['date_order']
-                
-                vals['date'] = order_date
-                _logger.info(f"✅ Auto-setting date field from date_order: {order_date}")
-                
-            except Exception as e:
-                _logger.warning(f"Error setting date from date_order: {e}")
-        
-        # Logic 3: Nếu không có date_order, set date = ngày hiện tại
-        if 'date' not in vals or not vals['date']:
-            today = date.today()
-            vals['date'] = today
-        
-        # Tạo record
-        record = super().create(vals)
-        
-        # Auto-link conversation sau khi tạo
-        if record.partner_id and not record.conversation_id:
-            record._auto_link_conversation()
-        
-        return record
-    
-
-    
-    
-    def write(self, vals):
-        """Override write để cho phép cập nhật create_date và sync date với date_order"""
-        
-        # Sync trường date với date_order khi thay đổi
-        if 'date_order' in vals:
-            try:
-                if vals['date_order']:  # Nếu có giá trị
-                    if isinstance(vals['date_order'], str):
-                        order_date = datetime.strptime(vals['date_order'], '%Y-%m-%d').date()
-                    else:
-                        order_date = vals['date_order']
-                    
-                    vals['date'] = order_date
-                    _logger.info(f"✅ Auto-sync date field with date_order: {order_date}")
-                else:  # Nếu xóa date_order, giữ nguyên date hoặc set today
-                    if 'date' not in vals:
-                        vals['date'] = date.today()
-                        _logger.info(f"✅ Setting date to today when date_order is empty")
-                
-            except Exception as e:
-                _logger.warning(f"Error syncing date with date_order: {e}")
-        
-        # Nếu có create_date trong vals, cho phép cập nhật
-        if 'create_date' in vals:
-            # Chuyển đổi string thành datetime nếu cần
-            if isinstance(vals['create_date'], str):
-                try:
-                    vals['create_date'] = datetime.strptime(
-                        vals['create_date'], '%Y-%m-%d %H:%M:%S'
-                    ) if ' ' in vals['create_date'] else datetime.strptime(
-                        vals['create_date'], '%Y-%m-%d'
-                    )
-                except ValueError:
-                    pass  # Giữ nguyên giá trị nếu không parse được
-        
-        return super().write(vals)
-
-    def action_link_conversation_manually(self):
-        """Button action để link conversation thủ công"""
-        for record in self:
-            if record._auto_link_conversation():
-                return {
-                    'type': 'ir.actions.client',
-                    'tag': 'display_notification',
-                    'params': {
-                        'title': _('Đã liên kết'),
-                        'message': _(f'Đã liên kết đơn hàng {record.name} với conversation {record.conversation_id.conversation_fm_id}'),
-                        'type': 'success',
-                        'sticky': False,
-                    }
-                }
-            else:
-                return {
-                    'type': 'ir.actions.client',
-                    'tag': 'display_notification',
-                    'params': {
-                        'title': _('Không thể liên kết'),
-                        'message': _('Không tìm thấy conversation nào cho khách hàng này'),
-                        'type': 'warning',
-                        'sticky': False,
-                    }
-                }
-
-    @api.model
-    def cron_auto_link_conversations(self):
-        """Cron job để tự động link các đơn hàng chưa có conversation"""
-        orders_without_conv = self.search([
-            ('conversation_id', '=', False),
-            ('partner_id', '!=', False),
-            ('create_date', '>=', fields.Datetime.now() - timedelta(days=30))  # Chỉ check đơn trong 30 ngày
-        ])
-        
-        linked_count = 0
-        for order in orders_without_conv:
-            if order._auto_link_conversation():
-                linked_count += 1
-                
-        _logger.info(f"🔗 Auto-linked {linked_count} sale orders to conversations")
-        return linked_count

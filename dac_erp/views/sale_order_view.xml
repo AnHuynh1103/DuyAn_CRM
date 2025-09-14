@@ -75,7 +75,7 @@
                                 <div invisible="order_state_custom == 'quotation' and not is_deposit_confirmed"
                                      style="margin-bottom: 8px; display: flex; align-items: center; gap: 6px; background: #fffbe6; border: 1px solid #ffc107; border-radius: 5px; padding: 4px 10px; width: fit-content;">
                                     <i class="fa fa-calendar" style="color: #ffc107;"></i>
-                                    <span class="o_form_label" style="font-weight: 600; color: #e55353; font-size: 13px;">Ngày hoàn tất sản xuất</span>
+                                    <span class="o_form_label" style="font-weight: 600; color: #e55353; font-size: 13px;">Ngày dự kiến hoàn tất sản xuất</span>
                                     <field name="production_deadline"
                                            placeholder="VD: 01/09/2025"
                                            readonly="is_production_confirmed"
@@ -129,30 +129,39 @@
                                 </div>
                             </group>
                             <group>
-                                <!-- Hiển thị thông tin người phụ trách - chỉ manager được chỉnh sửa -->
+                                <!-- Hiển thị thông tin Sale phụ trách - chỉ manager được chỉnh sửa -->
                                 <field name="user_id" 
                                        widget="many2one_avatar_user" 
-                                       string="Người phụ trách"
-                                       domain="[('share', '=', False)]"
-                                       context="{'default_groups_ref': ['dac_erp.group_dac_erp_manager', 'dac_erp.group_dac_erp_sale']}"
-                                       groups="dac_erp.group_dac_erp_manager"/>  <!-- Chỉ manager được chỉnh sửa -->
-                                <!-- Hiển thị read-only cho sale users -->
-                                <field name="user_id" 
-                                       widget="many2one_avatar_user" 
-                                       string="Người phụ trách"
-                                       readonly="1"
-                                       groups="dac_erp.group_dac_erp_sale"/>  <!-- Sale users chỉ được xem -->
+                                       string="Sale phụ trách"
+                                       /> 
+                                <!-- Thiết kế -->
+                                <field name="user_id_design"
+                                       widget="many2one_avatar_user"
+                                       string="Thiết kế"
+                                       />
+                                       
+                                <!-- Sản xuất -->
+                                <field name="user_id_production"
+                                       widget="many2one_avatar_user"
+                                       string="Sản xuất"
+                                       />
+
+                                <!-- Số đơn trên excel -->
+                                <field name="excel_order_number"
+                                       string="Số đơn trên Excel"
+                                       placeholder="VD: 8766"
+                                       />
+
+                                <!-- Trường hợp sản xuất bị trễ -->
                                 <field name="production_is_delayed"
                                        string="Có trễ không?"
                                        widget="boolean_toggle"
                                        invisible="(order_state_custom in ['quotation','deposit']) and (not started_delivery)"
                                        readonly="order_state_custom != 'production' or started_delivery"/>
-
                                 <field name="production_delay_date"
                                        string="Ngày trễ"
                                        invisible="(not production_is_delayed) or ((order_state_custom in ['quotation','deposit']) and (not started_delivery))"
                                        readonly="order_state_custom != 'production' or started_delivery"/>
-
                                 <field name="production_delay_reason"
                                        string="Lý do trễ"
                                        widget="text"
@@ -161,6 +170,16 @@
                                        readonly="order_state_custom != 'production' or started_delivery"/>
                             </group>
                         </group>
+                        <group>
+                            <separator string="Thiết kế" invisible="order_state_custom == 'quotation'"/>
+                            <field name="design_link" 
+                                   string="Link thiết kế" 
+                                   placeholder="Điền link thiết kế ở đây (Google Drive, Figma, v.v.)" 
+                                   invisible="order_state_custom == 'quotation'"/>
+                        </group>
+                        <!-- <group>
+                            <separator string="Sản xuất" invisible="order_state_custom == 'quotation'"/>
+                        </group> -->
                         <notebook>
                             <page string="Chi tiết đơn hàng">
                                 <field name="order_line" widget="section_and_note_one2many" mode="list,kanban" 
@@ -370,7 +389,7 @@
                 <list string="Báo giá" default_order="date desc" delete="false" create="true" edit="true">
                     <field name="latest_quotation_info" string="Báo giá mới nhất" readonly="1"/>
                     <field name="name"/>
-                    <field name="create_date" string="Ngày tạo đơn (hệ thống)"/>
+                    <field name="create_date" string="Ngày tạo đơn (hệ thống)" optional="hide"/>
                     <field name="date" string="Ngày đơn hàng"/>
                     <field name="partner_id"/>
                     <field name="user_id" widget="many2one_avatar_user"/>
@@ -437,7 +456,7 @@
                     <filter string="Chưa hoàn thành" name="not_completed" domain="[('is_order_completed', '=', False)]"/>
                     <group expand="1" string="Nhóm theo">
                         <filter string="Trạng thái" name="group_by_state" context="{'group_by': 'order_state_custom'}"/>
-                        <filter string="Người phụ trách" name="group_by_user" context="{'group_by': 'user_id'}"/>
+                        <filter string="Sale phụ trách" name="group_by_user" context="{'group_by': 'user_id'}"/>
                         <filter string="Khách hàng" name="group_by_partner" context="{'group_by': 'partner_id'}"/>
                         <filter string="Ngày tạo" name="group_by_date" context="{'group_by': 'create_date:month'}"/>
                     </group>
@@ -446,7 +465,7 @@
         </record>
 
         <record id="dac_sale_order_custom_action" model="ir.actions.act_window">
-            <field name="name">Báo giá</field>
+            <field name="name">Đơn hàng</field>
             <field name="res_model">sale.order</field>
             <field name="view_mode">list,form</field>
             <field name="view_id" ref="dac_sale_order_custom_view_list_sale"/>
@@ -458,7 +477,7 @@
 
         <!-- Action riêng cho Manager - xem tất cả đơn hàng -->
         <record id="dac_sale_order_manager_action" model="ir.actions.act_window">
-            <field name="name">Báo giá (Tất cả)</field>
+            <field name="name">Đơn hàng</field>
             <field name="res_model">sale.order</field>
             <field name="view_mode">list,form</field>
             <field name="view_id" ref="dac_sale_order_custom_view_list"/>
@@ -532,14 +551,5 @@
                 </p>
             </field>
         </record>
-
-        <!-- Menu cho Sale Order Lines -->
-        <menuitem id="menu_sale_order_line_import"
-                  name="Dòng đơn hàng"
-                  parent="home_menu.home_root"
-                  action="action_sale_order_line_import"
-                  sequence="50"
-                  groups="sales_team.group_sale_manager"/>
-
     </data>
 </odoo>
