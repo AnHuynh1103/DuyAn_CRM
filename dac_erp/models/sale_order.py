@@ -31,6 +31,7 @@ class SaleOrder(models.Model):
         default=False,
         copy=False,
         domain=lambda self: self._get_user_design_domain(),
+        tracking=True,
     )
 
     # Người sản xuất
@@ -40,6 +41,7 @@ class SaleOrder(models.Model):
         default=False,
         copy=False,
         domain=lambda self: self._get_user_production_domain(),
+        tracking=True,
     )
     
     # Override trường user_id của sale.order để thêm domain
@@ -49,10 +51,11 @@ class SaleOrder(models.Model):
         domain=lambda self: self._get_user_sale_domain(),
         default=lambda self: self.env.user,
         copy=True,
+        tracking=True,
     )
     
     # Trường so sánh với file số đơn excel
-    excel_order_number = fields.Char(string="Số đơn Excel", default=False, copy=False)
+    excel_order_number = fields.Char(string="Số đơn Excel", default=False, copy=False, tracking=True)
 
     # Trạng thái xác nhận
     is_quotation_confirmed = fields.Boolean(string="Đã xác nhận báo giá", default=False)
@@ -62,7 +65,7 @@ class SaleOrder(models.Model):
     is_payment_confirmed = fields.Boolean(string="Đã xác nhận thanh toán", default=False)
 
     # Đặt cọc
-    has_deposit = fields.Boolean(string="Có đặt cọc?", default=True)
+    has_deposit = fields.Boolean(string="Có đặt cọc?", default=True, tracking=True)
     deposit_amount = fields.Float(string="Tiền cọc", default=0.0)
     
     # Tiến trình sản xuất
