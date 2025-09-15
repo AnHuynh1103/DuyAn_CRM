@@ -44,11 +44,11 @@
                     <div style="display: flex; gap: 16px; justify-content: flex-end; margin-top: 16px;">
                         <!-- Nút Quay về đơn hàng -->
                         <button name="action_back_to_sale_order" 
-                                type="object"
-                                class="btn btn-outline-primary"
-                                string="Quay về đơn hàng"
-                                help="Quay về đơn hàng"
-                                invisible="not invoice_origin"/>
+                            type="object"
+                            class="btn btn-warning"
+                            string="Quay về đơn hàng"
+                            help="Quay về đơn hàng"
+                            invisible="not invoice_origin"/>
                         
                         <!-- Nút Xác nhận -->
                         <button name="action_post" 
