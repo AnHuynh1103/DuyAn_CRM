@@ -66,7 +66,7 @@ class SaleOrder(models.Model):
     deposit_amount = fields.Float(string="Tiền cọc", default=0.0)
     
     # Tiến trình sản xuất
-    production_deadline = fields.Date(string="Deadline sản xuất")
+    production_deadline = fields.Date(string="Deadline sản xuất", tracking = True)
     
     # --- flags đánh dấu đã chạm các mốc quy trình ---
     reached_production = fields.Boolean(default=False, copy=False)

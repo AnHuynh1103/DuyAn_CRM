@@ -154,7 +154,11 @@
                             <field name="conversation_fm_id" readonly="1"/>
                             <field name="page_fm_page_id" options="{'no_create': True, 'no_open': False}" readonly="1"/>
                             <field name="page_fm_id_str_related" readonly="1"/>
-                            <field name="external_url" invisible="1"/>
+                            <button name="action_open_on_pancake"
+                                type="object"
+                                string="Mở Pancake"
+                                class="btn-primary"
+                                icon="fa-external-link"/>
                         </group>
                     </group>
                     

@@ -1416,37 +1416,15 @@ class PageFmConversation(models.Model):
                     _logger.exception("Auto-bump require_processing failed for conv %s", rec.id)
         return res
 
-    def _build_external_url_for_platform(self, platform, page_id, conv_id):
-        ICP = self.env['ir.config_parameter'].sudo()
 
-        # Cho phép cấu hình theo nền tảng qua system parameters
-        # Token hỗ trợ trong template:
-        #   {conversation}          -> nguyên chuỗi id hội thoại (vd: pzl_u_..._7961559...)
-        #   {conversation_numeric}  -> chỉ phần số ở cuối (vd: 7961559...), tự động extract
-        #   {page}                  -> page_id (pzl_... hoặc fb_.../số)
-        tpl_default  = ICP.get_param('pancake.url_template.default')  or \
-                    'https://pancake.vn/conversations/{conversation}?page_id={page}'
-        tpl_zalo     = ICP.get_param('pancake.url_template.zalo')     or \
-                    'https://pancake.vn/conversations/{conversation_numeric}?page_id={page}'
-        tpl_facebook = ICP.get_param('pancake.url_template.facebook') or tpl_default
-        tpl_instagram= ICP.get_param('pancake.url_template.instagram') or tpl_default
-
-        # Tự động lấy phần số cuối nếu có
-        m = re.search(r'(\d+)$', conv_id or '')
-        conv_numeric = m.group(1) if m else (conv_id or '')
-
-        platform = (platform or '').strip().lower()
-        if platform == 'zalo':
-            tpl = tpl_zalo
-        elif platform == 'facebook':
-            tpl = tpl_facebook
-        elif platform == 'instagram':
-            tpl = tpl_instagram
-        else:
-            # fallback: nếu conv_id có đuôi số thì template default vẫn nhận {conversation_numeric}
-            tpl = tpl_default
-
-        return tpl.format(conversation=conv_id or '', conversation_numeric=conv_numeric, page=page_id or '')
+    def _build_external_url_for_platform(self, page_id, conv_id):
+        """
+        Build URL theo đúng mẫu Pancake cung cấp:
+        https://pancake.vn/{page_id}?c_id={conv_id}
+        """
+        if page_id and conv_id:
+            return f"https://pancake.vn/{page_id}?c_id={conv_id}"
+        return False
 
 
     external_url = fields.Char(string="Link Pancake", compute="_compute_external_url", store=False)
@@ -1456,21 +1434,7 @@ class PageFmConversation(models.Model):
             page_id = r.conv_page_fm_id or r.page_fm_id_str_related
             conv_id = r.conversation_fm_id
             if page_id and conv_id:
-                # Ưu tiên platform đã lưu từ API; nếu thiếu, suy ra nhanh theo prefix
-                platform = r.platform_fm
-                if not platform:
-                    cid = conv_id or ''
-                    pid = page_id or ''
-                    if cid.startswith('pzl_') or pid.startswith('pzl_'):
-                        platform = 'Zalo'
-                    elif cid.startswith('fb_') or pid.startswith('fb_') or pid.isdigit():
-                        platform = 'Facebook'
-                    elif cid.startswith('igo_') or pid.startswith('igo_'):
-                        platform = 'Instagram'
-                    else:
-                        platform = 'default'
-
-                r.external_url = self._build_external_url_for_platform(platform, page_id, conv_id)
+                r.external_url = self._build_external_url_for_platform(page_id, conv_id)
             else:
                 r.external_url = False
 

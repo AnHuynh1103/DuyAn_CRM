@@ -78,7 +78,6 @@
                                     <span class="o_form_label" style="font-weight: 600; color: #e55353; font-size: 13px;">Ngày dự kiến hoàn tất sản xuất</span>
                                     <field name="production_deadline"
                                            placeholder="VD: 01/09/2025"
-                                           readonly="is_production_confirmed"
                                            style="font-size: 1em; font-weight: 600; color: #007bff; width: 120px; background: #fff; border: 1px solid #007bff; border-radius: 3px; padding: 2px 8px; margin-left: 6px;"/>
                                 </div>
                                 <!-- Trường địa chỉ giao hàng - hiện từ tiến trình giao hàng -->
@@ -179,7 +178,7 @@
                         </group>
                         <!-- <group>
                             <separator string="Sản xuất" invisible="order_state_custom == 'quotation'"/>
-                        </group> -->
+                        </group>  -->
                         <notebook>
                             <page string="Chi tiết đơn hàng">
                                 <field name="order_line" widget="section_and_note_one2many" mode="list,kanban" 
