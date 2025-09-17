@@ -41,7 +41,9 @@
         'security/account_access_rules.xml',
         'data/currency_data.xml',
         'data/cron_data.xml',  
+        'views/design_dashboard_action.xml',
         'views/sale_order_view.xml',
+        'views/sale_order_design_view.xml',
         'views/deposit_confirm_wizard_view.xml',
         'views/account_move_deposit_view.xml',
         'views/account_move_view.xml',
@@ -58,7 +60,8 @@
     'assets': {  
         'web.assets_backend': [
             'dac_erp/static/src/css/**/*',
-            'dac_erp/static/src/js/**/*'
+            'dac_erp/static/src/js/**/*',
+            'dac_erp/static/src/xml/**/*',
         ],
     },
     'license': 'LGPL-3',

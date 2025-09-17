@@ -17,6 +17,5 @@
       <field name="view_mode">kanban,list,form</field>
       <field name="domain">[]</field>
     </record>
-
   </data>
 </odoo>

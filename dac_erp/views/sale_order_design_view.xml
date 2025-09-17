@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <record id="view_dac_sale_order_list_design" model="ir.ui.view">
+            <field name="name">dac.sale.order.list.design</field>
+            <field name="model">sale.order</field>
+            <field name="priority">3</field>
+            <field name="groups_id" eval="[(4, ref('dac_erp.group_dac_erp_design')), (4, ref('base.group_system'))]"/>
+            <field name="arch" type="xml">
+                <list string="Báo giá" default_order="date desc" delete="0" create="0" edit="0">
+                    <field name="latest_quotation_info" string="Báo giá mới nhất" readonly="1"/>
+                    <field name="name"/>
+                    <field name="create_date" string="Ngày tạo đơn (hệ thống)" optional="hide"/>
+                    <field name="date" string="Ngày đơn hàng"/>
+                    <field name="partner_id"/>
+                    <field name="user_id" widget="many2one_avatar_user"/>
+                    <field name="user_id_design" widget="many2one_avatar_user" string="Thiết kế"/>
+                    <field name="user_id_production" widget="many2one_avatar_user" string="Sản xuất"/>
+                    <field name="company_id" invisible="1" optional="hide"/>
+                    <field name="currency_id" invisible="1" optional="hide"/>
+                    <field name="pricelist_id" invisible="1" optional="hide"/>
+                    <field name="amount_total" sum="Total" widget="monetary"/>
+                    <field name="order_state_custom" widget="badge"
+                        decoration-info="order_state_custom == 'quotation' and not is_order_completed"
+                        decoration-warning="order_state_custom == 'deposit' and not is_order_completed"
+                        decoration-primary="order_state_custom in ['production', 'delivery'] and not is_order_completed"
+                        decoration-success="order_state_custom == 'payment' and not is_order_completed"
+                        decoration-muted="is_order_completed or order_state_custom == 'completed'"
+                        decoration-danger="order_state_custom == 'cancel'"/>
+                </list>
+            </field>
+        </record>
+
+
+        <!-- Action cho đơn hàng chỉ thiết kế xem được đơn của mình-->
+        <record id="dac_sale_order_custom_action_design" model="ir.actions.act_window">
+            <field name="name">Đơn hàng</field>
+            <field name="res_model">sale.order</field>
+            <field name="view_mode">list,form</field>
+            <field name="view_id" ref="view_dac_sale_order_list_design"/>
+            <field name="search_view_id" ref="dac_sale_order_custom_search"/>
+            <field name="context">{}</field>
+            <field name="domain">[('user_id_design', '=', uid)]</field>
+        </record>
+
+        <!-- Root menu app cho Design -->
+        <record id="dac_design_root_menu" model="ir.ui.menu">
+            <field name="name">Design Dashboard</field>
+            <field name="action" ref="dac_design_dashboard_action"/>
+            <field name="sequence">30</field>
+            <field name="groups_id" eval="[(6, 0, [ref('dac_erp.group_dac_erp_design'), ref('base.group_system')])]"/>
+        </record>
+
+        <record id="dac_sale_order_menu_design" model="ir.ui.menu">
+            <field name="name">Đơn hàng</field>
+            <field name="action" ref="dac_sale_order_custom_action_design"/>
+            <field name="parent_id" ref="dac_design_root_menu"/>
+            <field name="sequence">10</field>
+            <field name="groups_id" eval="[(6, 0, [ref('dac_erp.group_dac_erp_design'), ref('base.group_system')])]"/>
+        </record> 
+    </data>
+</odoo>

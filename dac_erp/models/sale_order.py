@@ -8,10 +8,7 @@ _logger = logging.getLogger(__name__)
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
 
-    design_link = fields.Char(string="Link thiết kế", 
-                              help="Nhập đường link thiết kế (Google Drive, Figma, v.v.)", 
-                              tracking=True)
-    
+    # Trạng thái đơn hàng tùy chỉnh    
     order_state_custom = fields.Selection([
         ('quotation', 'Báo giá'),
         ('deposit', 'Đặt cọc'),
@@ -24,33 +21,35 @@ class SaleOrder(models.Model):
 
     date = fields.Datetime(string='Ngày đơn hàng', default=fields.Datetime.now)
 
-    # Người thiết kế
-    user_id_design = fields.Many2one(
+
+    # Lấy domain người dùng theo nhóm
+    def _get_user_domain_by_group(self, group_xml_id):
+        group = self.env.ref(group_xml_id)
+        return [('groups_id', 'in', [group.id])]
+
+    # Sale phụ trách
+    user_id = fields.Many2one(
         'res.users',
-        string='Người thiết kế',
-        default=False,
-        copy=False,
-        domain=lambda self: self._get_user_design_domain(),
+        string='Sale phụ trách',
+        domain=lambda self: self._get_user_domain_by_group('dac_erp.group_dac_erp_sale'),
+        default=lambda self: self.env.user,
+        copy=True,
         tracking=True,
     )
 
-    # Người sản xuất
+    # Thiết kế
+    user_id_design = fields.Many2one(
+        'res.users',
+        string='Người thiết kế',
+        domain=lambda self: self._get_user_domain_by_group('dac_erp.group_dac_erp_design'),
+        tracking=True,
+    )
+
+    # Sản xuất
     user_id_production = fields.Many2one(
         'res.users',
         string='Người sản xuất',
-        default=False,
-        copy=False,
-        domain=lambda self: self._get_user_production_domain(),
-        tracking=True,
-    )
-    
-    # Override trường user_id của sale.order để thêm domain
-    user_id = fields.Many2one(
-        'res.users', 
-        string='Sale phụ trách',
-        domain=lambda self: self._get_user_sale_domain(),
-        default=lambda self: self.env.user,
-        copy=True,
+        domain=lambda self: self._get_user_domain_by_group('dac_erp.group_dac_erp_production'),
         tracking=True,
     )
     
@@ -86,59 +85,6 @@ class SaleOrder(models.Model):
         string="Lý do trễ" , tracking=True ,
     )
 
-    def _get_user_sale_domain(self):
-        """Domain cho trường Sale phụ trách"""
-        user = self.env.user
-        
-        # Admin và Manager có toàn quyền
-        if user.has_group('base.group_system') or user.has_group('dac_erp.group_dac_erp_manager'):
-            return []
-        
-        # Sale user chỉ có thể chọn Sale users (cùng cấp, KHÔNG có Manager và Admin)
-        elif user.has_group('dac_erp.group_dac_erp_sale'):
-            return [('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_sale').id])]
-        
-        # Các user khác có thể chọn manager và sale
-        else:
-            return ['|', 
-                   ('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_manager').id]),
-                   ('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_sale').id])]
-
-    def _get_user_design_domain(self):
-        """Domain cho trường Người thiết kế"""
-        user = self.env.user
-        
-        # Admin và Manager có toàn quyền
-        if user.has_group('base.group_system') or user.has_group('dac_erp.group_dac_erp_manager'):
-            return []
-        
-        # Sale user chỉ có thể chọn Design users (KHÔNG có Manager và Admin)
-        elif user.has_group('dac_erp.group_dac_erp_sale'):
-            return [('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_design').id])]
-        
-        # Các user khác có thể chọn manager và design user
-        else:
-            return ['|', 
-                   ('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_manager').id]),
-                   ('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_design').id])]
-
-    def _get_user_production_domain(self):
-        """Domain cho trường Người sản xuất"""
-        user = self.env.user
-        
-        # Admin và Manager có toàn quyền
-        if user.has_group('base.group_system') or user.has_group('dac_erp.group_dac_erp_manager'):
-            return []
-        
-        # Sale user chỉ có thể chọn Production users (KHÔNG có Manager và Admin)
-        elif user.has_group('dac_erp.group_dac_erp_sale'):
-            return [('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_production').id])]
-        
-        # Các user khác có thể chọn manager và production user
-        else:
-            return ['|', 
-                   ('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_manager').id]),
-                   ('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_production').id])]
 
     @api.onchange('production_is_delayed')
     def _onchange_production_is_delayed(self):
@@ -1463,3 +1409,19 @@ class SaleOrder(models.Model):
             'context': {'search_default_partner_id': partner_id},
         }
         return action
+    
+    
+    # Thông tin bổ sung
+    # Số điện thoại đơn hàng
+    phone = fields.Char(string="Số điện thoại", related='partner_id.phone', store=True, readonly=False, tracking=True)
+
+    # Đơn hàng ưu tiên
+    is_priority = fields.Boolean(string="Đơn hàng ưu tiên", default=False, tracking=True)
+
+    # Field nhập link thiết kế
+    design_link = fields.Char(string="Link thiết kế", 
+                              help="Nhập đường link thiết kế (Google Drive, Figma, v.v.)", 
+                              tracking=True)
+    
+    
+    

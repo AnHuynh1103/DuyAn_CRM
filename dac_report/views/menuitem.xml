@@ -65,5 +65,13 @@
             parent="dac_sale_dashboard_menu_root"
             action="dac_erp.dac_account_payment_custom_action"
             sequence="40"/>
+
+
+        <!-- Menu cho Báo cáo doanh thu -->
+        <menuitem id="menu_dac_sales_goal"
+            parent="home_menu.home_root"
+            action="action_dac_sales_goal"
+            sequence="150"
+            groups="dac_erp.group_dac_erp_manager"/>
   </data>
 </odoo>

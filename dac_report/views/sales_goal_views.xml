@@ -103,10 +103,5 @@
       <field name="res_model">dac.sales.goal</field>
       <field name="view_mode">list,form</field>
     </record>
-
-    <menuitem id="menu_dac_sales_goal"
-              parent="home_menu.home_root"
-              action="action_dac_sales_goal"
-              sequence="200"/>  
   </data>
 </odoo>

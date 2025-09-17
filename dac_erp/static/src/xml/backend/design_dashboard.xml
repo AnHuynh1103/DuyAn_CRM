@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="dac_erp.DesignDashboard" owl="1">
+        <div class="o_action_manager" style="min-height:100vh;display:flex;">
+            <div class="o_kanban_view o_kanban_dashboard flex-grow-1 d-flex align-items-center justify-content-center" style="min-height:100vh;background:#e5e5e5;">
+                <div class="o_kanban_renderer w-100 d-flex align-items-center justify-content-center" style="min-height:100vh;">
+                    <div class="o_dashboard w-100 d-flex flex-column align-items-center justify-content-center" style="min-height:80vh;">
+                        <div class="o_dashboard_banner mb-4 text-center">
+                            <h1>
+                                Chào mừng trở lại
+                                <t t-if="state.data &amp;&amp; state.data.user_name">, <t t-esc="state.data.user_name"/></t>
+                                <t t-else="">!</t>
+                            </h1>
+                        </div>
+                        <div class="dac-card p-4" style="font-size:1.2em; box-shadow:0 4px 32px #0002; width:100%; height:100%; min-height:85vh; background:#fff;">
+                            <t t-if="state.loading">
+                                <div class="d-flex align-items-center justify-content-center py-5">
+                                    <i class="fa fa-spinner fa-pulse fa-2x"/><span class="ms-2">Đang tải…</span>
+                                </div>
+                            </t>
+                            <t t-elif="state.error">
+                                <div class="alert alert-danger"><t t-esc="state.error"/></div>
+                            </t>
+                            <t t-elif="!state.data">
+                                <div class="no-data">Không có dữ liệu</div>
+                            </t>
+                            <t t-else="">
+                                <div class="sec-title mb-3" style="font-size:1.5em; font-weight:bold;">Đang sản xuất (<t t-esc="(state.data.lists.manufacturing||[]).length"/>)</div>
+                                <div class="list-scroll" style="max-height:60vh; overflow:auto;">
+                                    <t t-if="(state.data.lists.manufacturing||[]).length">
+                                        <t t-foreach="state.data.lists.manufacturing" t-as="so" t-key="so.id">
+                                            <div class="ticket mb-3 p-3 cursor-pointer" style="background:#f8f9fa; border-radius:10px; box-shadow:0 1px 4px #0001;" t-on-click.stop.prevent="() => this.openOrder(so)">
+                                                <div class="d-flex justify-content-between align-items-center">
+                                                    <div class="ticket-title text-truncate" style="font-size:1.2em; font-weight:600;"><t t-esc="so.title"/></div>
+                                                    <div class="ticket-sub text-end">
+                                                        <t t-if="so.late_days &gt; 0">
+                                                            <span class="text-danger" style="font-weight:bold;">Trễ <t t-esc="so.late_days"/> ngày</span>
+                                                        </t>
+                                                        <t t-else="">
+                                                            <t t-if="so.deadline">
+                                                                <t t-set="__dLeft" t-value="Math.max(0, Math.ceil((new Date(so.deadline) - new Date()) / 86400000))"/>
+                                                                <span class="text-warning" style="font-weight:bold;">Còn <t t-esc="__dLeft"/> ngày</span>
+                                                            </t>
+                                                            <t t-else="">
+                                                                <span class="text-muted">—</span>
+                                                            </t>
+                                                        </t>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </t>
+                                    </t>
+                                    <t t-else=""><div class="no-data">Không có dữ liệu</div></t>
+                                </div>
+                            </t>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </t>
+</templates>

@@ -6,7 +6,7 @@
                   name="Dòng đơn hàng"
                   parent="home_menu.home_root"
                   action="action_sale_order_line_import"
-                  sequence="50"
+                  sequence="200"
                   groups="dac_erp.group_dac_erp_manager"/>
                   
         <!-- Menu cho Phiếu chi -->

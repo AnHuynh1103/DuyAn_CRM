@@ -19,27 +19,43 @@ patch(NavBar.prototype, {
     onWillStart(async () => {
       const menuItems = this.menuService.getApps();
       console.log("menuItems", menuItems);
+      console.log(
+        "menuItems XMLIDs:",
+        menuItems.map((item) => item.xmlid)
+      );
 
       if (await user.hasGroup("base.group_system")) return;
       if (await user.hasGroup("dac_erp.group_dac_erp_manager")) {
         const rootMenuItem = menuItems.find(
           (item) => item.xmlid === "dac_report.dac_sale_dashboard_menu_root"
         );
+        console.log("Manager menu found:", rootMenuItem);
         this.state.isMenuBlocked = true;
         this.state.rootMenuActionID = rootMenuItem?.actionID;
       } else if (await user.hasGroup("dac_erp.group_dac_erp_sale")) {
         const rootMenuItem = menuItems.find(
           (item) => item.xmlid === "dac_report.dac_sale_dashboard_menu_root"
         );
+        console.log("Sale menu found:", rootMenuItem);
+        this.state.isMenuBlocked = true;
+        this.state.rootMenuActionID = rootMenuItem?.actionID;
+      } else if (await user.hasGroup("dac_erp.group_dac_erp_design")) {
+        const rootMenuItem = menuItems.find(
+          (item) => item.xmlid === "dac_erp.dac_design_root_menu"
+        );
+        console.log("Design menu found:", rootMenuItem);
         this.state.isMenuBlocked = true;
         this.state.rootMenuActionID = rootMenuItem?.actionID;
       } else {
         const rootMenuItem = menuItems.find(
           (item) => item.xmlid === "home_menu.home_root"
         );
+        console.log("Home menu found:", rootMenuItem);
         this.state.isMenuBlocked = true;
         this.state.rootMenuActionID = rootMenuItem?.actionID;
       }
+
+      console.log("Final rootMenuActionID:", this.state.rootMenuActionID);
     });
   },
 
@@ -54,9 +70,17 @@ patch(NavBar.prototype, {
   },
 
   async onHomeButtonClick() {
-    await this.env.services.action.doAction(this.state.rootMenuActionID, {
-      clearBreadcrumbs: true,
-    });
+    if (this.state.rootMenuActionID && this.state.rootMenuActionID !== 0) {
+      await this.env.services.action.doAction(this.state.rootMenuActionID, {
+        clearBreadcrumbs: true,
+      });
+    } else {
+      console.warn(
+        "No valid rootMenuActionID found, falling back to reload page"
+      );
+      // Fallback: just reload the page
+      window.location.reload();
+    }
   },
 
   trigger(event) {
