@@ -22,6 +22,7 @@ class SaleOrder(models.Model):
                 "title": so.partner_id.display_name or so.name,
                 "amount": so.amount_total,
                 "date": so.date_order,
+                "deadline": so.production_deadline,  # Thêm dòng này
                 "late_days": (fields.Date.today() - so.commitment_date).days if so.commitment_date and fields.Date.today() > so.commitment_date else 0,
                 "user_id_design": [so.user_id_design.id, so.user_id_design.name] if so.user_id_design else None,
             })

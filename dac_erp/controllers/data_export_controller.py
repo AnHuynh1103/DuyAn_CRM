@@ -1098,7 +1098,7 @@ class DataExportController(http.Controller):
                                 page_id=None,                # lọc theo page Odoo id 
                                 page_fm_id_str=None,         # lọc theo page_fm_id_str
                                 unread_only='0',             # '1' chỉ lấy cuộc chưa đọc
-                                days=2,                      # nếu không truyền date_from/to -> mặc định 2 ngày gần nhất
+                                days=None,                      # nếu không truyền date_from/to -> mặc định 2 ngày gần nhất
                                 date=None,                   # YYYY-MM-DD (lấy đúng 1 ngày)
                                 date_from=None,              # YYYY-MM-DD hoặc YYYY-MM-DD HH:MM:SS
                                 date_to=None,
@@ -1150,7 +1150,7 @@ class DataExportController(http.Controller):
                             page_id=None,
                             page_fm_id_str=None,
                             unread_only='0',
-                            days=2,
+                            days=None,
                             date=None,
                             date_from=None,
                             date_to=None,
@@ -1227,17 +1227,24 @@ class DataExportController(http.Controller):
             # lấy trọn 1 ngày theo TZ rồi đổi sang UTC
             dt_from_utc = parse_any(date, is_end=False)
             dt_to_utc   = parse_any(date, is_end=True)
-        else:
-            # days (mặc định 2) theo TZ
+        elif days is not None:
+            # CHỈ áp dụng khi client truyền days
             try:
-                days_int = int(days) if days is not None else 2
+                days_int = int(days)
             except Exception:
-                days_int = 2
+                # bạn có thể raise lỗi 400 thay vì ngầm sửa giá trị
+                days_int = 1
             now_tz = datetime.now(tz)
             start_tz = (now_tz - timedelta(days=days_int)).replace(hour=0, minute=0, second=0, microsecond=0)
             end_tz   = now_tz.replace(hour=23, minute=59, second=59, microsecond=999999)
             dt_from_utc = start_tz.astimezone(pytz.UTC)
             dt_to_utc   = end_tz.astimezone(pytz.UTC)
+
+        # Chỉ thêm điều kiện thời gian khi có mốc
+        if dt_from_utc:
+            msg_domain.append(('inserted_at_fm', '>=', fields.Datetime.to_string(dt_from_utc)))
+        if dt_to_utc:
+            msg_domain.append(('inserted_at_fm', '<=', fields.Datetime.to_string(dt_to_utc)))
 
         # Domain cho message theo khoảng thời gian
         msg_domain = []
