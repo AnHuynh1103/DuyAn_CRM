@@ -160,21 +160,25 @@
                           <div class="d-flex justify-content-between">
                             <div class="ticket-title text-truncate"><t t-esc="so.title"/></div>
                             <div class="ticket-sub text-end">
-                                <!-- Nếu đã trễ: đỏ đậm -->
-                                <t t-if="so.late_days &gt; 0">
-                                  <span class="text-danger">Trễ <t t-esc="so.late_days"/> ngày</span>
+                                <!-- Nếu là ưu tiên: tô màu -->
+                               <t t-if="so.is_priority">
+                                  <span class="badge badge-priority ms-2 me-2">ƯU TIÊN</span>
                                 </t>
-                                <!-- Nếu chưa trễ nhưng có deadline: tính số ngày còn lại và tô vàng -->
+                                <t t-if="so.late_days &gt; 0">
+                                  <span class="badge-late">Trễ <t t-esc="so.late_days"/> ngày</span>
+                                </t>
                                 <t t-else="">
                                   <t t-if="so.deadline">
-                                    <!-- Tính số ngày còn lại (ceil) -->
                                     <t t-set="__dLeft"
                                       t-value="Math.max(0, Math.ceil((new Date(so.deadline) - new Date()) / 86400000))"/>
-                                    <span class="text-warning">Còn <t t-esc="__dLeft"/> ngày</span>
+                                    <t t-if="__dLeft === 0">
+                                      <span class="badge-due">Đến hạn</span>
+                                    </t>
+                                    <t t-else="">
+                                      <span class="text-warning">Còn <t t-esc="__dLeft"/> ngày</span>
+                                    </t>
                                   </t>
-                                  <t t-else="">
-                                    <span class="text-muted">—</span>
-                                  </t>
+                                  <t t-else=""><span class="text-muted">—</span></t>
                                 </t>
                               </div>
                           </div>
@@ -216,8 +220,11 @@
                                 <span class="text-info">Chưa có hóa đơn</span>
                               </t>
                               <t t-else="">
-                                <t t-if="m.due_days &gt;= 0">
+                                <t t-if="m.due_days &gt; 0">
                                   <span class="badge-late">Quá <t t-esc="m.due_days"/> ngày</span>
+                                </t>
+                                <t t-elif="m.due_days === 0">
+                                  <span class="badge-due">Đến hạn</span>
                                 </t>
                                 <t t-else="">
                                   <span class="text-warning">Còn <t t-esc="Math.abs(m.due_days)"/> ngày</span>

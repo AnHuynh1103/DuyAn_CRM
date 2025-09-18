@@ -34,7 +34,10 @@ patch(WebClient.prototype, {
         );
       root = filteredArray[0];
       firstApp = root?.appID;
-    } else if (await user.hasGroup("dac_erp.group_dac_erp_design")) {
+    } else if (
+      (await user.hasGroup("dac_erp.group_dac_erp_design")) ||
+      (await user.hasGroup("dac_erp.group_dac_erp_production"))
+    ) {
       const filteredArray = this.menuService
         .getApps()
         .filter((item) => item.xmlid === "dac_erp.dac_design_root_menu");

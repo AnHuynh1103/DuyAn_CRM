@@ -153,6 +153,7 @@
                             </group>
                             <group>
                                 <separator string="Sản xuất" invisible="order_state_custom == 'quotation'"/>
+                                <field name="production_image" string="Hình ảnh" invisible="order_state_custom == 'quotation'"/>
                                 <!-- Trường deadline sản xuất - thiết kế lại: luôn nằm trên, điều kiện invisible gốc, giao diện hài hòa -->
                                 <div invisible="order_state_custom == 'quotation' and not is_deposit_confirmed"
                                      style="margin-bottom: 8px; display: flex; align-items: center; gap: 6px; background: #fffbe6; border: 1px solid #ffc107; border-radius: 5px; padding: 4px 10px; width: fit-content;">
@@ -459,6 +460,8 @@
                     <group expand="1" string="Nhóm theo">
                         <filter string="Trạng thái" name="group_by_state" context="{'group_by': 'order_state_custom'}"/>
                         <filter string="Sale phụ trách" name="group_by_user" context="{'group_by': 'user_id'}"/>
+                        <filter string="Thiết kế" name="group_by_user_design" context="{'group_by': 'user_id_design'}"/>
+                        <filter string="Sản xuất" name="group_by_user_production" context="{'group_by': 'user_id_production'}"/>
                         <filter string="Khách hàng" name="group_by_partner" context="{'group_by': 'partner_id'}"/>
                         <filter string="Ngày tạo" name="group_by_date" context="{'group_by': 'create_date:month'}"/>
                     </group>

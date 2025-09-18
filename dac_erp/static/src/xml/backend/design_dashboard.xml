@@ -33,17 +33,26 @@
                                                 <div class="d-flex justify-content-between align-items-center">
                                                     <div class="ticket-title text-truncate" style="font-size:1.2em; font-weight:600;"><t t-esc="so.title"/></div>
                                                     <div class="ticket-sub text-end">
+                                                        <!-- Ưu tiên -->
+                                                        <t t-if="so.is_priority">
+                                                            <span class="badge badge-priority me-2">ƯU TIÊN</span>
+                                                        </t>
+
+                                                        <!-- Trễ / Đến hạn / Còn X ngày -->
                                                         <t t-if="so.late_days &gt; 0">
-                                                            <span class="text-danger" style="font-weight:bold;">Trễ <t t-esc="so.late_days"/> ngày</span>
+                                                            <span class="badge-late">Trễ <t t-esc="so.late_days"/> ngày</span>
                                                         </t>
                                                         <t t-else="">
                                                             <t t-if="so.deadline">
-                                                                <t t-set="__dLeft" t-value="Math.max(0, Math.ceil((new Date(so.deadline) - new Date()) / 86400000))"/>
-                                                                <span class="text-warning" style="font-weight:bold;">Còn <t t-esc="__dLeft"/> ngày</span>
+                                                            <t t-set="__dLeft" t-value="Math.max(0, Math.ceil((new Date(so.deadline) - new Date()) / 86400000))"/>
+                                                            <t t-if="__dLeft === 0">
+                                                                <span class="badge-due">Đến hạn</span>
                                                             </t>
                                                             <t t-else="">
-                                                                <span class="text-muted">—</span>
+                                                                <span class="text-warning">Còn <t t-esc="__dLeft"/> ngày</span>
                                                             </t>
+                                                            </t>
+                                                            <t t-else=""><span class="text-muted">—</span></t>
                                                         </t>
                                                     </div>
                                                 </div>

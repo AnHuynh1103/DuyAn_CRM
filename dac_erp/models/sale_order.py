@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 _logger = logging.getLogger(__name__)
 
 class SaleOrder(models.Model):
+   
     _inherit = 'sale.order'
 
     # Trạng thái đơn hàng tùy chỉnh    
@@ -380,15 +381,27 @@ class SaleOrder(models.Model):
 
     def write(self, vals):
         """Override write để trigger kiểm tra deposit khi cần"""
+        # 1) Bảo vệ các trường trễ
         protected_keys = {'production_is_delayed', 'production_delay_date', 'production_delay_reason'}
         if protected_keys.intersection(vals.keys()):
             for rec in self:
                 if rec.is_delivery_confirmed or rec.order_state_custom in ('delivery', 'payment', 'completed'):
                     raise UserError(_("Không thể sửa thông tin trễ sau khi đơn đã chuyển sang Giao hàng."))
 
+        # 2) Ghi nhận xem có chạm đến ảnh hay không (áp dụng cho nhiều record)
+        image_key_present = 'production_image' in vals
+        image_removed = image_key_present and not vals.get('production_image')   # None/False → xoá
+        
+        # 3) Gọi super() viết dữ liệu
         result = super().write(vals)
         
-        # Nếu có thay đổi order_line, kiểm tra lại deposit
+        # 4) Nếu có thay đổi ảnh, log vào chatter
+        if image_key_present:
+            for rec in self:
+                rec._post_production_image_log('remove' if image_removed else 'upload')
+        
+        
+        # 5) Nếu thay đổi order_line, đồng bộ lại dòng cọc
         if 'order_line' in vals:
             for record in self:
                 record._auto_sync_deposit_line()
@@ -1424,4 +1437,30 @@ class SaleOrder(models.Model):
                               tracking=True)
     
     
+    # Hình ảnh cho sản xuất
+    production_image = fields.Binary(string="Ảnh sản xuất", 
+                                     attachment=True, 
+                                     help="Tải lên hình ảnh liên quan đến sản xuất (bản vẽ, mẫu, v.v.)")
     
+    def _post_production_image_log(self, action):
+        """action: 'upload' | 'remove' — chỉ log câu chữ, không preview ảnh."""
+        Att = self.env['ir.attachment']
+        for rec in self:
+            if action == 'upload':
+                att = Att.search([
+                    ('res_model', '=', 'sale.order'),
+                    ('res_id', '=', rec.id),
+                    ('res_field', '=', 'production_image'),
+                ], order='id desc', limit=1)
+
+                actor = (att.write_uid or att.create_uid) if att else self.env.user
+                actor_name = actor.name if actor else self.env.user.name
+                filename = (att.name or 'tệp') if att else 'tệp'
+
+                # Chỉ chữ, không gắn attachment -> không có preview ảnh
+                body = f"{actor_name} đã tải ảnh sản xuất: {filename}"
+                rec.message_post(body=body, subtype_xmlid='mail.mt_note')
+
+            else:
+                body = f"{self.env.user.name} đã xoá ảnh sản xuất"
+                rec.message_post(body=body, subtype_xmlid='mail.mt_note')

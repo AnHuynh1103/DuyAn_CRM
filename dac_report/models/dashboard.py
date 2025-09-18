@@ -244,7 +244,12 @@ class SaleOrderDashboardService(models.Model):
         manuf_list = []
         if doms.get("manufacturing"):
             so_dom = [("company_id", "=", company.id)] + doms["manufacturing"]
-            orders = self.search(so_dom, limit=20, order="production_deadline asc, id asc")
+            # mới: thêm ưu tiên is_priority
+            orders = self.search(
+                so_dom,
+                limit=20,
+                order="is_priority desc, production_deadline asc, id asc"
+            )
             today_d = fields.Date.today()
             for so in orders:
                 dln = getattr(so, "production_deadline", False)
@@ -254,6 +259,7 @@ class SaleOrderDashboardService(models.Model):
                     "title": so.partner_id.display_name or so.name,
                     "deadline": dln and dln.isoformat(),
                     "late_days": late_days,
+                    "is_priority": bool(getattr(so, "is_priority", False)),
                 })
 
         # ---- COMPLETED CUSTOMERS ----
