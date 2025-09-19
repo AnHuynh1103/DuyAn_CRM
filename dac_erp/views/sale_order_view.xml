@@ -179,6 +179,18 @@
                                        placeholder="Hãy điền nguyên nhân trễ…"
                                        invisible="(not production_is_delayed) or ((order_state_custom in ['quotation','deposit']) and (not started_delivery))"
                                        readonly="order_state_custom != 'production' or started_delivery"/>
+
+                                <button name="action_mark_production_done"
+                                        type="object"
+                                        string="Hoàn thành sản xuất"
+                                        class="btn btn-success"
+                                        groups="dac_erp.group_dac_erp_production,dac_erp.group_dac_erp_manager,base.group_system"
+                                        invisible="order_state_custom != 'production' or not is_production_confirmed or production_done"/>
+
+
+                                <field name="production_done" readonly="1"/>
+                                <field name="production_done_user_id" invisible="1"/>
+                                <field name="production_done_date" invisible="1"/>
                             </group> 
                         </group>
                         <notebook>

@@ -1464,3 +1464,42 @@ class SaleOrder(models.Model):
             else:
                 body = f"{self.env.user.name} đã xoá ảnh sản xuất"
                 rec.message_post(body=body, subtype_xmlid='mail.mt_note')
+                
+                
+    # --- Cờ hoàn tất sản xuất ---
+    production_done = fields.Boolean(string="Đã hoàn tất sản xuất", default=False, copy=False, tracking=True)
+    production_done_date = fields.Datetime(string="Thời điểm hoàn tất", readonly=True, copy=False)
+    production_done_user_id = fields.Many2one('res.users', string="Người xác nhận hoàn tất", readonly=True, copy=False)
+
+    def action_mark_production_done(self):
+        """Chỉ Production/Manager/Admin bấm được, trạng thái đang ở 'production' và đã xác nhận sản xuất."""
+        allowed = (
+            self.env.user.has_group('dac_erp.group_dac_erp_production')
+            or self.env.user.has_group('dac_erp.group_dac_erp_manager')
+            or self.env.user.has_group('base.group_system')
+        )
+        if not allowed:
+            raise UserError(_("Bạn không có quyền xác nhận hoàn tất sản xuất."))
+
+        for o in self:
+            if o.order_state_custom != 'production':
+                raise UserError(_("Chỉ xác nhận khi đơn đang ở trạng thái Sản xuất."))
+            if not o.is_production_confirmed:
+                raise UserError(_("Vui lòng xác nhận sản xuất trước khi hoàn tất."))
+            if o.production_done:
+                continue  # idempotent
+
+            o.write({
+                'production_done': True,
+                'production_done_date': fields.Datetime.now(),
+                'production_done_user_id': self.env.user.id,
+            })
+            # Log chữ, không preview ảnh/file
+            o.message_post(
+                body=f"{self.env.user.name} đã xác nhận hoàn tất sản xuất.",
+                subtype_xmlid='mail.mt_note',
+            )
+        return {
+        'type': 'ir.actions.client',
+        'tag': 'reload',
+    }
