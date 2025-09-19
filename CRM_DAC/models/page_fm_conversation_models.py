@@ -1139,7 +1139,6 @@ class PageFmConversation(models.Model):
             _logger.warning(f"Có {error_count} lỗi trong quá trình sync. Kiểm tra: 1) Token API, 2) Kết nối mạng, 3) Log chi tiết ở trên.")
 
     
-
     def action_sync_messages(self, date_from=None, date_to=None, unread_first=False, **kwargs):
         """Đồng bộ tin nhắn; hỗ trợ lọc theo khoảng thời gian và cờ ưu tiên (tùy chọn).
        - date_from/date_to: datetime hoặc str (ISO / 'YYYY-MM-DD' / 'YYYY-MM-DD HH:MM:SS')

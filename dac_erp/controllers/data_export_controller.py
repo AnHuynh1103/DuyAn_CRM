@@ -1240,12 +1240,6 @@ class DataExportController(http.Controller):
             dt_from_utc = start_tz.astimezone(pytz.UTC)
             dt_to_utc   = end_tz.astimezone(pytz.UTC)
 
-        # Chỉ thêm điều kiện thời gian khi có mốc
-        if dt_from_utc:
-            msg_domain.append(('inserted_at_fm', '>=', fields.Datetime.to_string(dt_from_utc)))
-        if dt_to_utc:
-            msg_domain.append(('inserted_at_fm', '<=', fields.Datetime.to_string(dt_to_utc)))
-
         # Domain cho message theo khoảng thời gian
         msg_domain = []
         if page_id:
@@ -1264,8 +1258,7 @@ class DataExportController(http.Controller):
             # Tên staff (ilike) ở Char 'staff_name_fm'
             msg_domain.append(('staff_name_fm', 'ilike', staff_name))
         
-        
-        # cùng khung thời gian nhưng neo theo thời điểm gửi tin nhắn
+        # Thêm điều kiện thời gian cho message khi có mốc
         if dt_from_utc:
             msg_domain.append(('inserted_at_fm', '>=', fields.Datetime.to_string(dt_from_utc)))
         if dt_to_utc:
@@ -1535,3 +1528,5 @@ class DacConversationApi(http.Controller):
         result = rec.action_toggle_require_processing()
         return {'ok': True, 'result': result}
         return {'ok': True, 'checklist_ok': rec.checklist_ok}
+    
+    
