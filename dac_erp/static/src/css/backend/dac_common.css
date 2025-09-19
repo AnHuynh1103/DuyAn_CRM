@@ -1,0 +1,24 @@
+.badge-priority {
+  background: #b91c1c !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+.badge-late {
+  background: #dc2626 !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+.badge-due {
+  background: #d97706 !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
