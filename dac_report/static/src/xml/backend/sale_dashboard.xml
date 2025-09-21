@@ -161,9 +161,13 @@
                             <div class="ticket-title text-truncate"><t t-esc="so.title"/></div>
                             <div class="ticket-sub text-end">
                                 <!-- Nếu là ưu tiên: tô màu -->
-                               <t t-if="so.is_priority">
-                                  <span class="badge badge-priority ms-2 me-2">ƯU TIÊN</span>
+                               <t t-if="so.is_priority_today">
+                                  <span class="badge badge-today me-2">TRONG NGÀY</span>
                                 </t>
+                                <t t-elif="so.is_priority">
+                                  <span class="badge badge-priority me-2">ƯU TIÊN</span>
+                                </t>
+                                
                                 <t t-if="so.late_days &gt; 0">
                                   <span class="badge-late">Trễ <t t-esc="so.late_days"/> ngày</span>
                                 </t>

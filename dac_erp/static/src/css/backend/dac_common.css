@@ -1,5 +1,5 @@
 .badge-priority {
-  background: #b91c1c !important;
+  background: #29cb00 !important;
   color: #fff !important;
   font-weight: 700 !important;
   padding: 2px 6px;
@@ -16,6 +16,14 @@
 }
 .badge-due {
   background: #d97706 !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+.badge-today {
+  background: #e80000 !important;
   color: #fff !important;
   font-weight: 700 !important;
   padding: 2px 6px;

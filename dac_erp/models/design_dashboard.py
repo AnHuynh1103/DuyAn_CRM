@@ -26,7 +26,7 @@ class SaleOrder(models.Model):
             # Không thuộc 2 group trên và không phải admin → chặn
             raise AccessError(_("Bạn không có quyền truy cập dashboard này."))
 
-        orders = self.search(domain, order="is_priority desc, production_deadline asc, id asc")
+        orders = self.search(domain, order="is_priority_today desc, is_priority desc, production_deadline asc, id asc")
 
         today = _date.today()
         out = []
@@ -41,5 +41,6 @@ class SaleOrder(models.Model):
                 "deadline": deadline,
                 "late_days": late_days,
                 "is_priority": bool(getattr(so, "is_priority", False)),
+                "is_priority_today": bool(getattr(so, "is_priority_today", False)),
             })
         return {"manufacturing": out}

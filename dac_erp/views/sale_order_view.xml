@@ -76,10 +76,22 @@
                                        invisible="order_state_custom not in ['delivery', 'payment']"
                                        readonly="is_delivery_confirmed"
                                        widget="text"/>
-                                <field name="is_priority" string="Ưu tiên" widget="boolean_toggle"/>
+                                <!-- Số đơn trên excel -->
+                                <field name="excel_order_number"
+                                       string="Số đặt hàng"
+                                       placeholder="VD: 8766"
+                                       />
+                                <field name="is_priority" 
+                                        string="Ưu tiên" 
+                                        widget="boolean_toggle"/>
+                                <field name="is_priority_today" 
+                                        string="Ưu tiên trong ngày" 
+                                        widget="boolean_toggle" 
+                                        readonly="not is_priority"
+                                        invisible="not is_priority"/>
                             </group>
                             <group>
-                                <!-- Hiển thị thông tin Sale phụ trách - chỉ manager được chỉnh sửa -->
+                                <!-- Hiển thị thông tin Sale, Thiết kế, Sản xuất -->
                                 <field name="user_id" 
                                        widget="many2one_avatar_user" 
                                        string="Sale phụ trách"
@@ -87,20 +99,20 @@
                                 <!-- Thiết kế -->
                                 <field name="user_id_design"
                                        widget="many2one_avatar_user"
-                                       string="Thiết kế"
+                                       string="Người thiết kế"
                                        />
                                        
                                 <!-- Sản xuất -->
                                 <field name="user_id_production"
                                        widget="many2one_avatar_user"
-                                       string="Sản xuất"
+                                       string="Người sản xuất"
                                        />
 
-                                <!-- Số đơn trên excel -->
-                                <field name="excel_order_number"
-                                       string="Số đơn trên Excel"
-                                       placeholder="VD: 8766"
-                                       />
+                                <!-- Nhóm sản xuất -->
+                                <field name="production_group_ids"
+                                       widget="many2many_tags"
+                                       string="Nhóm sản xuất"
+                                       domain="[('id','!=', user_id_production)]"/>
                             </group>
                         </group>
                         <group>
@@ -153,7 +165,29 @@
                             </group>
                             <group>
                                 <separator string="Sản xuất" invisible="order_state_custom == 'quotation'"/>
-                                <field name="production_image" string="Hình ảnh" invisible="order_state_custom == 'quotation'"/>
+                                <field name="production_image" 
+                                       string="Hình ảnh" 
+                                       widget="image"
+                                       class="oe_avatar"
+                                       invisible="order_state_custom == 'quotation'"
+                                       style="max-width: 360px; max-height: 360px;"/>
+                                <!-- Nút tiện ích cho ảnh -->
+                                <button name="action_view_production_image"
+                                        type="object"
+                                        class="btn btn-secondary"
+                                        invisible="not production_image">
+                                    <i class="fa fa-external-link" style="margin-right:6px;"/>
+                                    <span>Xem ảnh</span>
+                                </button>
+
+                                <!-- Nút Tải ảnh -->
+                                <button name="action_download_production_image"
+                                        type="object"
+                                        class="btn btn-secondary"
+                                        invisible="not production_image">
+                                    <i class="fa fa-download" style="margin-right:6px;"/>
+                                    <span>Tải xuống</span>
+                                </button>
                                 <!-- Trường deadline sản xuất - thiết kế lại: luôn nằm trên, điều kiện invisible gốc, giao diện hài hòa -->
                                 <div invisible="order_state_custom == 'quotation' and not is_deposit_confirmed"
                                      style="margin-bottom: 8px; display: flex; align-items: center; gap: 6px; background: #fffbe6; border: 1px solid #ffc107; border-radius: 5px; padding: 4px 10px; width: fit-content;">
@@ -179,7 +213,8 @@
                                        placeholder="Hãy điền nguyên nhân trễ…"
                                        invisible="(not production_is_delayed) or ((order_state_custom in ['quotation','deposit']) and (not started_delivery))"
                                        readonly="order_state_custom != 'production' or started_delivery"/>
-
+                                       
+                                <!-- Nút đánh dấu hoàn thành sản xuất -->
                                 <button name="action_mark_production_done"
                                         type="object"
                                         string="Hoàn thành sản xuất"
@@ -188,7 +223,7 @@
                                         invisible="order_state_custom != 'production' or not is_production_confirmed or production_done"/>
 
 
-                                <field name="production_done" readonly="1"/>
+                                <field name="production_done" invisible="order_state_custom != 'production' or not is_production_confirmed or not production_done" readonly="0"/>
                                 <field name="production_done_user_id" invisible="1"/>
                                 <field name="production_done_date" invisible="1"/>
                             </group> 
@@ -398,25 +433,29 @@
             <field name="groups_id" eval="[(6, 0, [ref('dac_erp.group_dac_erp_sale')])]"/>
             <field name="arch" type="xml">
                 <list string="Báo giá" default_order="date desc" delete="false" create="true" edit="true">
-                    <field name="latest_quotation_info" string="Báo giá mới nhất" readonly="1"/>
-                    <field name="name"/>
-                    <field name="create_date" string="Ngày tạo đơn (hệ thống)" optional="hide"/>
-                    <field name="date" string="Ngày đơn hàng"/>
-                    <field name="partner_id"/>
-                    <field name="user_id" widget="many2one_avatar_user"/>
-                    <field name="user_id_design" widget="many2one_avatar_user" string="Thiết kế"/>
-                    <field name="user_id_production" widget="many2one_avatar_user" string="Sản xuất"/>
+                    <field name="latest_quotation_info" string="Báo giá mới nhất" readonly="1" optional="hide"/>
+                    <field name="name" optional="hide"/>
                     <field name="company_id" invisible="1" optional="hide"/>
                     <field name="currency_id" invisible="1" optional="hide"/>
                     <field name="pricelist_id" invisible="1" optional="hide"/>
+                    <field name="create_date" string="Ngày tạo đơn (hệ thống)" optional="hide"/>
+                    <field name="excel_order_number" string="Số phiếu ĐH"/>
+                    <field name="date" string="Ngày đơn hàng"/>
+                    <field name="partner_id" />
+                    <field name="user_id" widget="many2one_avatar_user" string="Sale phụ trách"/>
+                    <field name="user_id_design" widget="many2one_avatar_user" string="Người thiết kế"/>
+                    <field name="user_id_production" widget="many2one_avatar_user" string="Người sản xuất"/>
                     <field name="amount_total" sum="Total" widget="monetary"/>
-                    <field name="order_state_custom" widget="badge"
+                    <field name="order_state_custom" widget="badge" string="Trạng thái"
                         decoration-info="order_state_custom == 'quotation' and not is_order_completed"
                         decoration-warning="order_state_custom == 'deposit' and not is_order_completed"
                         decoration-primary="order_state_custom in ['production', 'delivery'] and not is_order_completed"
                         decoration-success="order_state_custom == 'payment' and not is_order_completed"
                         decoration-muted="is_order_completed or order_state_custom == 'completed'"
                         decoration-danger="order_state_custom == 'cancel'"/>
+                    <field name="is_priority" string="Ưu tiên"/>
+                    <field name="is_priority_today" string="Trong ngày"/>
+                    <field name="production_deadline" string="Ngày hoàn tất sản xuất"/>
                 </list>
             </field>
         </record>
@@ -429,25 +468,30 @@
             <field name="groups_id" eval="[(6, 0, [ref('dac_erp.group_dac_erp_manager')])]"/>
             <field name="arch" type="xml">
                 <list string="Báo giá" default_order="date desc" delete="true" create="true" edit="true">
-                    <field name="latest_quotation_info" string="Báo giá mới nhất" readonly="1"/>
-                    <field name="name"/>
-                    <field name="create_date" string="Ngày tạo đơn (hệ thống)" optional="hide"/>
-                    <field name="date" string="Ngày đơn hàng"/>
-                    <field name="partner_id"/>
-                    <field name="user_id" widget="many2one_avatar_user"/>
-                    <field name="user_id_design" widget="many2one_avatar_user" string="Thiết kế"/>
-                    <field name="user_id_production" widget="many2one_avatar_user" string="Sản xuất"/>
+                    <field name="latest_quotation_info" string="Báo giá mới nhất" readonly="1" optional="hide"/>
+                    <field name="name" optional="hide"/>
                     <field name="company_id" invisible="1" optional="hide"/>
                     <field name="currency_id" invisible="1" optional="hide"/>
                     <field name="pricelist_id" invisible="1" optional="hide"/>
+                    
+                    <field name="create_date" string="Ngày tạo đơn (hệ thống)" optional="hide"/>
+                    <field name="excel_order_number" string="Số phiếu ĐH"/>
+                    <field name="date" string="Ngày đơn hàng"/>
+                    <field name="partner_id"/>
+                    <field name="user_id" widget="many2one_avatar_user" string="Sale phụ trách"/>
+                    <field name="user_id_design" widget="many2one_avatar_user" string="Người thiết kế"/>
+                    <field name="user_id_production" widget="many2one_avatar_user" string="Người sản xuất"/>
                     <field name="amount_total" sum="Total" widget="monetary"/>
-                    <field name="order_state_custom" widget="badge"
+                    <field name="order_state_custom" widget="badge" string="Trạng thái"
                         decoration-info="order_state_custom == 'quotation' and not is_order_completed"
                         decoration-warning="order_state_custom == 'deposit' and not is_order_completed"
                         decoration-primary="order_state_custom in ['production', 'delivery'] and not is_order_completed"
                         decoration-success="order_state_custom == 'payment' and not is_order_completed"
                         decoration-muted="is_order_completed or order_state_custom == 'completed'"
                         decoration-danger="order_state_custom == 'cancel'"/>
+                    <field name="is_priority" string="Ưu tiên"/>
+                    <field name="is_priority_today" string="Trong ngày"/>
+                    <field name="production_deadline" string="Ngày hoàn tất sản xuất"/>
                 </list>
             </field>
         </record>
@@ -472,8 +516,8 @@
                     <group expand="1" string="Nhóm theo">
                         <filter string="Trạng thái" name="group_by_state" context="{'group_by': 'order_state_custom'}"/>
                         <filter string="Sale phụ trách" name="group_by_user" context="{'group_by': 'user_id'}"/>
-                        <filter string="Thiết kế" name="group_by_user_design" context="{'group_by': 'user_id_design'}"/>
-                        <filter string="Sản xuất" name="group_by_user_production" context="{'group_by': 'user_id_production'}"/>
+                        <filter string="Người thiết kế" name="group_by_user_design" context="{'group_by': 'user_id_design'}"/>
+                        <filter string="Người sản xuất" name="group_by_user_production" context="{'group_by': 'user_id_production'}"/>
                         <filter string="Khách hàng" name="group_by_partner" context="{'group_by': 'partner_id'}"/>
                         <filter string="Ngày tạo" name="group_by_date" context="{'group_by': 'create_date:month'}"/>
                     </group>

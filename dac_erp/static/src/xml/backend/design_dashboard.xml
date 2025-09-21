@@ -34,7 +34,10 @@
                                                     <div class="ticket-title text-truncate" style="font-size:1.2em; font-weight:600;"><t t-esc="so.title"/></div>
                                                     <div class="ticket-sub text-end">
                                                         <!-- Ưu tiên -->
-                                                        <t t-if="so.is_priority">
+                                                        <t t-if="so.is_priority_today">
+                                                            <span class="badge badge-today me-2">TRONG NGÀY</span>
+                                                        </t>
+                                                        <t t-elif="so.is_priority">
                                                             <span class="badge badge-priority me-2">ƯU TIÊN</span>
                                                         </t>
 

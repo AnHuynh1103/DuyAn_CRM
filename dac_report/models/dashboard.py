@@ -248,7 +248,7 @@ class SaleOrderDashboardService(models.Model):
             orders = self.search(
                 so_dom,
                 limit=20,
-                order="is_priority desc, production_deadline asc, id asc"
+                order="is_priority_today desc, is_priority desc, production_deadline asc, id asc"
             )
             today_d = fields.Date.today()
             for so in orders:
@@ -260,6 +260,7 @@ class SaleOrderDashboardService(models.Model):
                     "deadline": dln and dln.isoformat(),
                     "late_days": late_days,
                     "is_priority": bool(getattr(so, "is_priority", False)),
+                    "is_priority_today": bool(getattr(so, "is_priority_today", False)),
                 })
 
         # ---- COMPLETED CUSTOMERS ----

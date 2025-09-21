@@ -22,17 +22,11 @@ class SaleOrder(models.Model):
 
     date = fields.Datetime(string='Ngày đơn hàng', default=fields.Datetime.now)
 
-
-    # Lấy domain người dùng theo nhóm
-    def _get_user_domain_by_group(self, group_xml_id):
-        group = self.env.ref(group_xml_id)
-        return [('groups_id', 'in', [group.id])]
-
     # Sale phụ trách
     user_id = fields.Many2one(
         'res.users',
         string='Sale phụ trách',
-        domain=lambda self: self._get_user_domain_by_group('dac_erp.group_dac_erp_sale'),
+        domain=[],
         default=lambda self: self.env.user,
         copy=True,
         tracking=True,
@@ -42,7 +36,7 @@ class SaleOrder(models.Model):
     user_id_design = fields.Many2one(
         'res.users',
         string='Người thiết kế',
-        domain=lambda self: self._get_user_domain_by_group('dac_erp.group_dac_erp_design'),
+        domain=[],
         tracking=True,
     )
 
@@ -50,12 +44,28 @@ class SaleOrder(models.Model):
     user_id_production = fields.Many2one(
         'res.users',
         string='Người sản xuất',
-        domain=lambda self: self._get_user_domain_by_group('dac_erp.group_dac_erp_production'),
+        domain=[],
         tracking=True,
     )
     
+    # Nhóm sản xuất (nhiều người)
+    production_group_ids = fields.Many2many(
+        'res.users',
+        'sale_order_production_user_rel',   # tên bảng quan hệ M2M
+        'order_id',                         # cột FK về sale.order
+        'user_id',                          # cột FK về res.users
+        string='Nhóm sản xuất',
+        domain=[],                          # cho chọn TẤT CẢ users
+        tracking=True,
+        help='Những người tham gia sản xuất, KHÔNG bao gồm người phụ trách sản xuất.',
+    )
+    
     # Trường so sánh với file số đơn excel
-    excel_order_number = fields.Char(string="Số đơn Excel", default=False, copy=False, tracking=True)
+    excel_order_number = fields.Char(string="Số đặt hàng", 
+                                     default=False, 
+                                     copy=False, 
+                                     help="Số phiếu đặt hàng", 
+                                     tracking=True)
 
     # Trạng thái xác nhận
     is_quotation_confirmed = fields.Boolean(string="Đã xác nhận báo giá", default=False)
@@ -125,31 +135,6 @@ class SaleOrder(models.Model):
             if not o.production_deadline and o.production_delay_date <= date.today():
                 raise ValidationError(_("Ngày trễ phải sau ngày hiện tại."))
 
-
-    @api.constrains('user_id')
-    def _check_user_id_in_sale_group(self):
-        """Backend validation: user_id must be a Sale user or Manager."""
-        for order in self:
-            if order.user_id:
-                # Allow if the assigned user is in Sale group or Manager
-                if not (order.user_id.has_group('dac_erp.group_dac_erp_sale') or order.user_id.has_group('dac_erp.group_dac_erp_manager')):
-                    raise ValidationError(_("Người phụ trách phải thuộc nhóm 'DAC Sale' hoặc 'DAC Manager'."))
-
-    @api.constrains('user_id_design')
-    def _check_user_id_design_group(self):
-        """Backend validation: user_id_design must be a Design user or Manager."""
-        for order in self:
-            if order.user_id_design:
-                if not (order.user_id_design.has_group('dac_erp.group_dac_erp_design') or order.user_id_design.has_group('dac_erp.group_dac_erp_manager')):
-                    raise ValidationError(_("Người thiết kế phải thuộc nhóm 'DAC Design' hoặc 'DAC Manager'."))
-
-    @api.constrains('user_id_production')
-    def _check_user_id_production_group(self):
-        """Backend validation: user_id_production must be a Production user or Manager."""
-        for order in self:
-            if order.user_id_production:
-                if not (order.user_id_production.has_group('dac_erp.group_dac_erp_production') or order.user_id_production.has_group('dac_erp.group_dac_erp_manager')):
-                    raise ValidationError(_("Người sản xuất phải thuộc nhóm 'DAC Production' hoặc 'DAC Manager'."))
 
     
     # Tiến trình giao hàng
@@ -337,20 +322,15 @@ class SaleOrder(models.Model):
 
     @api.depends('is_deposit_confirmed')
     def _compute_can_delete_products(self):
-        """Kiểm tra user có được phép xóa sản phẩm không"""
+        """Chỉ Admin/Manager/Sale nhìn thấy nút xoá trên UI; Design/Production thì không."""
+        user = self.env.user
         for order in self:
-            # Manager luôn được phép xóa
-            if self.env.user.has_group('dac_erp.group_dac_erp_manager'):
+            if user.has_group('base.group_system') or user.has_group('dac_erp.group_dac_erp_manager'):
                 order.can_delete_products = True
-                #_logger.info(f"[DEBUG] Order {order.name}: Manager can delete = True")
-            # Sale user chỉ được xóa khi chưa lên cọc
-            elif self.env.user.has_group('dac_erp.group_dac_erp_sale'):
-                order.can_delete_products = not order.is_deposit_confirmed
-                #_logger.info(f"[DEBUG] Order {order.name}: Sale user can delete = {not order.is_deposit_confirmed} (is_deposit_confirmed = {order.is_deposit_confirmed})")
+            elif user.has_group('dac_erp.group_dac_erp_sale'):
+                order.can_delete_products = True
             else:
-                order.can_delete_products = True
-                #_logger.info(f"[DEBUG] Order {order.name}: Other user can delete = True")
-            #_logger.info(f"[DEBUG] User groups: {self.env.user.groups_id.mapped('name')}")
+                order.can_delete_products = False
 
     def read(self, fields=None, load='_classic_read'):
         """Override read để kiểm tra và thêm dòng đặt cọc khi cần thiết"""
@@ -381,6 +361,9 @@ class SaleOrder(models.Model):
 
     def write(self, vals):
         """Override write để trigger kiểm tra deposit khi cần"""
+        # Nếu bỏ chọn ưu tiên, tự động bỏ chọn ưu tiên trong ngày
+        if 'is_priority' in vals and not vals['is_priority']:
+            vals['is_priority_today'] = False
         # 1) Bảo vệ các trường trễ
         protected_keys = {'production_is_delayed', 'production_delay_date', 'production_delay_reason'}
         if protected_keys.intersection(vals.keys()):
@@ -405,7 +388,13 @@ class SaleOrder(models.Model):
         if 'order_line' in vals:
             for record in self:
                 record._auto_sync_deposit_line()
-                
+        
+        # Nếu đổi lead hoặc đổi nhóm → dọn cho chắc
+        if 'user_id_production' in vals or 'production_group_ids' in vals:
+            for rec in self:
+                if rec.user_id_production and rec.user_id_production in rec.production_group_ids:
+                    rec.production_group_ids = [(3, rec.user_id_production.id)]
+                    
         return result
 
     def _auto_sync_deposit_line(self):
@@ -445,7 +434,13 @@ class SaleOrder(models.Model):
             # Nếu chưa có date, set date đúng giờ hiện tại
             if not vals.get('date'):
                 vals['date'] = fields.Datetime.now()
-        return super().create(vals_list)
+            if not vals.get('is_priority'):
+                vals['is_priority_today'] = False
+        records = super().create(vals_list)
+        for rec in records:
+            if rec.user_id_production and rec.user_id_production in rec.production_group_ids:
+                rec.production_group_ids = [(3, rec.user_id_production.id)]
+        return records
 
     def _check_auto_deposit_on_load(self):
         """Kiểm tra tự động khi load record"""
@@ -1428,8 +1423,16 @@ class SaleOrder(models.Model):
     # Số điện thoại đơn hàng
     phone = fields.Char(string="Số điện thoại", related='partner_id.phone', store=True, readonly=False, tracking=True)
 
-    # Đơn hàng ưu tiên
+    # Đơn hàng ưu tiên và ưu tiên trong ngày
     is_priority = fields.Boolean(string="Đơn hàng ưu tiên", default=False, tracking=True)
+    is_priority_today = fields.Boolean(string="Ưu tiên trong ngày", default=False, tracking=True)
+    
+    # Nếu tắt 'Ưu tiên' thì tự động tắt 'Ưu tiên trong ngày'
+    @api.onchange('is_priority')
+    def _onchange_is_priority(self):
+        for rec in self:
+            if not getattr(rec, 'is_priority', False):
+                rec.is_priority_today = False
 
     # Field nhập link thiết kế
     design_link = fields.Char(string="Link thiết kế", 
@@ -1465,6 +1468,31 @@ class SaleOrder(models.Model):
                 body = f"{self.env.user.name} đã xoá ảnh sản xuất"
                 rec.message_post(body=body, subtype_xmlid='mail.mt_note')
                 
+    def _production_image_url(self, download=False):
+        self.ensure_one()
+        if not self.production_image:
+            raise UserError("Chưa có hình sản xuất để xem/tải.")
+        # /web/content: route chuẩn để tải file/binary
+        url = f"/web/content?model=sale.order&id={self.id}&field=production_image&filename=production_image.jpg"
+        if download:
+            url += "&download=1"
+        return url
+
+    def action_view_production_image(self):
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_url",
+            "url": self._production_image_url(download=False),
+            "target": "new",  # mở tab mới, xem full-size
+        }
+
+    def action_download_production_image(self):
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_url",
+            "url": self._production_image_url(download=True),
+            "target": "new",  # hoặc "self" nếu muốn tải trong tab hiện tại
+        }
                 
     # --- Cờ hoàn tất sản xuất ---
     production_done = fields.Boolean(string="Đã hoàn tất sản xuất", default=False, copy=False, tracking=True)
@@ -1503,3 +1531,57 @@ class SaleOrder(models.Model):
         'type': 'ir.actions.client',
         'tag': 'reload',
     }
+        
+    @api.onchange('user_id_production')
+    def _onchange_user_id_production(self):
+        for rec in self:
+            if rec.user_id_production:
+                # loại bỏ lead khỏi nhóm ngay trên form
+                rec.production_group_ids -= rec.user_id_production
+                
+                
+    # --- Chặn tracking tổng khi được yêu cầu (từ unlink order line) ---
+    def _message_track(self, tracked_fields, initial):
+        """
+        Odoo 18: mail.thread sẽ gọi hook này để tạo log thay đổi.
+        Khi context có 'dac_skip_total_log', loại bỏ amount_untaxed/amount_total
+        để không bắn 2 dòng 'Tổng' và 'Số tiền trước thuế'.
+        """
+        if self.env.context.get('dac_skip_total_log'):
+            tracked_fields = {
+                k: v for k, v in tracked_fields.items()
+                if k not in ('amount_untaxed', 'amount_total')
+            }
+        return super(SaleOrder, self)._message_track(tracked_fields, initial)
+
+    def _mail_track(self, tracked_fields, initial):
+        """
+        Một số luồng trong 18 vẫn đi qua _mail_track; lọc giống hệt để chắc ăn.
+        """
+        if self.env.context.get('dac_skip_total_log'):
+            tracked_fields = {
+                k: v for k, v in tracked_fields.items()
+                if k not in ('amount_untaxed', 'amount_total')
+            }
+        return super(SaleOrder, self)._mail_track(tracked_fields, initial)
+    
+    # === ONLY POSITIVE LINES: Untaxed amount (bỏ qua dòng cọc âm / section / note) ===
+    @api.depends('order_line', 'order_line.display_type', 'order_line.price_subtotal', 'order_line.price_unit')
+    def _compute_amount_untaxed_positive_lines(self):
+        for order in self:
+            # chỉ lấy dòng sản phẩm thực (không display_type) và giá dương
+            positive_lines = order.order_line.filtered(
+                lambda l: not l.display_type and l.price_unit >= 0
+            )
+            # price_subtotal: đã trừ chiết khấu, chưa có thuế
+            order.amount_untaxed = sum(positive_lines.mapped('price_subtotal'))
+
+    # Override field amount_untaxed để dùng compute mới
+    amount_untaxed = fields.Monetary(
+        string="Số tiền trước thuế",
+        compute="_compute_amount_untaxed_positive_lines",
+        currency_field='currency_id',
+        store=False,
+        tracking=True,      # muốn hiện 2 bullet đúng số → để True
+        # tracking=False     # nếu muốn ẩn hẳn 2 bullet → dùng dòng này thay cho tracking=True
+    )
