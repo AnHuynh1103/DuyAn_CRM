@@ -25,6 +25,30 @@ class DacSaleDashboard extends Component {
     this._applyViewportTweaks = this._applyViewportTweaks.bind(this);
     this._ensureViewportReady = this._ensureViewportReady.bind(this);
     this._restoreViewportTweaks = this._restoreViewportTweaks.bind(this);
+
+    // --- OWL hooks (thay cho mounted()/willUnmount())
+    onMounted(() => {
+      // gắn class để CSS match
+      document.body.classList.add("dac-dashboard-open", "dac-compact");
+      const act =
+        this.el?.closest?.(".o_action") || document.querySelector(".o_action");
+      if (act) {
+        this._hostAction = act;
+        act.classList.add("dac-host");
+      }
+      // đợi DOM ổn rồi tinh chỉnh viewport
+      this._raf1 = requestAnimationFrame(this._ensureViewportReady);
+    });
+
+    onWillUnmount(() => {
+      if (this._raf1) cancelAnimationFrame(this._raf1);
+      if (this._raf2) cancelAnimationFrame(this._raf2);
+      if (this._retryTimer) clearTimeout(this._retryTimer);
+      window.removeEventListener("resize", this._applyViewportTweaks);
+      if (this._hostAction) this._hostAction.classList.remove("dac-host");
+      document.body.classList.remove("dac-dashboard-open", "dac-compact");
+      this._restoreViewportTweaks();
+    });
   }
 
   //--------------------------------------------------------------------
@@ -220,30 +244,6 @@ class DacSaleDashboard extends Component {
   }
 
   //--------------------------------------------------------------------
-  // Lifecycle
-  //--------------------------------------------------------------------
-  mounted() {
-    document.body.classList.add("dac-dashboard-open", "dac-compact");
-    const act =
-      this.el?.closest?.(".o_action") || document.querySelector(".o_action");
-    if (act) {
-      this._hostAction = act;
-      act.classList.add("dac-host");
-    }
-    this._raf1 = requestAnimationFrame(this._ensureViewportReady);
-  }
-
-  willUnmount() {
-    if (this._raf1) cancelAnimationFrame(this._raf1);
-    if (this._raf2) cancelAnimationFrame(this._raf2);
-    if (this._retryTimer) clearTimeout(this._retryTimer);
-    window.removeEventListener("resize", this._applyViewportTweaks);
-    if (this._hostAction) this._hostAction.classList.remove("dac-host");
-    document.body.classList.remove("dac-dashboard-open", "dac-compact");
-    this._restoreViewportTweaks();
-  }
-
-  //--------------------------------------------------------------------
   // Viewport helpers
   //--------------------------------------------------------------------
   _ensureViewportReady() {
@@ -280,30 +280,22 @@ class DacSaleDashboard extends Component {
     const content = act?.querySelector(".o_content");
     if (content) {
       setImp(content, "padding", "0");
-      setImp(content, "overflow", "hidden");
+      setImp(content, "overflow", "auto");
     }
     const ctrl = act?.querySelector(
       ".o_controller_with_control_panel, .o_view_controller"
     );
     if (ctrl) setImp(ctrl, "padding", "0");
 
-    setImp(v, "position", "absolute");
-    setImp(v, "top", "0");
-    setImp(v, "right", "0");
-    setImp(v, "bottom", "0");
-    setImp(v, "left", "0");
-    setImp(v, "overflow-x", "auto");
-    setImp(v, "overflow-y", "auto");
-    setImp(v, "-webkit-overflow-scrolling", "touch");
+    setImp(v, "position", "static");
+    setImp(v, "overflow", "visible"); // không tạo scroll host lồng
 
     const cx = v.querySelector(".container-xxl");
     if (cx) {
       setImp(cx, "padding-left", "0");
       setImp(cx, "padding-right", "0");
-      setImp(cx, "max-width", "none");
-      setImp(cx, "width", "auto");
-      setImp(cx, "margin-left", "0");
-      setImp(cx, "margin-right", "0");
+      setImp(cx, "margin-left", "auto");
+      setImp(cx, "margin-right", "auto");
     }
   }
 

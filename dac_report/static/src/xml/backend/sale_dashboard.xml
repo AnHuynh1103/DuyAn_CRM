@@ -14,13 +14,27 @@
         </t>
         <t t-else="">
 
+          <!-- WELCOME BANNER -->
+          <div class="row align-items-center mb-2">
+            <div class="col">
+              <h3 class="fw-semibold m-0">
+                Chào mừng trở lại
+                <t t-if="state.data and state.data.user_name">, <t t-esc="state.data.user_name"/></t>
+                <t t-else="">!</t>
+              </h3>
+            </div>
+            <div class="col-auto text-end text-muted small">
+              <t t-esc="(new Date()).toLocaleDateString('vi-VN', { weekday:'long', day:'2-digit', month:'2-digit', year:'numeric' })"/>
+            </div>
+          </div>
+
           <!-- Khối có độ rộng tối thiểu để xuất hiện scroll ngang khi cần -->
           <div class="dac-wide">
 
             <!-- HEADER 3 cột + thanh progress -->
             <div class="dac-header row g-3">
               <div class="col-lg-12">
-                <div class="dac-card">
+                <div class="dac-card is-hoverable">
                   <!-- Hàng KPI: 3 cột -->
                   <div class="row">
                     <div class="col-md-4">
@@ -62,7 +76,6 @@
                       </span>
                     </div>
                   </div>
-                  <!-- /Hàng progress -->
                 </div>
               </div>
             </div>

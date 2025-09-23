@@ -43,4 +43,7 @@ class SaleOrder(models.Model):
                 "is_priority": bool(getattr(so, "is_priority", False)),
                 "is_priority_today": bool(getattr(so, "is_priority_today", False)),
             })
-        return {"manufacturing": out}
+        return {
+            "lists": {"manufacturing": out},
+            "user_name": self.env.user.name,
+        }

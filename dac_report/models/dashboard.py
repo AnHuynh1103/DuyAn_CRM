@@ -158,6 +158,7 @@ class SaleOrderDashboardService(models.Model):
         currency = company.currency_id
         today = fields.Date.context_today(self)
         manager = self.env.user.has_group('dac_erp.group_dac_erp_manager')
+        user_name = self.env.user.name
         uid = self.env.uid
         if not date_from:
             date_from = today.replace(day=1)
@@ -411,5 +412,6 @@ class SaleOrderDashboardService(models.Model):
                 "recent_customers": recent_list,
                 "completed_customers": completed_list,
             },
-            "sums": sums,  # <<< NEW
+            "sums": sums,  # Tổng tiền cho các bảng dưới
+            "user_name": user_name, # Tên người dùng hiện tại
         }

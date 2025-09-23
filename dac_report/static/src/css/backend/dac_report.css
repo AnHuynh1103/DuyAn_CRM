@@ -24,32 +24,37 @@
   }
 }
 
-/* Khi dashboard mở: bỏ padding/overflow của vùng action */
+/* cho phép cuộn dọc tự nhiên của Odoo */
 .dac-dashboard-open .o_action .o_content {
   padding: 0 !important;
-  overflow: hidden !important;
+  overflow: auto !important; /* để Odoo làm scroll-host */
+  height: auto !important;
+  flex: 1 1 auto !important; /* co giãn đúng trong layout flex */
+  min-height: 0 !important; /* QUAN TRỌNG: cho phép con bên trong cuộn */
 }
 .dac-dashboard-open .o_action .o_controller_with_control_panel,
 .dac-dashboard-open .o_action .o_view_controller {
   padding: 0 !important;
 }
 
+.dac-dashboard-open .o_action,
+.dac-dashboard-open .o_action .o_controller_with_control_panel,
+.dac-dashboard-open .o_action .o_view_controller {
+  min-height: 0 !important; /* QUAN TRỌNG: nếu cha không nhả, con sẽ không có scrollbar */
+}
+
 /* Viewport ngoài cùng: cuộn DỌC, ẩn NGANG, sát mép */
 .dac-dashboard-open .o_action .dac-viewport {
-  position: absolute;
-  inset: 0;
-  overflow-y: auto !important;
-  overflow-x: hidden !important; /* KHÔNG cuộn ngang */
-  scrollbar-gutter: stable both-edges;
-  overscroll-behavior: contain;
+  position: static; /* để .o_content quản lý cuộn */
+  overflow: visible; /* không tự làm scroll host */
 }
 
 /* Bỏ gutter trái/phải để scrollbar sát mép; GIỮ max-width của Bootstrap */
 .dac-dashboard-open .o_action .dac-viewport > .container-xxl {
   padding-left: 0 !important;
   padding-right: 0 !important;
-  margin: 0 !important;
-  /* không đụng tới max-width -> không còn “phình” layout */
+  margin-left: auto !important;
+  margin-right: auto !important;
 }
 
 /* Nội dung dashboard: compact nhẹ */
@@ -440,4 +445,67 @@
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 11px;
+}
+
+/* Mở khoá cha trực tiếp để trang được cuộn */
+.dac-dashboard-open .o_action_manager {
+  overflow: auto !important; /* QUAN TRỌNG: nếu hidden sẽ kẹt */
+  min-height: 0 !important;
+  height: 100% !important;
+}
+
+/* Phòng xa: container shell tuỳ biến của Odoo 18 */
+.dac-dashboard-open .o_main_components_container,
+.dac-dashboard-open .o_main-components-container {
+  min-height: 0 !important;
+}
+
+/* === MỞ KHÓA CUỘN THEO ACTION ĐANG HIỂN THỊ (không phụ thuộc <body>) === */
+
+/* .o_action hiện tại (được JS gắn class dac-host) */
+.o_action.dac-host .o_content {
+  padding: 0 !important;
+  overflow: auto !important;
+  height: auto !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+
+.o_action.dac-host,
+.o_action.dac-host .o_controller_with_control_panel,
+.o_action.dac-host .o_view_controller {
+  min-height: 0 !important;
+}
+
+/* Cha trực tiếp .o_action: nếu chứa action đang active thì mở khóa cuộn */
+.o_action_manager:has(.o_action.dac-host) {
+  overflow: auto !important;
+  min-height: 0 !important;
+  height: 100% !important;
+}
+
+/* Wrapper dashboard: không tạo scroll host lồng */
+.o_action.dac-host .dac-viewport {
+  position: static !important;
+  overflow: visible !important;
+}
+
+/* Giữ khung rộng của Bootstrap, chỉ bỏ padding/margin rìa */
+.o_action.dac-host .dac-viewport > .container-xxl {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* Hover raise cho card được đánh dấu is-hoverable */
+.o_dac_dashboard .dac-card.is-hoverable {
+  transition: transform 0.06s ease, box-shadow 0.06s ease,
+    background-color 0.06s ease;
+  cursor: default; /* không đổi thành bàn tay */
+}
+.o_dac_dashboard .dac-card.is-hoverable:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.836);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }

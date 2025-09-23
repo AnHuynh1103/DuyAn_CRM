@@ -2,7 +2,6 @@
 import { Component, useState, onWillStart } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { registry } from "@web/core/registry";
-import { rpc } from "@web/core/network/rpc";
 
 class DesignDashboard extends Component {
   setup() {
@@ -19,25 +18,15 @@ class DesignDashboard extends Component {
   async _load() {
     this.state.loading = true;
     try {
-      // Gọi đúng method domain riêng cho dashboard design
       const data = await this.orm.call(
         "sale.order",
         "dac_get_dashboard_design",
         []
       );
-      // Lấy tên user (nếu muốn hiển thị)
-      let user_name = null;
-      try {
-        const session = await rpc("/web/session/get_session_info", {});
-        user_name = session && session.name ? session.name : null;
-      } catch (e) {
-        user_name = null;
-      }
-      this.state.data = {
-        lists: {
-          manufacturing: data && data.manufacturing ? data.manufacturing : [],
-        },
-        user_name: user_name,
+      // Backend đã trả đúng cấu trúc { lists: { manufacturing }, user_name }
+      this.state.data = data || {
+        lists: { manufacturing: [] },
+        user_name: null,
       };
     } catch (e) {
       this.state.error = (e && e.message) || String(e);
