@@ -542,6 +542,14 @@ class SaleOrder(models.Model):
                 if not order.delivery_address or not order.delivery_address.strip():
                     raise UserError("Vui lòng nhập địa chỉ giao hàng trước khi xác nhận!")
                 order.is_delivery_confirmed = True
+                # NEW (thêm 2 dòng này)
+                # Chạy lại kiểm tra hoàn tất: nếu chỉ có hóa đơn cọc và tổng cọc >= tổng đơn
+                # hàm này sẽ tự set completed + is_payment_confirmed
+                order.check_and_update_completion_status()
+
+                # ĐỪNG tự nhảy sang "Thu tiền" nếu đã completed ở trên
+                if order.order_state_custom != 'completed':          # NEW
+                    order.order_state_custom = state_order[idx + 1]  # (bước kế là 'payment' như cũ)
             elif order.order_state_custom == 'payment':
                 order.is_payment_confirmed = True
             
@@ -927,6 +935,18 @@ class SaleOrder(models.Model):
                         order.order_state_custom = 'completed'
                         order.is_payment_confirmed = True
                     #_logger.info(f"OPTIMIZED CHECK: Set completed cho order {order.name} - có final invoice")
+
+            # NEW: Nếu CHỈ có hóa đơn đặt cọc, nhưng tổng cọc đã trả >= tổng đơn => cũng hoàn thành
+            # (Không có hóa đơn cuối nào)
+            if not order_invoices.filtered(lambda inv: not inv.dac_deposit_invoice):
+                # Tổng tiền của các invoice đã 'paid' (deposit)
+                paid_total = sum(inv.amount_total for inv in paid_invoices)
+                # Epsilon nhỏ để tránh sai số làm tròn
+                if order.currency_id.compare_amounts(paid_total, order.amount_total) >= 0:
+                    order.is_order_completed = True
+                    order.is_payment_confirmed = True
+                    if order.order_state_custom != 'completed':
+                        order.order_state_custom = 'completed'
 
             # CHỈ INVALIDATE MỘT LẦN
             order.invalidate_recordset()

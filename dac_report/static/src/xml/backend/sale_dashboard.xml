@@ -14,7 +14,7 @@
         </t>
         <t t-else="">
 
-          <!-- WELCOME BANNER -->
+          <!-- WELCOME BANNER 
           <div class="row align-items-center mb-2">
             <div class="col">
               <h3 class="fw-semibold m-0">
@@ -26,7 +26,7 @@
             <div class="col-auto text-end text-muted small">
               <t t-esc="(new Date()).toLocaleDateString('vi-VN', { weekday:'long', day:'2-digit', month:'2-digit', year:'numeric' })"/>
             </div>
-          </div>
+          </div> -->
 
           <!-- Khối có độ rộng tối thiểu để xuất hiện scroll ngang khi cần -->
           <div class="dac-wide">

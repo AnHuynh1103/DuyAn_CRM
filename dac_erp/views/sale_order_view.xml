@@ -223,7 +223,7 @@
                                         invisible="order_state_custom != 'production' or not is_production_confirmed or production_done"/>
 
 
-                                <field name="production_done" invisible="order_state_custom != 'production' or not is_production_confirmed or not production_done" readonly="0"/>
+                                <field name="production_done" invisible="order_state_custom != 'production' or not is_production_confirmed or not production_done" readonly="1"/>
                                 <field name="production_done_user_id" invisible="1"/>
                                 <field name="production_done_date" invisible="1"/>
                             </group> 

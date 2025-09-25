@@ -135,6 +135,8 @@ class AccountMove(models.Model):
                             order_updated = True
                         else:
                             _logger.info(f"WRITE HOOK OPTIMIZED: Only deposit invoice paid for order {order_name}, not calling completion check")
+                            sale_order.check_and_update_completion_status()   # NEW
+                            order_updated = True                              # NEW
                     
                     # CHỈ INVALIDATE MỘT LẦN cho mỗi order
                     if order_updated:
