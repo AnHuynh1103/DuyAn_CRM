@@ -61,7 +61,7 @@ class SaleOrder(models.Model):
     )
     
     # Trường so sánh với file số đơn excel
-    excel_order_number = fields.Char(string="Số đặt hàng", 
+    order_number = fields.Char(string="Số đặt hàng", 
                                      default=False, 
                                      copy=False, 
                                      help="Số phiếu đặt hàng", 

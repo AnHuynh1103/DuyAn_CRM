@@ -77,7 +77,7 @@
                                        readonly="is_delivery_confirmed"
                                        widget="text"/>
                                 <!-- Số đơn trên excel -->
-                                <field name="excel_order_number"
+                                <field name="order_number"
                                        string="Số đặt hàng"
                                        placeholder="VD: 8766"
                                        />
@@ -439,7 +439,7 @@
                     <field name="currency_id" invisible="1" optional="hide"/>
                     <field name="pricelist_id" invisible="1" optional="hide"/>
                     <field name="create_date" string="Ngày tạo đơn (hệ thống)" optional="hide"/>
-                    <field name="excel_order_number" string="Số phiếu ĐH"/>
+                    <field name="order_number" string="Số phiếu ĐH"/>
                     <field name="date" string="Ngày đơn hàng"/>
                     <field name="partner_id" />
                     <field name="user_id" widget="many2one_avatar_user" string="Sale phụ trách"/>
@@ -475,7 +475,7 @@
                     <field name="pricelist_id" invisible="1" optional="hide"/>
                     
                     <field name="create_date" string="Ngày tạo đơn (hệ thống)" optional="hide"/>
-                    <field name="excel_order_number" string="Số phiếu ĐH"/>
+                    <field name="order_number" string="Số phiếu ĐH"/>
                     <field name="date" string="Ngày đơn hàng"/>
                     <field name="partner_id"/>
                     <field name="user_id" widget="many2one_avatar_user" string="Sale phụ trách"/>
