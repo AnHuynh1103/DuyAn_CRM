@@ -86,7 +86,7 @@ class PageFmPage(models.Model):
         if cached_token and cached_time:
             try:
                 cached_datetime = datetime.fromisoformat(cached_time)
-                if (datetime.now() - cached_datetime).total_seconds() < 600:  # 10 phút
+                if (datetime.now() - cached_datetime).total_seconds() < 86400:  # 24 giờ
                     _logger.debug(f"Using cached token for page {page_fm_id}")
                     return cached_token
             except:
@@ -189,9 +189,31 @@ class PageFmPage(models.Model):
                     params=params,
                     timeout=20
                 )
+                msg = ""
+                try:
+                    # cố gắng đọc message nếu body là JSON
+                    peek = response.json()
+                    msg = (peek.get("message") or "").lower()
+                except Exception:
+                    pass
+
+                if response.status_code in (401, 403) or \
+                "access_token renewed" in msg or "expired" in msg or "invalid access_token" in msg:
+                    # Token trang đã bị bên kia renew → xóa cache cũ và xin token mới rồi gọi lại 1 lần
+                    self.clear_token_cache()
+                    page_specific_access_token = self._generate_page_specific_access_token(main_access_token)
+                    params['page_access_token'] = page_specific_access_token
+
+                    response = requests.get(
+                        conversations_api_url,
+                        headers={'Content-Type': 'application/json', 'Accept': 'application/json'},
+                        params=params,
+                        timeout=20
+                    )
+                
                 response.raise_for_status()
                 data = response.json()
-
+                
                 if not data.get('success'):
                     _logger.error(f"API fetch failed: {data.get('message')}")
                     break
@@ -295,35 +317,57 @@ class PageFmPage(models.Model):
             return None
 
         page_name = page_data_from_api.get('name') or f"Page {page_fm_id}"
-        # Vì danh sách này nằm trong 'categorized.activated', mặc định coi là True nếu thiếu
+        # Danh sách API ‘categorized.activated’: mặc định True nếu thiếu
         is_api_activated = bool(page_data_from_api.get('is_activated', True))
 
         vals = {
             'name': page_name,
-            'active': is_api_activated,
+            'active': is_api_activated,   # (giải pháp nóng; về lâu dài tách thành api_is_activated)
         }
 
+        # 1) TÌM THEO ID, KHÔNG LỌC active
+        existing = self.with_context(active_test=False).search(
+            [('page_fm_id_str', '=', page_fm_id)], limit=1
+        )
+
+        if existing:
+            # 2) CHỈ GHI KHI THAY ĐỔI
+            to_write = {}
+            if existing.name != page_name:
+                to_write['name'] = page_name
+            if existing.active != is_api_activated:
+                to_write['active'] = is_api_activated
+            if to_write:
+                existing.write(to_write)
+            _logger.debug("Page processed: %s (OdooID:%s, FMID:%s)", page_name, existing.id, page_fm_id)
+            return existing
+
+        # 3) CHƯA CÓ → TẠO MỚI, BỌC RIÊNG CREATE() ĐỂ CHỐNG ĐUA UNIQUE
+        vals['page_fm_id_str'] = page_fm_id
         try:
-            existing = self.search([('page_fm_id_str', '=', page_fm_id)], limit=1)
-            if existing:
-                # chỉ ghi khi có thay đổi
-                to_write = {}
-                if existing.name != page_name:
-                    to_write['name'] = page_name
-                if existing.active != is_api_activated:
-                    to_write['active'] = is_api_activated
-                if to_write:
-                    existing.write(to_write)
-                _logger.debug("Page processed: %s (OdooID:%s, FMID:%s)", page_name, existing.id, page_fm_id)
-                return existing
-            else:
-                vals['page_fm_id_str'] = page_fm_id
-                rec = self.create(vals)
-                _logger.info("Page created: %s (OdooID:%s, FMID:%s)", page_name, rec.id, page_fm_id)
-                return rec
+            rec = self.create(vals)
+            _logger.info("Page created: %s (OdooID:%s, FMID:%s)", page_name, rec.id, page_fm_id)
+            return rec
         except Exception as e:
-            _logger.error("Error C/U page FM ID %s: %s", page_fm_id, e, exc_info=True)
-            return None
+            # Nếu 2 worker/môi trường cùng lúc tạo → đụng unique => rollback & lấy lại record
+            msg = (str(e) or '').lower()
+            if 'duplicate key value violates unique constraint' in msg or 'unique constraint' in msg:
+                self.env.cr.rollback()
+                rec = self.with_context(active_test=False).search(
+                    [('page_fm_id_str', '=', page_fm_id)], limit=1
+                )
+                if rec:
+                    to_write = {}
+                    if rec.name != page_name:
+                        to_write['name'] = page_name
+                    if rec.active != is_api_activated:
+                        to_write['active'] = is_api_activated
+                    if to_write:
+                        rec.write(to_write)
+                    _logger.debug("Page processed after unique hit: %s (OdooID:%s, FMID:%s)", page_name, rec.id, page_fm_id)
+                    return rec
+            # Không phải lỗi unique → ném tiếp cho dễ debug
+            raise
 
     @api.model
     def process_api_pages_data(self, pages_api_response_json):

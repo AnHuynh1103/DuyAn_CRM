@@ -112,7 +112,7 @@
                                 <field name="production_group_ids"
                                        widget="many2many_tags"
                                        string="Nhóm sản xuất"
-                                       domain="[('id','!=', user_id_production)]"/>
+                                       /> <!-- thêm domain="[('id','!=', user_id_production)]" nếu không để người phụ trách sản xuất vào-->
                             </group>
                         </group>
                         <group>
@@ -519,7 +519,7 @@
                         <filter string="Người thiết kế" name="group_by_user_design" context="{'group_by': 'user_id_design'}"/>
                         <filter string="Người sản xuất" name="group_by_user_production" context="{'group_by': 'user_id_production'}"/>
                         <filter string="Khách hàng" name="group_by_partner" context="{'group_by': 'partner_id'}"/>
-                        <filter string="Ngày tạo" name="group_by_date" context="{'group_by': 'create_date:month'}"/>
+                        <filter string="Thời gian tạo" name="group_by_date" context="{'group_by': 'date:month'}"/>
                     </group>
                 </search>
             </field>

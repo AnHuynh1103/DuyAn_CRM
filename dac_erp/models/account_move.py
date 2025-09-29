@@ -22,7 +22,28 @@ class AccountMove(models.Model):
                     "Liên hệ quản lý để được hỗ trợ."
                 )
         
-        return super().unlink()
+        # Lưu thông tin đơn hàng liên quan trước khi xóa
+        order_names = self.filtered(
+            lambda m: m.move_type == 'out_invoice' and m.invoice_origin
+        ).mapped('invoice_origin')
+        sale_orders = self.env['sale.order'].search([('name', 'in', order_names)])
+        res = super().unlink()
+        # Invalidate cache cho các đơn hàng liên quan sau khi xóa
+        if sale_orders:
+            # Nếu KHÔNG còn bất kỳ hóa đơn cuối (không cọc) đã vào sổ -> hạ is_payment_confirmed
+            for order in sale_orders:
+                has_posted_final = self.env['account.move'].search_count([
+                    ('move_type', '=', 'out_invoice'),
+                    ('invoice_origin', '=', order.name),
+                    ('dac_deposit_invoice', '=', False),
+                    ('state', '=', 'posted'),
+                ]) > 0
+                if not has_posted_final and order.is_payment_confirmed:
+                    order.is_payment_confirmed = False  # mở lại bước "payment"
+            
+            # refresh lại view đơn hàng
+            sale_orders.invalidate_recordset()
+        return res
 
     # Thêm field người phụ trách để phân quyền
     dac_user_id = fields.Many2one('res.users', string='Người phụ trách', default=lambda self: self.env.user)

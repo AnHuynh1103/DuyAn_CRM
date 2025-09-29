@@ -935,6 +935,27 @@ class PageFmConversation(models.Model):
                     params=params,
                     timeout=timeout_seconds
                 )
+                msg = ""
+                try:
+                    peek = response.json()
+                    msg = (peek.get("message") or "").lower()
+                except Exception:
+                    pass
+
+                if response.status_code in (401, 403) or \
+                "access_token renewed" in msg or "expired" in msg or "invalid access_token" in msg:
+                    self.page_fm_page_id.clear_token_cache()
+                    new_page_token = self.page_fm_page_id._generate_page_specific_access_token(
+                        self.env['ir.config_parameter'].sudo().get_param('page_fm.access_token')
+                    )
+                    params['page_access_token'] = new_page_token
+
+                    response = requests.get(
+                        messages_api_url,
+                        headers={'Content-Type': 'application/json', 'Accept': 'application/json'},
+                        params=params,
+                        timeout=timeout_seconds
+                    )
                 response.raise_for_status()
                 data = response.json()
                 

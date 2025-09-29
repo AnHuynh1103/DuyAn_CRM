@@ -106,7 +106,7 @@
                             type="object" 
                             string="Đồng bộ tin nhắn" 
                             class="btn-success" 
-                            context="{'load_all': False}"
+                            context="{'load_all': True}"
                             groups="dac_erp.group_dac_erp_manager"/>
                     <button name="action_test_pancake_tag_sync"
                             type="object"

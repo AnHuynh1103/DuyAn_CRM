@@ -843,7 +843,8 @@ class SaleOrder(models.Model):
             final_invoice_count = self.env['account.move'].search_count([
                 ('move_type', '=', 'out_invoice'),
                 ('invoice_origin', '=', order.name),
-                ('dac_deposit_invoice', '=', False)  # Không phải hóa đơn cọc
+                ('dac_deposit_invoice', '=', False),  # Không phải hóa đơn cọc
+                ('state', '!=', 'cancel'),  # Không phải hóa đơn đã hủy
             ])
             order.has_final_invoice = final_invoice_count > 0
 
@@ -1133,7 +1134,8 @@ class SaleOrder(models.Model):
         existing_final_invoice = self.env['account.move'].search([
             ('move_type', '=', 'out_invoice'),
             ('invoice_origin', '=', self.name),
-            ('dac_deposit_invoice', '=', False)  # Không phải hóa đơn cọc
+            ('dac_deposit_invoice', '=', False),  # Không phải hóa đơn cọc
+            ('state', '!=', 'cancel'),  # Không phải hóa đơn đã hủy
         ])
         
         if existing_final_invoice:
