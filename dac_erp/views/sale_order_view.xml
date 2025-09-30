@@ -122,6 +122,12 @@
                                     string="Link thiết kế" 
                                     placeholder="Điền link thiết kế ở đây (Google Drive, Figma, v.v.)" 
                                     invisible="order_state_custom == 'quotation'"/>
+                                <button name="action_submit_design_link"
+                                        type="object"
+                                        class="btn btn-secondary"
+                                        string="Xác nhận"
+                                        groups="dac_erp.group_dac_erp_design,dac_erp.group_dac_erp_production,dac_erp.group_dac_erp_manager,base.group_system"
+                                        invisible="not (order_state_custom in ['deposit','production'])"/>
                                 <field name="has_deposit"
                                        invisible="order_state_custom == 'quotation' and not is_deposit_confirmed"
                                        readonly="is_deposit_confirmed or order_state_custom != 'deposit' or is_production_confirmed"/>
@@ -151,6 +157,7 @@
                                             type="object"
                                             class="btn btn-success"
                                             style="min-width: 80px; font-size: 0.98rem; font-weight: 600; padding: 7px 0; margin-left: 8px;"
+                                            groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"
                                             invisible="total_invoice_count == 0"/>
                                     </div>
                                 </div>
@@ -341,6 +348,7 @@
                                     string="Quay lại"
                                     type="object"
                                     class="btn-secondary"
+                                    groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"
                                     invisible="order_state_custom == 'quotation' or is_order_completed or order_state_custom == 'cancel'"/>
 
                                 <!-- Nút Xác nhận cho tiến trình báo giá -->
@@ -370,6 +378,7 @@
                                     string="Tiến hành giao hàng"
                                     type="object"
                                     class="btn-primary"
+                                    groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"
                                     invisible="order_state_custom != 'production' or not is_production_confirmed"/>
 
                                 <!-- Nút Xác nhận cho các tiến trình khác (chỉ delivery) -->

@@ -1515,6 +1515,25 @@ class SaleOrder(models.Model):
             "url": self._production_image_url(download=True),
             "target": "new",  # hoặc "self" nếu muốn tải trong tab hiện tại
         }
+        
+    # --- Nút nộp link thiết kế ---
+    def action_submit_design_link(self):
+        self.ensure_one()
+        if not self.design_link:
+            raise UserError("Vui lòng nhập link thiết kế trước khi nộp.")
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'Thành công!',
+                'message': 'Link thiết kế đã được nhập và ghi nhận!',
+                'type': 'success',
+                'sticky': False,
+            }
+        }
+        
+    
                 
     # --- Cờ hoàn tất sản xuất ---
     production_done = fields.Boolean(string="Đã hoàn tất sản xuất", default=False, copy=False, tracking=True)
@@ -1553,7 +1572,8 @@ class SaleOrder(models.Model):
         'type': 'ir.actions.client',
         'tag': 'reload',
     }
-        
+    
+    
     @api.onchange('user_id_production')
     def _onchange_user_id_production(self):
         for rec in self:
