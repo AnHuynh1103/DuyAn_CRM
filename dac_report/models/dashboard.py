@@ -171,8 +171,8 @@ class SaleOrderDashboardService(models.Model):
         # ---- QUOTATIONS ----
         q_dom = [
             ("company_id", "=", company.id),
-            ("date_order", ">=", date_from),
-            ("date_order", "<=", date_to),
+            # ("date_order", ">=", date_from),
+            # ("date_order", "<=", date_to),  <- Bỏ lọc ngày để hiển thị cả báo giá cũ chưa chốt
         ] + doms["quotation"]
         if not manager:
             q_dom.append(("user_id", "=", uid))              # <- cá nhân
@@ -233,7 +233,7 @@ class SaleOrderDashboardService(models.Model):
         # ---- Lists ----
         consulting_list = self._dac_build_consulting_cards(limit=20)
         
-        quotes = self.search(q_dom, limit=10, order="date_order desc, id desc")
+        quotes = self.search(q_dom, limit=30, order="date_order desc, id desc")
         quotation_list = [{
             "id": so.id,
             "title": so.partner_id.display_name,
@@ -270,8 +270,8 @@ class SaleOrderDashboardService(models.Model):
         if doms.get("completed"):
             comp_dom = [
                 ("company_id", "=", company.id),
-                ("date_order", ">=", date_from),
-                ("date_order", "<=", date_to),
+                # ("date_order", ">=", date_from),
+                # ("date_order", "<=", date_to),
             ] + doms["completed"]
             if not manager:
                 comp_dom.append(("user_id", "=", uid))
@@ -402,6 +402,7 @@ class SaleOrderDashboardService(models.Model):
                 "delta_vs_expected": delta_vs_expected,
                 # nếu cần hiển thị số tiền báo giá, có thể thêm:
                 # "quotation_amount": fmt(quotation_amount),
+                "is_manager": manager,
 
             },
             "lists": {

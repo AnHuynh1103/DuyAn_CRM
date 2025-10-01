@@ -21,13 +21,7 @@
                     <field name="user_id_design" widget="many2one_avatar_user" string="Người thiết kế"/>
                     <field name="user_id_production" widget="many2one_avatar_user" string="Người sản xuất"/>
                     <field name="amount_total" sum="Total" widget="monetary"/>
-                    <field name="order_state_custom" widget="badge" string="Trạng thái"
-                        decoration-info="order_state_custom == 'quotation' and not is_order_completed"
-                        decoration-warning="order_state_custom == 'deposit' and not is_order_completed"
-                        decoration-primary="order_state_custom in ['production', 'delivery'] and not is_order_completed"
-                        decoration-success="order_state_custom == 'payment' and not is_order_completed"
-                        decoration-muted="is_order_completed or order_state_custom == 'completed'"
-                        decoration-danger="order_state_custom == 'cancel'"/>
+                    <field name="order_state_custom" widget="badge" string="Trạng thái"/>
                     <field name="is_priority" string="Ưu tiên"/>
                     <field name="is_priority_today" string="Trong ngày"/>
                     <field name="production_deadline" string="Ngày hoàn tất sản xuất"/>

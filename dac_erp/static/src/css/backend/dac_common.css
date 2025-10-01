@@ -30,3 +30,33 @@
   border-radius: 4px;
   font-size: 11px;
 }
+
+/* Custom màu cho badge theo trạng thái đơn*/
+.dac-state-badge {
+  color: #fff !important;
+  font-weight: 700 !important;
+}
+
+/* MARK: DAC-BADGE-MAP — mỗi state một lớp */
+.dac-state-quotation {
+  background: #007bff !important;
+} /* Báo giá */
+.dac-state-deposit {
+  background: #e83e8c !important;
+} /* Đặt cọc */
+.dac-state-production {
+  background: #ffc107 !important;
+  color: #1a1a1a !important;
+} /* Sản xuất */
+.dac-state-delivery {
+  background: #6f42c1 !important;
+} /* Giao hàng */
+.dac-state-payment {
+  background: #29cb00 !important;
+} /* Thu tiền */
+.dac-state-completed {
+  background: #6c757d !important;
+} /* Hoàn thành */
+.dac-state-cancel {
+  background: #dc2626 !important;
+} /* Hủy */

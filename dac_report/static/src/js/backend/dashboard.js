@@ -310,6 +310,28 @@ class DacSaleDashboard extends Component {
     });
     this._bak.clear();
   }
+
+  // mở list theo box, bật filter tương ứng
+  openListByBox(type) {
+    const header = this.state.data?.header || {};
+    const isManager = !!header.is_manager;
+    const actXmlId = isManager
+      ? "dac_erp.dac_sale_order_manager_action"
+      : "dac_erp.dac_sale_order_custom_action";
+
+    let ctx = {};
+    if (type === "quotation") {
+      // dùng filter gộp đã tạo trong search view
+      ctx.search_default_quote_or_deposit = 1; // <— đã báo giá hoặc đặt cọc
+    } else if (type === "production") {
+      ctx.search_default_production = 1; // chỉ trạng thái sản xuất
+    } else if (type === "completed") {
+      ctx.search_default_completed = 1; // chỉ đơn đã hoàn thành
+    }
+    // … (các box khác làm sau)
+
+    this.env.services.action.doAction(actXmlId, { additionalContext: ctx });
+  }
 }
 
 DacSaleDashboard.template = "dac_sale_dashboard.Dashboard";

@@ -85,7 +85,13 @@
               <!-- Đang tư vấn -->
               <div class="col-lg-4">
                 <div class="dac-card">
-                  <div class="sec-title">Đang tư vấn (<t t-esc="(state.data.lists.consulting||[]).length"/>)</div>
+                  <div class="sec-title">Đang tư vấn (<t t-esc="(state.data.lists.consulting||[]).length"/>)
+                    <!-- <button type="button"
+                            class="btn btn-link btn-sm float-end px-0"
+                            t-on-click="(ev)=>this.openListByBox('consulting', ev)">
+                      Xem chi tiết
+                    </button> -->
+                  </div>
                   <div class="list-scroll">
                     <t t-if="(state.data.lists.consulting||[]).length">
                       <t t-foreach="state.data.lists.consulting" t-as="it" t-key="it.id">
@@ -142,7 +148,13 @@
               <!-- Đã báo giá -->
               <div class="col-lg-4">
                 <div class="dac-card">
-                  <div class="sec-title">Đã báo giá (<t t-esc="(state.data.lists.quotation||[]).length"/>)</div>
+                  <div class="sec-title">Đã báo giá (<t t-esc="(state.data.lists.quotation||[]).length"/>)
+                    <button type="button"
+                            class="btn btn-link btn-sm float-end px-0"
+                            t-on-click="(ev)=>this.openListByBox('quotation', ev)">
+                      Xem chi tiết
+                    </button>
+                  </div>
                   <div class="list-scroll">
                     <t t-if="(state.data.lists.quotation||[]).length">
                       <t t-foreach="state.data.lists.quotation" t-as="it" t-key="it.id">
@@ -165,7 +177,13 @@
               <!-- Đang sản xuất (theo state custom của sale.order) -->
               <div class="col-lg-4">
                 <div class="dac-card">
-                  <div class="sec-title">Đang sản xuất (<t t-esc="(state.data.lists.manufacturing||[]).length"/>)</div>
+                  <div class="sec-title">Đang sản xuất (<t t-esc="(state.data.lists.manufacturing||[]).length"/>)
+                      <button type="button"
+                              class="btn btn-link btn-sm float-end px-0"
+                              t-on-click="(ev)=>this.openListByBox('production', ev)">
+                        Xem chi tiết
+                      </button>
+                  </div>
                   <div class="list-scroll">
                     <t t-if="(state.data.lists.manufacturing||[]).length">
                       <t t-foreach="state.data.lists.manufacturing" t-as="so" t-key="so.id">
@@ -266,7 +284,13 @@
                 <!-- Khách hàng đã hoàn thành -->
                 <div class="col-lg-6">
                   <div class="dac-card bottom-card">
-                    <div class="sec-title">Khách hàng đã hoàn thành</div>
+                    <div class="sec-title">Khách hàng đã hoàn thành
+                        <button type="button"
+                                class="btn btn-link btn-sm float-end px-0"
+                                t-on-click="(ev)=>this.openListByBox('completed', ev)">
+                          Xem chi tiết
+                        </button>
+                    </div>
 
                     <!-- header cố định -->
                     <div class="row fw-bold small pb-2 bottom-head">
