@@ -47,6 +47,78 @@ class AccountMove(models.Model):
 
     # Thêm field người phụ trách để phân quyền
     dac_user_id = fields.Many2one('res.users', string='Người phụ trách', default=lambda self: self.env.user)
+    
+    # Computed fields để hiển thị thông tin payments
+    payment_count = fields.Integer(string='Số phiếu thu', compute='_compute_payment_count')
+    has_existing_payments = fields.Boolean(string='Có phiếu thu', compute='_compute_has_existing_payments')
+    
+    @api.depends('name', 'payment_state')
+    def _compute_payment_count(self):
+        """Tính số lượng payments liên quan đến hóa đơn này (bao gồm cả draft)"""
+        for move in self:
+            if move.move_type == 'out_invoice' and move.name:
+                # Cách 1: Tìm qua reconciled payments (chính xác nhất)
+                reconciled_payments = move._get_reconciled_payments()
+                
+                # Cách 2: Tìm qua name field (bao gồm cả draft và posted)
+                payments_by_name = self.env['account.payment'].search([
+                    ('name', 'like', move.name),
+                    ('state', 'in', ['draft', 'posted'])
+                ])
+                
+                # Combine và đếm unique payments
+                all_payment_ids = set(reconciled_payments.ids + payments_by_name.ids)
+                move.payment_count = len(all_payment_ids)
+            else:
+                move.payment_count = 0
+    
+    @api.depends('payment_count')
+    def _compute_has_existing_payments(self):
+        """Kiểm tra xem có phiếu thu không"""
+        for move in self:
+            move.has_existing_payments = move.payment_count > 0
+    
+    def action_view_payments(self):
+        """Xem tất cả phiếu thu liên quan (bao gồm draft)"""
+        self.ensure_one()
+        
+        # Tìm payments liên quan (bao gồm cả draft và posted)
+        payments = self.env['account.payment'].search([
+            ('name', 'like', self.name),
+            ('state', 'in', ['draft', 'posted'])
+        ])
+        payments_reconcile = self.env['account.payment'].search([
+            ('reconciled_invoice_ids', 'in', self.ids),
+            ('state', 'in', ['draft', 'posted'])
+        ])
+        all_payments = payments | payments_reconcile
+        
+        if not all_payments:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Thông báo',
+                    'message': 'Không tìm thấy phiếu thu liên quan.',
+                    'type': 'warning',
+                }
+            }
+        
+        # Mở danh sách payments
+        action = {
+            'type': 'ir.actions.act_window',
+            'name': f'Phiếu thu - {self.name}',
+            'res_model': 'account.payment',
+            'view_mode': 'list,form',
+            'domain': [('id', 'in', all_payments.ids)],
+            'context': {'create': False},
+        }
+        
+        if len(all_payments) == 1:
+            action['view_mode'] = 'form'
+            action['res_id'] = all_payments.id
+            
+        return action
 
     @api.model_create_multi
     def create(self, vals_list):

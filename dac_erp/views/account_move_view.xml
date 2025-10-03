@@ -93,5 +93,24 @@
             <field name="context">{'default_move_type': 'out_invoice', 'default_dac_user_id': uid}</field>
             <field name="groups_id" eval="[(4, ref('dac_erp.group_dac_erp_sale'))]"/>
         </record>
+        
+        <!-- Simple inherit để ẩn nút Register Payment khi có existing payments -->
+        <record id="account_move_form_hide_register_payment" model="ir.ui.view">
+            <field name="name">account.move.form.hide.register.payment</field>
+            <field name="model">account.move</field>
+            <field name="inherit_id" ref="account.view_move_form"/>
+            <field name="arch" type="xml">
+                <!-- Thêm computed fields ẩn -->
+                <field name="state" position="after">
+                    <field name="payment_count" invisible="1"/>
+                    <field name="has_existing_payments" invisible="1"/>
+                </field>
+                
+                <!-- Ẩn nút Register Payment khi đã có payments -->
+                <xpath expr="//button[@name='action_register_payment']" position="attributes">
+                    <attribute name="invisible">has_existing_payments or payment_count > 0</attribute>
+                </xpath>
+            </field>
+        </record>
     </data>
 </odoo>

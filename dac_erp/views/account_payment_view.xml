@@ -164,32 +164,39 @@
                 <!-- Thêm các nút xuống phía dưới cuối sheet giống sale order view -->
                 <xpath expr="//notebook[@name='payment_notebook']" position="after">
                     <div style="display: flex; gap: 16px; justify-content: flex-end; margin-top: 16px;">
-                        <!-- Nút Quay về đơn hàng -->
+                        <!-- Nút Quay về đơn hàng - màu vàng -->
                         <button name="action_back_to_sale_order" 
                                 type="object"
-                                class="btn btn-outline-primary"
+                                class="btn btn-warning"
                                 string="Quay về đơn hàng"
                                 help="Quay về đơn hàng"
                                 invisible="not memo"/><!-- Hiện khi có memo -->
                         
-                        <!-- Nút Xác nhận -->
-                        <!-- <button name="action_post" 
+                        <!-- Nút Quay về nháp - chỉ hiện khi không phải draft -->
+                        <button name="action_back_to_draft_custom" 
+                                string="Đặt lại thành nháp" 
+                                type="object" 
+                                class="btn btn-secondary"
+                                invisible="state == 'draft'"/><!-- Ẩn khi đã là draft -->
+                        
+                        <!-- Nút Xác nhận - chỉ hiện khi draft -->
+                        <button name="action_confirm_payment_custom" 
                                 string="Xác nhận" 
                                 type="object" 
                                 class="btn btn-primary oe_highlight"
-                                invisible="state != 'draft'"/> -->
+                                invisible="state != 'draft'"/><!-- Chỉ hiện khi draft -->
                         
-                        <!-- Nút Xác thực -->
-                        <!-- <button name="action_validate" 
-                                string="Xác thực" 
+                        <!-- Nút Thanh toán - chỉ hiện khi posted -->
+                        <button name="action_mark_as_paid_custom" 
+                                string="Thanh toán" 
                                 type="object" 
-                                class="btn btn-primary oe_highlight"
-                                invisible="state != 'in_process' or move_id"/> -->
+                                class="btn btn-success oe_highlight"
+                                invisible="state in ('paid','draft')"/><!-- Chỉ hiện khi paid  -->
                         
                         <!-- Nút Hủy -->
-                        <!-- <button string="Hủy" 
+                        <button string="Hủy" 
                                 class="btn btn-secondary" 
-                                special="cancel"/> -->
+                                special="cancel"/>
                     </div>
                 </xpath>
             </field>

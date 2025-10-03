@@ -11,6 +11,135 @@ class AccountPayment(models.Model):
     # Thêm field người phụ trách để phân quyền
     dac_user_id = fields.Many2one('res.users', string='Người phụ trách', default=lambda self: self.env.user)
 
+    def action_confirm_payment_custom(self):
+        """Custom method để xác nhận thanh toán - từ draft sang posted"""
+        self.ensure_one()
+        _logger.info(f"action_confirm_payment_custom called for payment {self.name}, current state: {self.state}")
+        
+        try:
+            # Gọi method action_post gốc của Odoo (draft -> posted)
+            result = super(AccountPayment, self).action_post()
+            _logger.info(f"action_post completed for payment {self.name}, new state: {self.state}")
+            
+            # Force refresh view bằng cách reload record
+            return {
+                'type': 'ir.actions.act_window',
+                'name': f'Thanh toán - {self.name}',
+                'res_model': 'account.payment',
+                'view_mode': 'form',
+                'res_id': self.id,
+                'target': 'current',
+                'context': {'force_refresh': True}
+            }
+        except Exception as e:
+            _logger.error(f"Error confirming payment {self.name}: {e}")
+            raise UserError(f"Lỗi khi xác nhận thanh toán: {str(e)}")
+
+    def action_back_to_draft_custom(self):
+        """Custom method để quay về trạng thái nháp"""
+        self.ensure_one()
+        _logger.info(f"action_back_to_draft_custom called for payment {self.name}, current state: {self.state}")
+        
+        try:
+            # Gọi method action_draft gốc của Odoo để reset về draft
+            result = self.action_draft()
+            _logger.info(f"action_draft completed for payment {self.name}, new state: {self.state}")
+            
+            # Force refresh view
+            return {
+                'type': 'ir.actions.act_window',
+                'name': f'Thanh toán - {self.name}',
+                'res_model': 'account.payment',
+                'view_mode': 'form',
+                'res_id': self.id,
+                'target': 'current',
+                'context': {'force_refresh': True}
+            }
+        except Exception as e:
+            _logger.error(f"Error resetting payment to draft {self.name}: {e}")
+            raise UserError(f"Lỗi khi quay về nháp: {str(e)}")
+
+    def action_mark_as_paid_custom(self):
+        """Custom method để đánh dấu thanh toán hoàn tất - từ posted sang paid thông qua reconcile"""
+        self.ensure_one()
+        _logger.info(f"action_mark_as_paid_custom called for payment {self.name}, current state: {self.state}")
+        
+        try:
+            # Kiểm tra payment đã có move_id chưa
+            if not self.move_id:
+                _logger.error(f"Payment {self.name} has no move_id - cannot reconcile")
+                raise UserError("Payment chưa có journal entry. Vui lòng xác nhận payment trước.")
+            
+            # Debug: In ra thông tin move lines
+            _logger.info(f"Payment {self.name} move_id: {self.move_id.id}, line count: {len(self.move_id.line_ids)}")
+            for line in self.move_id.line_ids:
+                _logger.info(f"Move line: {line.account_id.code} - {line.account_id.name}, debit: {line.debit}, credit: {line.credit}, account_type: {line.account_id.account_type}")
+            
+            # Tìm invoice liên quan theo memo field
+            related_invoices = self.env['account.move']
+            
+            # Cách 1: Tìm theo memo field
+            if self.memo:
+                related_invoices = self.env['account.move'].search([
+                    ('name', '=', self.memo),
+                    ('move_type', '=', 'out_invoice'),
+                    ('state', '=', 'posted')
+                ])
+                _logger.info(f"Search by memo '{self.memo}': {related_invoices.mapped('name')}")
+            
+            # Cách 2: Tìm theo name replacement nếu memo không có
+            if not related_invoices and self.name:
+                invoice_name = self.name.replace('PCSH1', 'INV')
+                related_invoices = self.env['account.move'].search([
+                    ('name', '=', invoice_name),
+                    ('move_type', '=', 'out_invoice'),
+                    ('state', '=', 'posted')
+                ])
+                _logger.info(f"Search by name replacement '{invoice_name}': {related_invoices.mapped('name')}")
+            
+            _logger.info(f"Found {len(related_invoices)} related invoices for payment {self.name}")
+            
+            if related_invoices:
+                # Thực hiện reconcile với invoice thông qua move_line_ids của payment
+                for invoice in related_invoices:
+                    # Tìm receivable line của invoice
+                    invoice_receivable_lines = invoice.line_ids.filtered(
+                        lambda l: l.account_id.account_type == 'asset_receivable' and not l.reconciled
+                    )
+                    
+                    # Tìm receivable line của payment thông qua move_id
+                    if self.move_id:
+                        payment_receivable_lines = self.move_id.line_ids.filtered(
+                            lambda l: l.account_id.account_type == 'asset_receivable' and not l.reconciled
+                        )
+                    else:
+                        payment_receivable_lines = self.env['account.move.line']
+                    
+                    _logger.info(f"Invoice receivable lines: {len(invoice_receivable_lines)}, Payment receivable lines: {len(payment_receivable_lines)}")
+                    
+                    if invoice_receivable_lines and payment_receivable_lines:
+                        # Thực hiện reconcile
+                        lines_to_reconcile = invoice_receivable_lines + payment_receivable_lines
+                        lines_to_reconcile.reconcile()
+                        _logger.info(f"Successfully reconciled payment {self.name} with invoice {invoice.name}")
+                        break  # Chỉ reconcile với invoice đầu tiên
+            else:
+                _logger.info("No invoices found for reconciliation")
+            
+            # Force refresh view
+            return {
+                'type': 'ir.actions.act_window',
+                'name': f'Thanh toán - {self.name}',
+                'res_model': 'account.payment',
+                'view_mode': 'form',
+                'res_id': self.id,
+                'target': 'current',
+                'context': {'force_refresh': True}
+            }
+        except Exception as e:
+            _logger.error(f"Error marking payment as paid {self.name}: {e}")
+            raise UserError(f"Lỗi khi hoàn tất thanh toán: {str(e)}")
+
     @api.model_create_multi
     def create(self, vals_list):
         """Override create để gán người tạo phiếu thu làm người phụ trách"""
@@ -38,104 +167,133 @@ class AccountPaymentRegister(models.TransientModel):
     _inherit = 'account.payment.register'
 
     def action_create_payments(self):
-        """Override để hook vào quá trình tạo payment và tự động cập nhật đơn hàng"""
-        _logger.info("=== ENHANCED HOOK VÀO ACTION_CREATE_PAYMENTS ===")
+        """Override để ưu tiên reuse existing payments thay vì tạo mới"""
+        _logger.info("=== ENHANCED HOOK - CHECK EXISTING PAYMENTS FIRST ===")
         
-        # DEBUGGING: Log tất cả thông tin context và data
-        _logger.info(f"Context: {self.env.context}")
-        _logger.info(f"Model fields: {list(self._fields.keys())}")
-        
-        # Lưu thông tin invoice trước khi tạo payment - NHIỀU CÁCH KHÁC NHAU
-        related_orders = []
-        
-        # CÁCH MỚI: Sử dụng active_model và active_ids từ context
+        # STEP 1: Kiểm tra có existing payments cho invoice này không
         if self.env.context.get('active_model') == 'account.move':
             active_ids = self.env.context.get('active_ids', [])
-            _logger.info(f"ENHANCED: Using context active_ids: {active_ids}")
+            _logger.info(f"ENHANCED: Checking existing payments for active_ids: {active_ids}")
             
             for move_id in active_ids:
                 move = self.env['account.move'].browse(move_id)
-                if move.exists() and move.invoice_origin and move.move_type == 'out_invoice':
-                    sale_order = self.env['sale.order'].search([('name', '=', move.invoice_origin)], limit=1)
-                    if sale_order:
-                        related_orders.append({
-                            'order': sale_order,
-                            'invoice': move,
-                            'is_final_invoice': not move.dac_deposit_invoice
-                        })
-                        _logger.info(f"ENHANCED: Found order {sale_order.name} for invoice {move.name} (final: {not move.dac_deposit_invoice})")
-        
-        # CÁCH 1: Thử truy cập qua line_ids (method cũ) - fallback
-        if not related_orders and hasattr(self, 'line_ids') and self.line_ids:
-            _logger.info(f"ENHANCED: Fallback to line_ids method, found {len(self.line_ids)} line_ids")
-            for move_line in self.line_ids:
-                move = move_line.move_id
-                if move.invoice_origin and move.move_type == 'out_invoice':
-                    sale_order = self.env['sale.order'].search([('name', '=', move.invoice_origin)], limit=1)
-                    if sale_order:
-                        related_orders.append({
-                            'order': sale_order,
-                            'invoice': move,
-                            'is_final_invoice': not move.dac_deposit_invoice
-                        })
-                        _logger.info(f"ENHANCED: Fallback found order {sale_order.name} for invoice {move.name} (final: {not move.dac_deposit_invoice})")
-        
-        if not related_orders:
-            _logger.warning("ENHANCED: No related orders found!")
-        
-        # Gọi method gốc để tạo payment
-        _logger.info("ENHANCED: Calling parent action_create_payments...")
-        result = super().action_create_payments()
-        _logger.info(f"ENHANCED: Parent result: {result}")
-        
-        # OPTIMIZED IMMEDIATE CHECK: Kiểm tra ngay sau khi tạo payment
-        if related_orders:
-            _logger.info("OPTIMIZED: Running immediate update check...")
-            
-            # BATCH PROCESSING: Group orders by type để tối ưu
-            final_orders = []
-            deposit_orders = []
-            
-            for order_info in related_orders:
-                if order_info['is_final_invoice']:
-                    final_orders.append(order_info)
-                else:
-                    deposit_orders.append(order_info)
-            
-            # Process final invoice orders
-            for order_info in final_orders:
-                order = order_info['order']
-                invoice = order_info['invoice']
-                
-                try:
-                    # SINGLE INVALIDATE và check
-                    invoice.invalidate_recordset(['payment_state'])
-                    invoice_fresh = self.env['account.move'].browse(invoice.id)
+                if move.exists() and move.move_type == 'out_invoice':
+                    # Tìm DRAFT payments cho invoice này
+                    existing_draft_payments = self.env['account.payment'].search([
+                        ('name', 'like', move.name),
+                        ('state', '=', 'draft'),
+                        ('payment_type', '=', 'inbound'),
+                        ('partner_id', '=', move.partner_id.id)
+                    ])
                     
-                    if invoice_fresh.payment_state == 'paid':
-                        _logger.info(f"OPTIMIZED: Final invoice {invoice_fresh.name} paid, updating order {order.name}")
-                        
-                        # CHỈ GỌI METHOD UPDATE - không compute thủ công
-                        update_result = order.check_and_update_completion_status()
-                        _logger.info(f"OPTIMIZED: Update result: {update_result}")
-                        
-                        # THAY ĐỔI RESULT để auto-reload form view
-                        if isinstance(update_result, dict) and update_result.get('tag') == 'reload':
-                            result = update_result
-                        
-                except Exception as e:
-                    _logger.error(f"OPTIMIZED: Error in immediate update: {e}")
-            
-            # Process deposit orders (minimal processing needed)
-            for order_info in deposit_orders:
-                _logger.info(f"OPTIMIZED: Deposit invoice processing handled by write hook")
-            
-            # SINGLE COMMIT for all changes
-            if final_orders or deposit_orders:
-                self.env.cr.commit()
-                _logger.info(f"OPTIMIZED: Single commit for {len(related_orders)} orders")
-        else:
-            _logger.warning("ENHANCED: No related orders found!")
+                    # Tìm POSTED payments chưa reconcile cho invoice này
+                    existing_posted_payments = self.env['account.payment'].search([
+                        ('name', 'like', move.name),
+                        ('state', '=', 'posted'),
+                        ('payment_type', '=', 'inbound'),
+                        ('partner_id', '=', move.partner_id.id),
+                        ('reconciled_invoice_ids', 'not in', [move.id])  # Chưa reconcile với invoice này
+                    ])
+                    
+                    # Ưu tiên DRAFT payments
+                    if existing_draft_payments:
+                        _logger.info(f"ENHANCED: Found {len(existing_draft_payments)} DRAFT payments for {move.name}")
+                        return self._handle_existing_payments(existing_draft_payments, move, 'draft')
+                    
+                    # Nếu không có draft, kiểm tra posted payments chưa reconcile
+                    elif existing_posted_payments:
+                        _logger.info(f"ENHANCED: Found {len(existing_posted_payments)} POSTED unreconciled payments for {move.name}")
+                        return self._handle_existing_payments(existing_posted_payments, move, 'posted')
         
-        _logger.info("=== ENHANCED HOOK COMPLETED ===")
-        return result
+        # STEP 2: Nếu không có existing payment, tiếp tục flow bình thường
+        _logger.info("ENHANCED: No existing payments found, proceeding with normal flow...")
+        return super().action_create_payments()
+    
+    def _handle_existing_payments(self, payments, invoice, payment_state):
+        """Xử lý existing payments dựa trên trạng thái"""
+        if len(payments) == 1:
+            payment = payments[0]
+            
+            if payment_state == 'draft':
+                # Nếu là draft payment, mở để confirm
+                return {
+                    'type': 'ir.actions.act_window',
+                    'name': f'Xác nhận thanh toán - {payment.name}',
+                    'res_model': 'account.payment',
+                    'view_mode': 'form',
+                    'res_id': payment.id,
+                    'target': 'current',
+                    'context': {
+                        'default_state': 'draft',
+                        'show_confirm_button': True
+                    }
+                }
+            else:
+                # Nếu là posted payment, thực hiện reconcile luôn
+                return self._auto_reconcile_payment(payment, invoice)
+        else:
+            # Nhiều payments, hiển thị list để chọn
+            return {
+                'type': 'ir.actions.act_window',
+                'name': f'Chọn thanh toán để xác nhận - {invoice.name}',
+                'res_model': 'account.payment',
+                'view_mode': 'list,form',
+                'domain': [('id', 'in', payments.ids)],
+                'target': 'current',
+                'context': {'create': False}
+            }
+    
+    def _auto_reconcile_payment(self, payment, invoice):
+        """Tự động reconcile payment với invoice"""
+        try:
+            # Tìm receivable line của invoice
+            invoice_line = invoice.line_ids.filtered(
+                lambda l: l.account_id.account_type == 'asset_receivable' and not l.reconciled
+            )
+            
+            # Tìm receivable line của payment
+            payment_line = payment.line_ids.filtered(
+                lambda l: l.account_id.account_type == 'asset_receivable' and not l.reconciled
+            )
+            
+            if invoice_line and payment_line:
+                # Thực hiện reconcile
+                (invoice_line + payment_line).reconcile()
+                
+                _logger.info(f"ENHANCED: Successfully reconciled payment {payment.name} with invoice {invoice.name}")
+                
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {
+                        'title': 'Thành công',
+                        'message': f'Thanh toán {payment.name} đã được liên kết với hóa đơn {invoice.name}',
+                        'type': 'success',
+                        'next': {
+                            'type': 'ir.actions.act_window_close'
+                        }
+                    }
+                }
+            else:
+                # Không tìm thấy line để reconcile, mở payment form
+                return {
+                    'type': 'ir.actions.act_window',
+                    'name': f'Hoàn tất thanh toán - {payment.name}',
+                    'res_model': 'account.payment',
+                    'view_mode': 'form',
+                    'res_id': payment.id,
+                    'target': 'current'
+                }
+                
+        except Exception as e:
+            _logger.error(f"ENHANCED: Error reconciling payment {payment.name}: {e}")
+            
+            # Lỗi reconcile, mở payment form để xử lý thủ công
+            return {
+                'type': 'ir.actions.act_window',
+                'name': f'Hoàn tất thanh toán - {payment.name}',
+                'res_model': 'account.payment',
+                'view_mode': 'form',
+                'res_id': payment.id,
+                'target': 'current'
+            }

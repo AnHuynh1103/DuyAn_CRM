@@ -217,6 +217,15 @@
                                 </t>
                               </div>
                           </div>
+                          <div class="ticket-sub">
+                            <t t-if="so.has_order_no">
+                              <span class="text-muted me-1">Số ĐH:</span>
+                              <span class="dac-orderno dac-orderno--has"><t t-esc="so.order_no"/></span>
+                            </t>
+                            <t t-else="">
+                              <span class="dac-orderno dac-orderno--none">Chưa có số ĐH</span>
+                            </t>
+                          </div>
                         </div>
                       </t>
                     </t>

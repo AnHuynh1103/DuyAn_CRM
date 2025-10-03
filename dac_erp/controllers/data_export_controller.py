@@ -252,6 +252,7 @@ class DataExportController(http.Controller):
         order='date desc',          # cột sắp xếp
         include_lines='1',          # '1' trả kèm dòng hàng, '0' bỏ để nhẹ
         include_conversation='1',   # '1' trả kèm dữ liệu conversation, '0' bỏ
+        conv_limit=None,            # số hội thoại muốn lấy; all -> 100; mặc định 3
         format=None,                # 'flat' => trả list thuần (tương thích cũ)
         **kwargs
     ):
@@ -269,6 +270,20 @@ class DataExportController(http.Controller):
                 return float(v)
             except Exception:
                 return None
+
+        # conv_limit (ưu tiên tham số conv_limit; sau đó đọc include_conversation)
+        if conv_limit is not None:
+            conv_limit = 100 if str(conv_limit).lower() == 'all' else (_as_int(conv_limit) or 3)
+        else:
+            # Logic mới: chỉ dùng include_conversation như boolean, không phải số
+            # Nếu include_conversation='1' thì mặc định lấy 3 conversations
+            # Nếu là số cụ thể thì dùng số đó
+            if str(include_conversation).isdigit() and int(include_conversation) > 1:
+                conv_limit = int(include_conversation)
+            elif _as_bool(include_conversation):
+                conv_limit = 3  # Mặc định 3 conversations khi include_conversation=true
+            else:
+                conv_limit = 0
 
         domain = []
 
@@ -350,8 +365,78 @@ class DataExportController(http.Controller):
         # Serialize
         send_lines = _as_bool(include_lines)
         items = []
+        
+        # Chuẩn bị model hội thoại (luôn khởi tạo để support conversation fields)
+        Conv = None
+        try:
+            env_conv = request.env['page.fm.conversation']
+            Conv = env_conv.sudo()
+            # Test để đảm bảo model hoạt động
+            conv_test = Conv.search([], limit=1)
+            _logger.info(f"Conversation model loaded successfully, type: {type(Conv)}, test search works: {bool(conv_test)}")
+        except Exception as e:
+            Conv = None
+            _logger.warning(f"Conversation model not available: {str(e)}")
+        
         for so in orders:
+            # ---- amounts & flags ----
+            amounts = {'untaxed': so.amount_untaxed, 'tax': so.amount_tax, 'total': so.amount_total}
+            flags   = {
+                'has_deposit':      bool(getattr(so, 'has_deposit', False)),
+                'is_completed':     bool(getattr(so, 'is_order_completed', False)),
+                'is_priority':      bool(getattr(so, 'is_priority', False)),
+                'is_priority_today':bool(getattr(so, 'is_priority_today', False)),
+            }
+
+            # ---- customer ----
+            customer = None
+            if so.partner_id:
+                try:
+                    disp_addr = so.partner_id._display_address() if hasattr(so.partner_id, '_display_address') else None
+                except Exception:
+                    disp_addr = None
+                customer = {
+                    'id': so.partner_id.id,
+                    'name': so.partner_id.name,
+                    'phone': getattr(so.partner_id, 'phone', None) or getattr(so.partner_id, 'mobile', None),
+                    'address': getattr(so, 'delivery_address', None) or disp_addr,
+                }
+
+            # ---- people (sale / thiết kế / sản xuất / nhóm) ----
+            def pack_user(u): return {'id': u.id, 'name': u.name} if u else None
+            sale_user = pack_user(getattr(so, 'user_id', None))
+            designer  = pack_user(getattr(so, 'design', None)) or pack_user(getattr(so, 'user_id_design', None)) or pack_user(getattr(so, 'design_user_id', None))
+            producer  = pack_user(getattr(so, 'production', None)) or pack_user(getattr(so, 'user_id_production', None)) or pack_user(getattr(so, 'production_user_id', None))
+
+            grp_raw = getattr(so, 'production_group_ids', None) or getattr(so, 'production_team_ids', None) or getattr(so, 'production_group_id', None)
+            if grp_raw and hasattr(grp_raw, '__iter__'):
+                production_group = [{'id': g.id, 'name': g.name} for g in grp_raw]
+            else:
+                production_group = [{'id': grp_raw.id, 'name': grp_raw.name}] if getattr(grp_raw, 'id', False) else []
+
+            people = {'sale': sale_user, 'designer': designer, 'producer': producer, 'production_group': production_group}
+
+            # ---- deposit / design / production / delivery ----
+            deposit = {'enabled': flags['has_deposit'], 'amount': float(getattr(so, 'deposit_amount', 0.0) or 0.0)}
+            design  = {'link': getattr(so, 'design_link', None) or getattr(so, 'link_design', None) or getattr(so, 'dac_design_link', None)}
+            production = {
+                'deadline': getattr(so, 'production_deadline', None).isoformat() if getattr(so, 'production_deadline', None) else None,
+                'is_delayed': bool(getattr(so, 'is_delay', False) or getattr(so, 'is_production_delayed', False)),
+                'delay_date': getattr(so, 'delay_date', None).isoformat() if getattr(so, 'delay_date', None) else None,
+                'delay_reason': getattr(so, 'delay_reason', None),
+            }
+            delivery = {'address': getattr(so, 'delivery_address', None)}
+
+            # ---- order_number (đa tên field) ----
+            order_number = (
+                getattr(so, 'order_number', None) or
+                getattr(so, 'so_number', None) or
+                getattr(so, 'order_no', None) or
+                getattr(so, 'client_order_ref', False)
+            )
+
             row = {
+                # cũ
                 'id': so.id,
                 'name': so.name,
                 'client_order_ref': so.client_order_ref,  # Thêm field này để map CSV
@@ -362,83 +447,189 @@ class DataExportController(http.Controller):
                 'order_state_custom': getattr(so, 'order_state_custom', None),
                 'date_order': so.date_order.isoformat() if so.date_order else None,
                 'create_date': so.create_date.isoformat() if so.create_date else None,
-                'date': so.date.isoformat() if hasattr(so, 'date') and so.date else None,
+                'date': so.date.isoformat() if hasattr(so, 'date') and so.date else (so.date_order.isoformat() if so.date_order else None),
                 'amount_total': so.amount_total,
                 'amount_untaxed': so.amount_untaxed,
                 'amount_tax': so.amount_tax,
-                'has_deposit': getattr(so, 'has_deposit', False),
-                'deposit_amount': getattr(so, 'deposit_amount', 0.0),
-                'is_order_completed': getattr(so, 'is_order_completed', False),
-                'production_deadline': so.production_deadline.isoformat() if hasattr(so, 'production_deadline') and so.production_deadline else None,
+                'has_deposit': flags['has_deposit'],
+                'deposit_amount': float(getattr(so, 'deposit_amount', 0.0) or 0.0),
+                'is_order_completed': flags['is_completed'],
+                'production_deadline': getattr(so, 'production_deadline', None).isoformat() if getattr(so, 'production_deadline', None) else None,
                 'delivery_address': getattr(so, 'delivery_address', None),
+
+                # mới
+                'order_number': order_number,
+                'amounts': amounts,
+                'flags': flags,
+                'customer': customer,
+                'people': people,
+                'deposit': deposit,
+                'design': design,
+                'production': production,
+                'delivery': delivery,
             }
             
-            # Safe access cho conversation_id
-            conversation = None
+            # Safe access cho conversation_id & build conversation data
+            primary_conv = None
+            conv_items = []
             conversation_id_val = None
             pancake_conversation_id_val = None
-            
-            # Phương pháp 1: Thử access field conversation_id trực tiếp
+
+            # a) ưu tiên field M2O trực tiếp nếu chuẩn model
             try:
                 if hasattr(so, 'conversation_id'):
                     conversation_field = getattr(so, 'conversation_id', None)
-                    if conversation_field and hasattr(conversation_field, 'id'):
-                        conversation = conversation_field
-                        conversation_id_val = conversation_field.id
-                        if hasattr(conversation_field, 'conversation_fm_id'):
-                            pancake_conversation_id_val = conversation_field.conversation_fm_id
+                    if conversation_field and hasattr(conversation_field, 'id') and hasattr(conversation_field, 'exists'):
+                        if conversation_field.exists() and getattr(conversation_field, '_name', '') == 'page.fm.conversation':
+                            primary_conv = conversation_field
+                            _logger.info(f"Order {so.name}: Found direct conversation_id={conversation_field.id}")
             except Exception as e:
                 _logger.warning(f"Error accessing conversation_id for order {so.name}: {str(e)}")
-            
-            # Phương pháp 2: Nếu không có conversation_id, tìm theo partner_id
-            if not conversation and so.partner_id:
+
+            # b) tìm theo partner (bao gồm cả commercial partner và children)
+            pid = None
+            commercial_pid = None
+            if so.partner_id:
                 try:
-                    Conv = request.env['page.fm.conversation'].sudo()
-                    conversation = Conv.search([
-                        ('partner_id', '=', so.partner_id.id)
+                    # Lấy cả partner hiện tại và commercial partner
+                    pid = so.partner_id.id
+                    commercial_partner = getattr(so.partner_id, 'commercial_partner_id', so.partner_id) or so.partner_id
+                    commercial_pid = commercial_partner.id
+                    _logger.info(f"Order {so.name}: partner_id={pid}, commercial_partner_id={commercial_pid}, primary_conv={bool(primary_conv)}")
+                except Exception:
+                    pid = so.partner_id.id
+                    commercial_pid = pid
+                    _logger.info(f"Order {so.name}: partner_id={pid} (fallback), primary_conv={bool(primary_conv)}")
+
+            if not primary_conv and Conv is not None and commercial_pid:
+                try:
+                    _logger.info(f"Order {so.name}: Starting conversation search for commercial_pid={commercial_pid}")
+                    
+                    # Tìm theo child_of commercial partner
+                    primary_conv = Conv.search([
+                        ('partner_id', 'child_of', commercial_pid)
                     ], order='updated_at_fm desc, write_date desc', limit=1)
                     
-                    if conversation:
-                        conversation_id_val = conversation.id
-                        if hasattr(conversation, 'conversation_fm_id'):
-                            pancake_conversation_id_val = conversation.conversation_fm_id
-                        _logger.info(f"Found conversation for order {so.name} via partner {so.partner_id.name}")
+                    if primary_conv:
+                        _logger.info(f"Order {so.name}: Found conversation via child_of commercial partner {commercial_pid}, conversation_id={primary_conv.id}")
+                    else:
+                        _logger.info(f"Order {so.name}: No conversation found via child_of commercial partner {commercial_pid}")
+                        
+                        # Fallback: tìm theo partner_id trực tiếp
+                        primary_conv = Conv.search([
+                            ('partner_id', '=', pid)
+                        ], order='updated_at_fm desc, write_date desc', limit=1)
+                        
+                        if primary_conv:
+                            _logger.info(f"Order {so.name}: Found conversation via direct partner {pid}, conversation_id={primary_conv.id}")
+                        else:
+                            _logger.info(f"Order {so.name}: No conversation found via direct partner {pid}")
+                            
                 except Exception as e:
                     _logger.warning(f"Error finding conversation by partner for order {so.name}: {str(e)}")
-                
-            row.update({
-                'conversation_id': conversation_id_val,
-                'pancake_conversation_id': pancake_conversation_id_val,
-            })
-            
-            # Thêm dữ liệu conversation nếu có
-            if conversation and hasattr(conversation, 'exists') and conversation.exists():
+            else:
+                _logger.info(f"Order {so.name}: Skipping conversation search - primary_conv={bool(primary_conv)}, Conv is None={Conv is None}, commercial_pid={commercial_pid}")
+
+            # c) danh sách hội thoại theo conv_limit
+            _logger.info(f"Order {so.name}: Checking conv_limit - Conv is None={Conv is None}, commercial_pid={commercial_pid}, conv_limit={conv_limit}")
+            if Conv is not None and commercial_pid and (conv_limit or 0) > 0:
                 try:
-                    row['conversation'] = {
-                        'id': conversation.id,
-                        'name': getattr(conversation, 'name', '') or '',
-                        'pancake_conversation_id': getattr(conversation, 'conversation_fm_id', None),
-                        'status': getattr(conversation, 'status', None),
-                        'created_date': conversation.created_date.isoformat() if hasattr(conversation, 'created_date') and conversation.created_date else None,
-                        'last_activity_date': conversation.last_activity_date.isoformat() if hasattr(conversation, 'last_activity_date') and conversation.last_activity_date else None,
+                    _logger.info(f"Order {so.name}: Searching for conversations with conv_limit={conv_limit}")
+                    all_convs = Conv.search([
+                        ('partner_id', 'child_of', commercial_pid)
+                    ], order='updated_at_fm desc, write_date desc', limit=int(conv_limit))
+                    
+                    _logger.info(f"Order {so.name}: Found {len(all_convs)} conversations for conv_limit")
+                    
+                    for cc in all_convs:
+                        # Build external URL for conversation using model method
+                        external_url = None
+                        try:
+                            page_id = getattr(cc, 'conv_page_fm_id', None) or (getattr(cc.page_fm_page_id, 'page_fm_id_str', None) if hasattr(cc, 'page_fm_page_id') else None)
+                            conv_fm_id = getattr(cc, 'conversation_fm_id', None)
+                            if page_id and conv_fm_id:
+                                external_url = cc._build_external_url_for_platform(page_id, conv_fm_id)
+                        except Exception:
+                            pass
+
+                        conv_items.append({
+                            'id': cc.id,
+                            'pancake_id': getattr(cc, 'conversation_fm_id', None),
+                            'name': getattr(cc, 'name', None) or getattr(cc, 'display_name', None),
+                            'status': getattr(cc, 'status_state', None) or getattr(cc, 'status', None),
+                            'require_processing': bool(getattr(cc, 'require_processing', False)),
+                            'updated_at': cc.updated_at_fm.isoformat() if getattr(cc, 'updated_at_fm', None) else None,
+                            'last_message': getattr(cc, 'last_message_snippet', None),
+                            'external_url': external_url,
+                            'tags': [{
+                                'id': t.id, 'name': t.name,
+                                'fm_id': getattr(t, 'tag_fm_id', None),
+                                'color': getattr(t, 'fm_color_hex', None)
+                            } for t in (getattr(cc, 'pancake_tag_ids', []) or getattr(cc, 'tag_ids', []))]
+                        })
+                except Exception as e:
+                    _logger.warning(f"Error getting conversation list for order {so.name}: {str(e)}")
+
+            # d) build primary conversation object
+            conversation_obj = None
+            if primary_conv and hasattr(primary_conv, 'exists') and primary_conv.exists():
+                try:
+                    conversation_id_val = primary_conv.id
+                    pancake_conversation_id_val = getattr(primary_conv, 'conversation_fm_id', None)
+                    
+                    # Build external URL for primary conversation using model method
+                    external_url = None
+                    try:
+                        page_id = getattr(primary_conv, 'conv_page_fm_id', None) or (getattr(primary_conv.page_fm_page_id, 'page_fm_id_str', None) if hasattr(primary_conv, 'page_fm_page_id') else None)
+                        if page_id and pancake_conversation_id_val:
+                            external_url = primary_conv._build_external_url_for_platform(page_id, pancake_conversation_id_val)
+                    except Exception:
+                        pass
+
+                    conversation_obj = {
+                        'id': primary_conv.id,
+                        'name': getattr(primary_conv, 'name', '') or '',
+                        'pancake_id': pancake_conversation_id_val,
+                        'pancake_conversation_id': pancake_conversation_id_val,  # backward compatibility
+                        'status': getattr(primary_conv, 'status_state', None) or getattr(primary_conv, 'status', None),
+                        'require_processing': bool(getattr(primary_conv, 'require_processing', False)),
+                        'updated_at': primary_conv.updated_at_fm.isoformat() if getattr(primary_conv, 'updated_at_fm', None) else None,
+                        'last_message': getattr(primary_conv, 'last_message_snippet', None),
+                        'external_url': external_url,
+                        'created_date': primary_conv.create_date.isoformat() if hasattr(primary_conv, 'create_date') and primary_conv.create_date else None,
+                        'last_activity_date': primary_conv.updated_at_fm.isoformat() if getattr(primary_conv, 'updated_at_fm', None) else None,
                         'assigned_user_id': {
-                            'id': conversation.assigned_user_id.id,
-                            'name': conversation.assigned_user_id.name
-                        } if hasattr(conversation, 'assigned_user_id') and conversation.assigned_user_id else None,
+                            'id': primary_conv.owner_id.id,
+                            'name': primary_conv.owner_id.name
+                        } if hasattr(primary_conv, 'owner_id') and primary_conv.owner_id else None,
                         'partner_id': {
-                            'id': conversation.partner_id.id,
-                            'name': conversation.partner_id.name
-                        } if conversation.partner_id else None,
-                        'tags': [{'id': tag.id, 'name': tag.name} for tag in conversation.tag_ids] if hasattr(conversation, 'tag_ids') else [],
-                        'description': getattr(conversation, 'description', '') or ''
+                            'id': primary_conv.partner_id.id,
+                            'name': primary_conv.partner_id.name
+                        } if primary_conv.partner_id else None,
+                        'tags': [{
+                            'id': t.id, 'name': t.name,
+                            'fm_id': getattr(t, 'tag_fm_id', None),
+                            'color': getattr(t, 'fm_color_hex', None)
+                        } for t in (getattr(primary_conv, 'pancake_tag_ids', []) or getattr(primary_conv, 'tag_ids', []))],
+                        'description': getattr(primary_conv, 'suggestion_note', '') or ''
                     }
                 except Exception as e:
                     _logger.warning(f"Failed to load conversation data for order {so.name}: {str(e)}")
-                    row['conversation'] = None
-            else:
-                row['conversation'] = None
+                    conversation_obj = None
+
+            row.update({
+                'conversation_id': conversation_id_val,
+                'pancake_conversation_id': pancake_conversation_id_val,
+                'conversation': conversation_obj,
+                'conversations': {
+                    'count': len(conv_items),
+                    'primary_id': conversation_id_val,
+                    'items': conv_items,
+                },
+            })
             if send_lines:
-                row['order_lines'] = [{
+                # order_lines (tên cũ) + lines (tên mới)
+                order_lines = [{
                     'id': l.id,
                     'product_id': {'id': l.product_id.id, 'name': l.product_id.name} if l.product_id else None,
                     'name': l.name,
@@ -447,6 +638,17 @@ class DataExportController(http.Controller):
                     'price_subtotal': l.price_subtotal,
                     'display_type': l.display_type,
                 } for l in so.order_line]
+                lines = [{
+                    'id': l.id,
+                    'product': {'id': l.product_id.id, 'name': l.product_id.name} if l.product_id else None,
+                    'name': l.name,
+                    'qty': l.product_uom_qty,
+                    'price_unit': l.price_unit,
+                    'subtotal': l.price_subtotal,
+                    'display_type': l.display_type,
+                } for l in so.order_line]
+                row['order_lines'] = order_lines  # tên cũ
+                row['lines'] = lines              # tên mới
             items.append(row)
 
         # Tương thích ngược: ?format=flat -> trả list thuần như trước
@@ -458,6 +660,7 @@ class DataExportController(http.Controller):
             'limit': limit,
             'offset': offset,
             'order': order,
+            'date_field': df,
             'domain': domain,   # tiện debug
             'items': items,
         }
@@ -1303,6 +1506,8 @@ class DataExportController(http.Controller):
                 'name': getattr(c, 'display_name', getattr(c, 'name', None)),
                 'conversation_fm_id': getattr(c, 'conversation_fm_id', None),
                 'page': page_info,
+                'partner_id': c.partner_id.id if c.partner_id else None,
+                'partner_name': c.partner_id.name if c.partner_id else None,
                 'is_unread': getattr(c, 'is_unread', None),
                 'last_message_snippet': getattr(c, 'last_message_snippet', None),
                 'last_updated_fm': getattr(c, 'last_updated_fm', None).isoformat() if getattr(c, 'last_updated_fm', None) else None,

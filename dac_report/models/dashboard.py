@@ -253,6 +253,7 @@ class SaleOrderDashboardService(models.Model):
             )
             today_d = fields.Date.today()
             for so in orders:
+                order_no = (so.order_number or False)  # Char hoặc False
                 dln = getattr(so, "production_deadline", False)
                 late_days = (today_d - dln).days if dln and dln < today_d else 0
                 manuf_list.append({
@@ -260,6 +261,9 @@ class SaleOrderDashboardService(models.Model):
                     "title": so.partner_id.display_name or so.name,
                     "deadline": dln and dln.isoformat(),
                     "late_days": late_days,
+                    'order_no': order_no,
+                    'order_no_label': order_no or _("Chưa có số ĐH"),
+                    "has_order_no": bool(order_no),
                     "is_priority": bool(getattr(so, "is_priority", False)),
                     "is_priority_today": bool(getattr(so, "is_priority_today", False)),
                 })

@@ -1627,3 +1627,200 @@ class SaleOrder(models.Model):
         tracking=True,      # muốn hiện 2 bullet đúng số → để True
         # tracking=False     # nếu muốn ẩn hẳn 2 bullet → dùng dòng này thay cho tracking=True
     )
+
+    # === RESET PAYMENT STATUS METHODS ===
+    def action_reset_payment_status(self):
+        """Reset trạng thái thanh toán khi người dùng nhấn nhầm"""
+        self.ensure_one()
+        
+        if not self.env.user.has_group('dac_erp.group_dac_erp_manager'):
+            raise AccessError("Chỉ Manager mới có quyền reset trạng thái thanh toán!")
+        
+        # Kiểm tra đơn hàng có đang ở trạng thái completed không
+        if self.order_state_custom != 'completed':
+            raise UserError(f"Đơn hàng {self.name} không ở trạng thái 'Hoàn thành', không cần reset!")
+        
+        # Tìm tất cả hóa đơn liên quan
+        invoices = self.env['account.move'].search([
+            ('invoice_origin', '=', self.name),
+            ('move_type', '=', 'out_invoice'),
+            ('state', '=', 'posted')
+        ])
+        
+        if not invoices:
+            raise UserError(f"Không tìm thấy hóa đơn nào cho đơn hàng {self.name}!")
+        
+        reset_count = 0
+        messages = []
+        
+        # Reset từng hóa đơn và payments
+        for invoice in invoices:
+            # Tìm các payments liên quan đến hóa đơn này - NHIỀU CÁCH KHÁC NHAU
+            payments = set()
+            
+            # Cách 1: Tìm qua name field (thường có invoice name)  
+            payment_by_memo = self.env['account.payment'].search([
+                ('name', 'like', invoice.name),
+                ('state', '=', 'posted')
+            ])
+            payments.update(payment_by_memo.ids)
+            
+            # Cách 2: Tìm qua reconciled_invoice_ids
+            payment_by_reconcile = self.env['account.payment'].search([
+                ('reconciled_invoice_ids', 'in', invoice.ids),
+                ('state', '=', 'posted')
+            ])
+            payments.update(payment_by_reconcile.ids)
+            
+            # Cách 3: Tìm qua account.move.line reconciliation
+            invoice_receivable_lines = invoice.line_ids.filtered(
+                lambda l: l.account_id.account_type == 'asset_receivable' and l.balance > 0
+            )
+            for line in invoice_receivable_lines:
+                reconciled_lines = line.matched_debit_ids + line.matched_credit_ids
+                for reconcile in reconciled_lines:
+                    payment_line = reconcile.debit_move_id if reconcile.debit_move_id != line else reconcile.credit_move_id
+                    if payment_line.payment_id:
+                        payments.add(payment_line.payment_id.id)
+            
+            # Convert set to recordset
+            payment_records = self.env['account.payment'].browse(list(payments))
+            
+            # Reset payments
+            for payment in payment_records:
+                try:
+                    # Unreconcile payment trước khi reset
+                    if payment.move_id and payment.move_id.line_ids:
+                        # Tìm tất cả reconciliations liên quan
+                        reconciles_to_remove = payment.move_id.line_ids.mapped('matched_debit_ids') + payment.move_id.line_ids.mapped('matched_credit_ids')
+                        if reconciles_to_remove:
+                            reconciles_to_remove.unlink()
+                    
+                    # Reset payment về draft
+                    payment.action_draft()
+                    reset_count += 1
+                    messages.append(f"• Reset payment {payment.name} (Số tiền: {payment.amount:,.0f}đ)")
+                    _logger.info(f"Reset payment {payment.name} to draft")
+                except Exception as e:
+                    messages.append(f"• Lỗi reset payment {payment.name}: {str(e)}")
+                    _logger.error(f"Error resetting payment {payment.name}: {str(e)}")
+            
+            # Reset invoice payment_state về not_paid
+            try:
+                # Force update payment_state bằng SQL để bypass mọi constraints
+                self.env.cr.execute("""
+                    UPDATE account_move 
+                    SET payment_state = 'not_paid'
+                    WHERE id = %s
+                """, (invoice.id,))
+                
+                # Invalidate cache để đảm bảo giá trị mới được load
+                invoice.invalidate_recordset(['payment_state'])
+                messages.append(f"• Reset hóa đơn {invoice.name} về 'Chưa thanh toán'")
+                _logger.info(f"Reset invoice {invoice.name} payment_state to not_paid")
+            except Exception as e:
+                messages.append(f"• Lỗi reset hóa đơn {invoice.name}: {str(e)}")
+                _logger.error(f"Error resetting invoice {invoice.name}: {str(e)}")
+        
+        # Reset đơn hàng về trạng thái thu tiền
+        try:
+            self.write({
+                'order_state_custom': 'payment',
+                'is_payment_confirmed': False,
+                'is_order_completed': False
+            })
+            messages.append(f"• Reset đơn hàng {self.name} về trạng thái 'Thu tiền'")
+            _logger.info(f"Reset order {self.name} to payment state")
+        except Exception as e:
+            messages.append(f"• Lỗi reset đơn hàng {self.name}: {str(e)}")
+            _logger.error(f"Error resetting order {self.name}: {str(e)}")
+        
+        # Commit changes
+        self.env.cr.commit()
+        
+        # Trả về thông báo
+        message = f"✅ Reset thành công!\n\n" + "\n".join(messages)
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'Reset Trạng Thái Thanh Toán',
+                'message': message,
+                'type': 'success',
+                'sticky': True
+            }
+        }
+
+    def action_debug_payment_status(self):
+        """Debug trạng thái thanh toán hiện tại"""
+        self.ensure_one()
+        
+        debug_info = [
+            f"=== THÔNG TIN ĐŠN HÀNG {self.name} ===",
+            f"Trạng thái: {self.order_state_custom}",
+            f"Is Payment Confirmed: {self.is_payment_confirmed}",
+            f"Is Order Completed: {self.is_order_completed}",
+            "",
+            "=== HÓA ĐƠN LIÊN QUAN ===",
+        ]
+        
+        # Tìm tất cả hóa đơn
+        invoices = self.env['account.move'].search([
+            ('invoice_origin', '=', self.name),
+            ('move_type', '=', 'out_invoice')
+        ])
+        
+        if not invoices:
+            debug_info.append("❌ Không tìm thấy hóa đơn nào")
+        else:
+            for invoice in invoices:
+                debug_info.append(f"• {invoice.name} - {invoice.state} - {invoice.payment_state} - {invoice.amount_total:,.0f}đ")
+                
+                # Tìm payments cho hóa đơn này
+                payments = set()
+                
+                # Cách 1: Qua name field
+                payment_by_memo = self.env['account.payment'].search([
+                    ('name', 'like', invoice.name)
+                ])
+                payments.update(payment_by_memo.ids)
+                
+                # Cách 2: Qua reconciled_invoice_ids
+                payment_by_reconcile = self.env['account.payment'].search([
+                    ('reconciled_invoice_ids', 'in', invoice.ids)
+                ])
+                payments.update(payment_by_reconcile.ids)
+                
+                # Cách 3: Qua reconciliation
+                invoice_receivable_lines = invoice.line_ids.filtered(
+                    lambda l: l.account_id.account_type == 'asset_receivable'
+                )
+                for line in invoice_receivable_lines:
+                    reconciled_lines = line.matched_debit_ids + line.matched_credit_ids
+                    for reconcile in reconciled_lines:
+                        payment_line = reconcile.debit_move_id if reconcile.debit_move_id != line else reconcile.credit_move_id
+                        if payment_line.payment_id:
+                            payments.add(payment_line.payment_id.id)
+                
+                payment_records = self.env['account.payment'].browse(list(payments))
+                
+                if payment_records:
+                    debug_info.append(f"  └─ Payments:")
+                    for payment in payment_records:
+                        debug_info.append(f"     • {payment.name} - {payment.state} - {payment.amount:,.0f}đ")
+                else:
+                    debug_info.append(f"  └─ Không có payments")
+        
+        message = "\n".join(debug_info)
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'Debug Trạng Thái Thanh Toán',
+                'message': message,
+                'type': 'info',
+                'sticky': True
+            }
+        }

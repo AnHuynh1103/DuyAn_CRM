@@ -19,7 +19,7 @@
                             <button name="check_and_add_deposit_line"
                                     type="object"
                                     class="oe_stat_button"
-                                    icon="fa-refresh"
+                                    icon="fa-search"
                                     string="Kiểm tra cọc"
                                     help="Kiểm tra và thêm dòng đặt cọc nếu có hóa đơn cọc đã thanh toán"
                                     invisible="deposit_invoice_count == 0"/>
@@ -36,13 +36,28 @@
                                     icon="fa-refresh"
                                     string="Cập nhật"
                                     help="Kiểm tra, cập nhật trạng thái và tải lại view"
-                                    groups="base.group_system"/>
+                                    groups="base.group_system,dac_erp.group_dac_erp_manager"/>
                             <button name="action_reset_completion_status_if_only_deposit"
                                     type="object"
                                     class="oe_stat_button"
                                     icon="fa-undo"
                                     string="Reset"
                                     help="Reset trạng thái nếu đơn bị set sai khi chỉ thanh toán cọc"
+                                    groups="base.group_system"/>
+                            <button name="action_reset_payment_status"
+                                    type="object"
+                                    class="oe_stat_button"
+                                    icon="fa-undo"
+                                    string="Reset Thanh Toán"
+                                    help="Reset trạng thái thanh toán khi nhấn nhầm (chỉ Manager)"
+                                    invisible="order_state_custom != 'completed'"
+                                    groups="dac_erp.group_dac_erp_manager"/>
+                            <button name="action_debug_payment_status"
+                                    type="object"
+                                    class="oe_stat_button"
+                                    icon="fa-search"
+                                    string="Debug Payment"
+                                    help="Kiểm tra trạng thái thanh toán hiện tại"
                                     groups="base.group_system"/>
                             <button name="action_view_conversations"
                                     type="object"

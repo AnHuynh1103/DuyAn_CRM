@@ -4,7 +4,7 @@
 
 /* Chiều cao list KPI (mặc định cho màn 1366x768) */
 :root {
-  --kpi-list-h: 250px; /* <--- hạ/nhấc con số này theo ý bạn chiều cao của 3 cột */
+  --kpi-list-h: 450px; /* <--- hạ/nhấc con số này theo ý bạn chiều cao của 3 cột */
 }
 
 /* Tự co giãn theo chiều cao màn hình */
@@ -279,15 +279,17 @@
   font-size: 11px;
 }
 
-/* Conversation card – large */
-.ticket--lg {
-  padding: 12px 14px;
-  min-height: 92px;
-  max-height: 120px; /* Giới hạn chiều cao tối đa */
-  display: flex;
-  align-items: flex-start;
-  border-radius: 12px;
-  overflow: hidden; /* Ngăn nội dung tràn ra ngoài */
+/* MARK: DAC-TICKET-H — đặt chiều cao cố định cho mọi ticket */
+:root {
+  --ticket-h: 96px; /* chỉnh chiều cao */
+}
+
+/* Áp dụng cho cả 2 loại ticket */
+.o_dac_dashboard .ticket,
+.o_dac_dashboard .ticket--lg {
+  min-height: var(--ticket-h) !important;
+  max-height: var(--ticket-h) !important; /* cố định, dư thì cắt */
+  overflow: hidden; /* tránh tràn nội dung */
 }
 
 .ticket__row {
@@ -508,4 +510,23 @@
   transform: translateY(-1px);
   background: rgba(255, 255, 255, 0.836);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+/* MARK: DAC-ORDERNO-COLORS — màu riêng cho “Số ĐH” */
+:root {
+  /* chỉ đổi 2 mã màu này là toàn bộ UI đổi theo */
+  --dac-orderno-has: #1b6eff; /* xanh dương riêng */
+  --dac-orderno-none: #ffb020; /* vàng riêng   */
+}
+
+.o_dac_dashboard .dac-orderno {
+  font-weight: 700 !important;
+}
+
+.o_dac_dashboard .dac-orderno--has {
+  color: var(--dac-orderno-has) !important;
+}
+
+.o_dac_dashboard .dac-orderno--none {
+  color: var(--dac-orderno-none) !important;
 }
