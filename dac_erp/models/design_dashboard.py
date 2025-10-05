@@ -40,6 +40,9 @@ class SaleOrder(models.Model):
                 "date": so.date_order,
                 "deadline": deadline,
                 "late_days": late_days,
+                "order_number": (
+                    getattr(so, 'order_number', None) or None
+                ),
                 "is_priority": bool(getattr(so, "is_priority", False)),
                 "is_priority_today": bool(getattr(so, "is_priority_today", False)),
             })

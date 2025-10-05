@@ -60,3 +60,46 @@
 .dac-state-cancel {
   background: #dc2626 !important;
 } /* Hủy */
+
+/* MARK: Design Dashboard – Ticket */
+:root {
+  --dac-ticket-min-h: 100px; /* chiều cao tối thiểu mặc định */
+  --dac-ticket-radius: 10px;
+  --dac-ticket-shadow: 0 1px 4px #0001;
+  --dac-ticket-bg: #f8f9fa;
+}
+
+/* thẻ card/ticket */
+.dac-ticket {
+  background: var(--dac-ticket-bg);
+  border-radius: var(--dac-ticket-radius);
+  box-shadow: var(--dac-ticket-shadow);
+  min-height: var(--dac-ticket-min-h);
+  transition: box-shadow 0.15s ease, transform 0.1s ease;
+}
+.dac-ticket:hover {
+  box-shadow: 0 4px 20px #0002;
+  transform: translateY(-1px);
+}
+
+/* phần tiêu đề và dòng “Số ĐH” */
+.dac-ticket__title {
+  font-size: 1.2em;
+  font-weight: 600;
+}
+.dac-ticket__order {
+  font-size: 15.5px;
+}
+.dac-ticket__order .has-number {
+  color: #1a73e8;
+  font-weight: 600;
+} /* tự chọn màu riêng */
+.dac-ticket__order .no-number {
+  color: #f59e0b;
+  font-weight: 600;
+} /* tự chọn màu riêng */
+
+/* muốn cao hơn nữa cho tất cả ticket: chỉ việc set class “dac-tickets-tall” ở wrapper */
+.dac-tickets-tall .dac-ticket {
+  --dac-ticket-min-h: 120px;
+}
