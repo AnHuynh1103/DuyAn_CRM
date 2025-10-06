@@ -1,51 +1,82 @@
-version: "3.9"
-
 services:
-  web:
-    image: odoo:18.0
-    depends_on:
-      - db
-      - nginx
-      - n8n
+  # ==================== ODOO PRODUCTION ====================
+  odoo:
+    image: odoo:18.0 # Dùng official image
+    container_name: odoo-production
     ports:
-      - 8069:8069
+      - "8069:8069"
+      - "8072:8072" # longpolling
     volumes:
-      - odoo-web-data:/var/lib/odoo
-      - ./config:/etc/odoo
+      - odoo_data:/var/lib/odoo
       - ./addons:/mnt/extra-addons
-    env_file:
-      - env/odoo.env
-    command:
+      - ./config:/etc/odoo
+    command: ["odoo", "-c", "/etc/odoo/production.conf"]
+    environment:
+      - HOST=postgres
+      - USER=odoo
+      - PASSWORD=odoo
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=odoo
+      - DB_PASSWORD=odoo
+      - POSTGRES_DB=postgres
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=odoo
+      - POSTGRES_PASSWORD=odoo
+      - POSTGRES_PORT=5432
+      - WITHOUT_DEMO=True
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    tty: true
+    networks:
+      - odoo-network
 
-  db:
-    image: postgres:17
+  # ==================== POSTGRES ====================
+  postgres:
+    image: postgres:14 # Tạm thời dùng 14 để tương thích
+    container_name: postgres-main
     ports:
-      - 5432:5432
-    env_file:
-      - env/postgresql.env
+      - "5432:5432"
     volumes:
-      - odoo-db-data:/var/lib/postgresql/data
-    restart: on-failure
+      - postgres_data:/var/lib/postgresql/data
+      - ./data/backups:/var/backups
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: odoo
+    tty: true
+    networks:
+      odoo-network:
+        aliases:
+          - db # Tạo alias để Odoo có thể connect qua hostname "db"
 
+  # ==================== NGINX ====================
   nginx:
     image: nginx
+    container_name: nginx-proxy
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./box18/odoo_nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./config/nginx/nginx.conf:/etc/nginx/conf.d/default.conf
       - ./certbot/www:/var/www/certbot
       - ./certbot/conf:/etc/letsencrypt
     restart: unless-stopped
     tty: true
+    networks:
+      - odoo-network
 
+  # ==================== N8N ====================
   n8n:
     image: n8nio/n8n
+    container_name: n8n-automation
     ports:
       - "5678:5678"
     environment:
       - DB_TYPE=postgresdb
-      - DB_POSTGRESDB_HOST=db
+      - DB_POSTGRESDB_HOST=postgres
       - DB_POSTGRESDB_PORT=5432
       - DB_POSTGRESDB_DATABASE=postgres
       - DB_POSTGRESDB_USER=odoo
@@ -59,13 +90,82 @@ services:
       - N8N_PORT=5678
       - N8N_SECURE_COOKIE=false
     depends_on:
-      - db
+      - postgres
     restart: unless-stopped
     volumes:
       - n8n_data:/home/node/.n8n
     tty: true
+    networks:
+      - odoo-network
+
+  # ==================== CERTBOT ====================
+  certbot:
+    image: certbot/certbot
+    container_name: certbot-ssl
+    volumes:
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/conf:/etc/letsencrypt
+    networks:
+      - odoo-network
+
+  # ==================== ODOO STAGING ====================
+  odoo-staging:
+    image: odoo:18.0
+    container_name: odoo-staging
+    ports:
+      - "8169:8069"
+      - "8172:8072"
+    volumes:
+      - odoo_staging_data:/var/lib/odoo
+      - ./addons:/mnt/extra-addons
+    environment:
+      - HOST=db-staging
+      - USER=odoo_staging
+      - PASSWORD=odoo_staging
+      - DB_HOST=db-staging
+      - DB_PORT=5432
+      - DB_USER=odoo_staging
+      - DB_PASSWORD=odoo_staging
+      - POSTGRES_DB=postgres
+      - POSTGRES_HOST=db-staging
+      - POSTGRES_USER=odoo_staging
+      - POSTGRES_PASSWORD=odoo_staging
+      - POSTGRES_PORT=5432
+      - WITHOUT_DEMO=True
+    depends_on:
+      - postgres-staging
+    restart: unless-stopped
+    tty: true
+    networks:
+      - odoo-network
+
+  # ==================== POSTGRES STAGING ====================
+  postgres-staging:
+    image: postgres:14
+    container_name: postgres-staging
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_staging_data:/var/lib/postgresql/data
+      - ./data/backups-staging:/var/backups
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: odoo_staging
+      POSTGRES_PASSWORD: odoo_staging
+    tty: true
+    networks:
+      odoo-network:
+        aliases:
+          - db-staging
 
 volumes:
-  odoo-web-data:
-  odoo-db-data:
+  odoo_data:
+  postgres_data:
   n8n_data:
+  odoo_staging_data:
+  postgres_staging_data:
+
+networks:
+  odoo-network:
+    driver: bridge
