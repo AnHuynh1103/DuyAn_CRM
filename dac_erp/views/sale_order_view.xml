@@ -463,7 +463,7 @@
                     <field name="currency_id" invisible="1" optional="hide"/>
                     <field name="pricelist_id" invisible="1" optional="hide"/>
                     <field name="create_date" string="Ngày tạo đơn (hệ thống)" optional="hide"/>
-                    <field name="order_number" string="Số phiếu ĐH"/>
+                    <field name="order_number" string="Số đặt hàng"/>
                     <field name="date" string="Ngày đơn hàng"/>
                     <field name="partner_id" />
                     <field name="user_id" widget="many2one_avatar_user" string="Sale phụ trách"/>
@@ -493,7 +493,7 @@
                     <field name="pricelist_id" invisible="1" optional="hide"/>
                     
                     <field name="create_date" string="Ngày tạo đơn (hệ thống)" optional="hide"/>
-                    <field name="order_number" string="Số phiếu ĐH"/>
+                    <field name="order_number" string="Số đặt hàng"/>
                     <field name="date" string="Ngày đơn hàng"/>
                     <field name="partner_id"/>
                     <field name="user_id" widget="many2one_avatar_user" string="Sale phụ trách"/>
@@ -513,7 +513,7 @@
             <field name="model">sale.order</field>
             <field name="arch" type="xml">
                 <search string="Tìm kiếm báo giá">
-                    <field name="name"/>
+                    <field name="order_number"/>
                     <field name="partner_id"/>
                     <field name="user_id"/>
                     <field name="order_state_custom"/>
@@ -522,12 +522,14 @@
                     <filter string="Sản xuất" name="production" domain="[('order_state_custom', '=', 'production')]"/>
                     <filter string="Giao hàng" name="delivery" domain="[('order_state_custom', '=', 'delivery')]"/>
                     <filter string="Thu tiền" name="payment" domain="[('order_state_custom', '=', 'payment')]"/>
-                    <filter name="quote_or_deposit"
-                            string="Đã báo giá"
-                            domain="[('order_state_custom','in',['quotation','deposit'])]"/>
+                    <filter string="Hủy" name="cancel" domain="[('order_state_custom', '=', 'cancel')]"/>
                     <separator/>
                     <filter string="Đã hoàn thành" name="completed" domain="[('is_order_completed', '=', True)]"/>
                     <filter string="Chưa hoàn thành" name="not_completed" domain="[('is_order_completed', '=', False)]"/>
+                    <filter string="Số đặt hàng" name="order_number" domain="[('order_number', '!=', False)]"/>
+                    <filter name="quote_or_deposit"
+                            string="Đã báo giá"
+                            domain="[('order_state_custom','in',['quotation','deposit'])]" invisible="1"/>
                     <group expand="1" string="Nhóm theo">
                         <filter string="Trạng thái" name="group_by_state" context="{'group_by': 'order_state_custom'}"/>
                         <filter string="Sale phụ trách" name="group_by_user" context="{'group_by': 'user_id'}"/>

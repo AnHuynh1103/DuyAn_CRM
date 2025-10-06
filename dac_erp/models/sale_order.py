@@ -64,7 +64,7 @@ class SaleOrder(models.Model):
     order_number = fields.Char(string="Số đặt hàng", 
                                      default=False, 
                                      copy=False, 
-                                     help="Số phiếu đặt hàng", 
+                                     help="Số phiếu ĐH", 
                                      tracking=True)
 
     # Trạng thái xác nhận
@@ -485,7 +485,8 @@ class SaleOrder(models.Model):
                           self.env.ref('base.group_system')]
         for order in self:
             if not any(g in self.env.user.groups_id for g in allowed_groups):
-                raise UserError("Bạn không có quyền quay lại tiến trình trước. Vui lòng liên hệ quản lý!")
+                raise UserError("Bạn không thể quay lại tiến trình trước!\n"
+                                "Vui lòng liên hệ quản lý để được hỗ trợ!")
             if order.order_state_custom in state_order:
                 idx = state_order.index(order.order_state_custom)
                 if idx > 0:
@@ -1548,7 +1549,8 @@ class SaleOrder(models.Model):
             or self.env.user.has_group('base.group_system')
         )
         if not allowed:
-            raise UserError(_("Bạn không có quyền xác nhận hoàn tất sản xuất."))
+            raise UserError(_("Bạn không thể xác nhận hoàn tất sản xuất!\n"
+                              "Vui lòng liên hệ quản lý hoặc bộ phận sản xuất để được hỗ trợ!"))
 
         for o in self:
             if o.order_state_custom != 'production':

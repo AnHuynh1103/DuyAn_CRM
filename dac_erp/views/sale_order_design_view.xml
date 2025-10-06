@@ -30,7 +30,7 @@
         </record>
 
 
-        <!-- Action cho đơn hàng chỉ thiết kế xem được đơn của mình-->
+        <!-- Action cho đơn hàng cho thiết kế hoặc sản xuất chỉ xem được đơn của mình-->
         <record id="dac_sale_order_custom_action_design" model="ir.actions.act_window">
             <field name="name">Đơn hàng</field>
             <field name="res_model">sale.order</field>
@@ -38,9 +38,29 @@
             <field name="view_id" ref="view_dac_sale_order_list_design"/>
             <field name="search_view_id" ref="dac_sale_order_custom_search"/>
             <field name="context">{}</field>
-            <field name="domain">[('order_state_custom','=','production'),
-                        '|', ('user_id_design','=', uid), ('user_id_production','=', uid)]</field>
+            <field name="domain">
+                [
+                    ('order_state_custom', '=', 'production'),
+                    '|',
+                        ('user_id_design', '=', uid),
+                        ('user_id_production', '=', uid)
+                ]
+            </field>
         </record>
+
+
+        <!-- Action cho admin DEV -->
+        <record id="dac_sale_order_custom_action_design_admin" model="ir.actions.act_window">
+            <field name="name">Đơn hàng</field>
+            <field name="res_model">sale.order</field>
+            <field name="view_mode">list,form</field>
+            <field name="view_id" ref="view_dac_sale_order_list_design"/>
+            <field name="search_view_id" ref="dac_sale_order_custom_search"/>
+            <field name="context">{}</field>
+            <field name="domain">[('order_state_custom', '=', 'production')]</field>
+            <field name="groups_id" eval="[(4, ref('base.group_system'))]"/>
+        </record>
+
 
         <!-- Root menu app cho Design -->
         <record id="dac_design_root_menu" model="ir.ui.menu">
@@ -50,12 +70,25 @@
             <field name="groups_id" eval="[(6, 0, [ref('dac_erp.group_dac_erp_design'), ref('dac_erp.group_dac_erp_production'), ref('base.group_system')])]"/>
         </record>
 
+
+        <!-- Menu đơn hàng cho Design và Production -->
         <record id="dac_sale_order_menu_design" model="ir.ui.menu">
             <field name="name">Đơn hàng</field>
             <field name="action" ref="dac_sale_order_custom_action_design"/>
             <field name="parent_id" ref="dac_design_root_menu"/>
             <field name="sequence">10</field>
-            <field name="groups_id" eval="[(6, 0, [ref('dac_erp.group_dac_erp_design'), ref('dac_erp.group_dac_erp_production'), ref('base.group_system')])]"/>
-        </record> 
+            <field name="groups_id" eval="[(6, 0, [ref('dac_erp.group_dac_erp_design'), ref('dac_erp.group_dac_erp_production')])]"/>
+        </record>
+
+
+        <!-- Menu đơn hàng cho Admin DEV -->
+        <record id="dac_sale_order_menu_design_admin" model="ir.ui.menu">
+            <field name="name">Đơn hàng</field>
+            <field name="action" ref="dac_sale_order_custom_action_design_admin"/>
+            <field name="parent_id" ref="dac_design_root_menu"/>
+            <field name="sequence">20</field>
+            <field name="groups_id" eval="[(4, ref('base.group_system'))]"/>
+        </record>
+
     </data>
 </odoo>
