@@ -63,7 +63,7 @@
                                     type="object"
                                     class="oe_stat_button"
                                     icon="fa-comments"
-                                    invisible="conversation_count == 0">
+                                    groups="dac.erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system">
                                 <field name="conversation_count" widget="statinfo" string="Conversations"/>
                             </button>
                         </div>
