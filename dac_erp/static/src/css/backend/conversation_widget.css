@@ -1,0 +1,182 @@
+/* Conversation Widget Styling */
+.conversation-widget-container {
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.conversation-widget {
+  transition: all 0.3s ease;
+  min-width: 200px; /* Giảm từ 300px */
+  max-width: 250px; /* Giảm từ 350px */
+}
+
+.conversation-widget.dragging {
+  opacity: 0.9;
+  transform: scale(1.02);
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.25) !important;
+}
+
+/* Chỉ hiện icon kéo khi đang giữ chuột */
+.drag-handle {
+  cursor: default !important;
+}
+
+.is-dragging .drag-handle {
+  cursor: grabbing !important;
+}
+
+.drag-handle:hover {
+  background: linear-gradient(135deg, #0056b3, #004085) !important;
+}
+
+.conversation-toggle {
+  cursor: pointer !important;
+}
+
+.conversation-toggle:hover {
+  opacity: 1 !important;
+  transform: scale(1.1);
+}
+
+.conversation-content {
+  transition: all 0.3s ease;
+}
+
+/* Prevent text selection during drag */
+.user-select-none {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+}
+
+/* Conversation Buttons Styling - ĐỒNG BỘ với conversation_buttons.css */
+.o_conversation_buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 4px 0;
+}
+
+.o_conversation_buttons::-webkit-scrollbar {
+  height: 4px;
+}
+
+.o_conversation_buttons::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 2px;
+}
+
+.o_conversation_buttons::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 2px;
+}
+
+.o_conversation_buttons::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+.conversation-btn {
+  white-space: nowrap;
+  min-width: 80px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  position: relative;
+  margin: 1px;
+  /* Đảm bảo border và background được hiển thị */
+  border: 1px solid;
+  background: transparent;
+}
+
+.conversation-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.conversation-btn .fa {
+  margin-right: 3px;
+  font-size: 9px;
+}
+
+.conversation-btn .badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background: #dc3545 !important;
+  color: white;
+  border-radius: 50%;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  font-size: 8px;
+  line-height: 8px;
+}
+
+/* Button states - QUAN TRỌNG: Phải có !important để ghi đè */
+.conversation-btn.btn-outline-primary {
+  border-color: #007bff !important;
+  color: #007bff !important;
+  background: transparent !important;
+}
+
+.conversation-btn.btn-outline-success {
+  border-color: #28a745 !important;
+  color: #28a745 !important;
+  background: transparent !important;
+}
+
+.conversation-btn.btn-outline-warning {
+  border-color: #ffc107 !important;
+  color: #856404 !important;
+  background: transparent !important;
+}
+
+.conversation-btn.btn-outline-danger {
+  border-color: #dc3545 !important;
+  color: #dc3545 !important;
+  background: transparent !important;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .conversation-widget {
+    min-width: 180px;
+    max-width: 220px;
+  }
+
+  .conversation-btn {
+    min-width: 60px;
+    max-width: 100px;
+    font-size: 9px;
+  }
+}
+
+/* Animation for smooth show/hide */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.conversation-widget-container {
+  animation: slideInRight 0.3s ease-out;
+}
+
+/* Neo widget vào vùng form */
+.o_form_view {
+  position: relative;
+}
+.o_form_view .conversation-widget-container {
+  position: absolute;
+}

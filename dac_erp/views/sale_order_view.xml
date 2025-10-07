@@ -59,13 +59,6 @@
                                     string="Debug Payment"
                                     help="Kiểm tra trạng thái thanh toán hiện tại"
                                     groups="base.group_system"/>
-                            <button name="action_view_conversations"
-                                    type="object"
-                                    class="oe_stat_button"
-                                    icon="fa-comments"
-                                    groups="dac.erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system">
-                                <field name="conversation_count" widget="statinfo" string="Conversations"/>
-                            </button>
                         </div>
                         <div class="oe_title">
                             <h1>
@@ -78,6 +71,7 @@
                         <field name="has_final_invoice" invisible="1"/>
                         <field name="can_delete_products" invisible="1"/>
                         <field name="conversation_count" invisible="1"/>
+                        <field name="conversation_buttons_html" invisible="1"/>
                         <group name="sale_header">
                             <group name="partner_details">
                                 <field name="partner_id" options="{'no_create_edit': True}" context="{'show_address': 1, 'show_vat': True}"/>
@@ -432,6 +426,61 @@
                             </div>
                         </div>
                     </sheet>
+                    
+                    <!-- Conversation Widget - TRONG form với position fixed để hiện ở control panel -->
+                    <div id="conversation-floating-widget" 
+                         class="conversation-widget-container"
+                         style="position: fixed; top: 55px; right: 190px; z-index: 1050; width: 200px;"
+                         groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"
+                         invisible="conversation_count == 0">
+                        
+                        <!-- Static Conversation Widget -->
+                        <div class="conversation-widget" 
+                             style="background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+                                    border: 1px solid #dee2e6; overflow: hidden;">
+                                    
+                            <!-- Header (Non-draggable) -->
+                            <div class="conversation-header"
+                                 style="background: linear-gradient(135deg, #007bff, #0056b3); color: white; padding: 10px 14px; 
+                                        display: flex; align-items: center; justify-content: space-between;
+                                        user-select: none;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <i class="fa fa-comments" style="font-size: 14px;"></i>
+                                    <span style="font-weight: 600; font-size: 13px;">Tin nhắn Pancake</span>
+                                    <span style="background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 10px; font-size: 10px;">
+                                        <field name="conversation_count"/>
+                                    </span>
+                                </div>
+                                <div style="display: flex; align-items: center;">
+                                    <i class="fa fa-chevron-down conversation-toggle" 
+                                       style="font-size: 12px; transition: transform 0.3s ease; cursor: pointer; transform: rotate(180deg);" 
+                                       title="Thu gọn/Mở rộng"></i>
+                                </div>
+                            </div>
+                            
+                            <!-- Content (Collapsible) -->
+                            <div class="conversation-content" 
+                                 style="padding: 14px; max-height: 300px; overflow-y: auto; background: #fafafa; display: none;">
+                                <field name="conversation_buttons_html" nolabel="1"/>
+                                
+                                <!-- Quick Actions -->
+                                <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #e9ecef; 
+                                            display: flex; justify-content: space-between; align-items: center;">
+                                    <button name="action_view_conversations"
+                                            type="object"
+                                            class="btn btn-sm btn-outline-primary"
+                                            style="font-size: 10px; padding: 3px 10px;"
+                                            invisible="conversation_count &lt;= 5">
+                                        <i class="fa fa-list" style="margin-right: 3px;"></i>Xem tất cả
+                                    </button>
+                                    <span style="font-size: 10px; color: #6c757d; font-style: italic;">
+                                        Click để mở Pancake
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <chatter/>
                 </form>
             </field>

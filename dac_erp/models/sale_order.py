@@ -1350,6 +1350,11 @@ class SaleOrder(models.Model):
     conversation_count = fields.Integer(
         string='Conversations', compute='_compute_conversation_count'
     )
+    
+    # Danh sách conversations chi tiết để hiển thị buttons
+    conversation_buttons_html = fields.Html(
+        string='Conversation Buttons HTML', compute='_compute_conversation_buttons_html', store=False
+    )
 
     @api.depends('partner_id')
     def _compute_conversation_count(self):
@@ -1367,6 +1372,141 @@ class SaleOrder(models.Model):
                 _logger.warning(f"Error computing conversation count for order {order.name}: {str(e)}")
                 order.conversation_count = 0
 
+    @api.depends('partner_id')
+    def _compute_conversation_buttons_html(self):
+        """Tạo HTML chứa các buttons cho conversations"""
+        for order in self:
+            try:
+                if order.partner_id and hasattr(order.partner_id, 'commercial_partner_id'):
+                    commercial_partner_id = order.partner_id.commercial_partner_id.id
+                    all_conversations = self.env['page.fm.conversation'].search([
+                        ('partner_id', 'child_of', commercial_partner_id)
+                    ])
+                    
+                    if all_conversations:
+                        total_count = len(all_conversations)
+                        # Hiển thị tối đa 5 conversations đầu tiên
+                        conversations = all_conversations[:5]
+                        
+                        # Container gọn gàng cho layout mới
+                        buttons_html = '<div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">'
+                        
+                        for conv in conversations:
+                            # Màu button theo trạng thái
+                            btn_class = 'btn-outline-primary'
+                            if hasattr(conv, 'status_state'):
+                                if conv.status_state == 'done':
+                                    btn_class = 'btn-outline-success'
+                                elif conv.status_state == 'waiting':
+                                    btn_class = 'btn-outline-warning'
+                            
+                            if hasattr(conv, 'is_unread_fm') and conv.is_unread_fm:
+                                btn_class = 'btn-outline-danger'
+                            
+                            # Tạo button HTML
+                            conv_name = conv.name or f'Conversation {conv.id}'
+                            # Rút ngắn tên nếu quá dài
+                            if len(conv_name) > 12:
+                                conv_name = conv_name[:9] + '...'
+                            
+                            external_url = conv.external_url or '#'
+                            
+                            buttons_html += f'''
+                                <a href="{external_url}" target="_blank" 
+                                   class="conversation-btn btn btn-xs {btn_class}" 
+                                   style="white-space: nowrap; text-decoration: none; font-size: 10px; padding: 3px 8px; margin: 1px;"
+                                   title="{conv.name or f'Conversation {conv.id}'}">
+                                    <i class="fa fa-external-link" style="font-size: 9px; margin-right: 3px;"></i>{conv_name}
+                                </a>
+                            '''
+                        
+                        # Nếu có nhiều hơn 5 conversations, thêm nút "Xem thêm"
+                        if total_count > 5:
+                            remaining_count = total_count - 5
+                            buttons_html += f'''
+                                <button class="btn btn-xs btn-outline-info" 
+                                        style="font-size: 10px; padding: 3px 8px; margin: 1px; cursor: pointer;"
+                                        onclick="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+                                        title="Hiển thị {remaining_count} cuộc hội thoại khác">
+                                    +{remaining_count}
+                                </button>
+                                <div style="display: none; gap: 6px; flex-wrap: wrap;">
+                            '''
+                            
+                            # Hiển thị các conversations còn lại
+                            for conv in all_conversations[5:]:
+                                btn_class = 'btn-outline-primary'
+                                if hasattr(conv, 'status_state'):
+                                    if conv.status_state == 'done':
+                                        btn_class = 'btn-outline-success'
+                                    elif conv.status_state == 'waiting':
+                                        btn_class = 'btn-outline-warning'
+                                
+                                if hasattr(conv, 'is_unread_fm') and conv.is_unread_fm:
+                                    btn_class = 'btn-outline-danger'
+                                
+                                conv_name = conv.name or f'Conversation {conv.id}'
+                                if len(conv_name) > 12:
+                                    conv_name = conv_name[:9] + '...'
+                                
+                                external_url = conv.external_url or '#'
+                                
+                                buttons_html += f'''
+                                    <a href="{external_url}" target="_blank" 
+                                       class="conversation-btn btn btn-xs {btn_class}" 
+                                       style="white-space: nowrap; text-decoration: none; font-size: 10px; padding: 3px 8px; margin: 1px;"
+                                       title="{conv.name or f'Conversation {conv.id}'}">
+                                        <i class="fa fa-external-link" style="font-size: 9px; margin-right: 3px;"></i>{conv_name}
+                                    </a>
+                                '''
+                            
+                            buttons_html += '</div>'
+                        
+                        buttons_html += '</div>'
+                        order.conversation_buttons_html = buttons_html
+                    else:
+                        order.conversation_buttons_html = '<div style="color: #6c757d; font-size: 11px; font-style: italic;">Không có cuộc hội thoại</div>'
+                else:
+                    order.conversation_buttons_html = '<div style="color: #6c757d; font-size: 11px; font-style: italic;">Không có cuộc hội thoại</div>'
+            except Exception as e:
+                _logger.warning(f"Error computing conversation buttons for order {order.name}: {str(e)}")
+                order.conversation_buttons_html = '<div style="color: #dc3545; font-size: 11px; font-style: italic;">Lỗi tải cuộc hội thoại</div>'
+
+    def action_open_pancake_conversation(self, conversation_id):
+        """Mở trực tiếp cuộc hội thoại trên Pancake"""
+        self.ensure_one()
+        try:
+            conversation = self.env['page.fm.conversation'].browse(int(conversation_id))
+            if conversation.exists():
+                url = conversation.external_url or '#'
+                return {
+                    'type': 'ir.actions.act_url',
+                    'url': url,
+                    'target': 'new',
+                }
+            else:
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {
+                        'title': _('Lỗi'),
+                        'message': _('Không tìm thấy cuộc hội thoại.'),
+                        'type': 'danger',
+                        'sticky': False,
+                    }
+                }
+        except Exception as e:
+            _logger.error(f"Error opening Pancake conversation {conversation_id}: {str(e)}")
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _('Lỗi'),
+                    'message': f'Lỗi khi mở cuộc hội thoại: {str(e)}',
+                    'type': 'danger',
+                    'sticky': False,
+                }
+            }
 
     def action_view_conversations(self):
         """Xem tất cả conversations của khách hàng - tương tự như trong res.partner"""
