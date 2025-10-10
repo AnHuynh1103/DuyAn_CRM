@@ -39,8 +39,8 @@
           <!-- <span t-if="not proforma"></span>
           <span t-else="">PROFORMA</span> -->
 
-          <!-- Outbound invoice: dùng PHIẾU THU cho mọi trạng thái -->
-          <span t-if="o.move_type == 'out_invoice'">PHIẾU THU</span>
+          <!-- Outbound invoice: đổi thành Hóa đơn bán hàng -->
+          <span t-if="o.move_type == 'out_invoice'">Hóa đơn bán hàng</span>
 
           <!-- Giữ nguyên các loại chứng từ khác -->
           <span t-elif="o.move_type == 'out_refund' and o.state == 'posted'">Credit Note</span>
@@ -61,7 +61,7 @@
         <t t-set="layout_document_title">
           <!-- <span t-if="not proforma"></span>
           <span t-else="">PROFORMA</span> -->
-          <span t-if="o.move_type == 'out_invoice'">PHIẾU THU</span>
+          <span t-if="o.move_type == 'out_invoice'">Hóa đơn bán hàng</span>
           <span t-elif="o.move_type == 'out_refund' and o.state == 'posted'">Credit Note</span>
           <span t-elif="o.move_type == 'out_refund' and o.state == 'draft'">Draft Credit Note</span>
           <span t-elif="o.move_type == 'out_refund' and o.state == 'cancel'">Cancelled Credit Note</span>
@@ -72,21 +72,51 @@
       </xpath>
     </template>
 
-    <!-- Thay ' on ' -> ' trên ' trong tổng thuế (mặc định) -->
+
+    <!-- Hiển thị Số ĐH (PDF) -->
+    <template id="dac_invoice_show_so_number" inherit_id="account.report_invoice_document">
+      <!-- Chèn ngay sau cột Nguồn/Source -->
+      <xpath expr="//div[@id='informations']//div[@name='origin']" position="after">
+        <div class="col" name="so_order_number">
+          <strong>Số ĐH</strong>
+          <!-- Từ invoice_origin: có thể là 1 hoặc nhiều SO ngăn bởi dấu phẩy -->
+          <t t-set="so_names" t-value="[(s or '').strip() for s in (o.invoice_origin or '').split(',') if s]"/>
+          <t t-set="orders"
+            t-value="so_names and env['sale.order'].sudo().search([('name','in', so_names)]) or env['sale.order']"/>
+          <div t-esc="orders and ', '.join([so.order_number or so.name for so in orders]) or ''"/>
+        </div>
+      </xpath>
+    </template>
+
+    <!-- Hiển thị Số ĐH (Preview) -->
+    <template id="dac_invoice_show_so_number_preview" inherit_id="account.report_invoice_document_preview">
+      <xpath expr="//div[@id='informations']//div[@name='origin']" position="after">
+        <div class="col" name="so_order_number">
+          <strong>Số ĐH</strong>
+          <t t-set="so_names" t-value="[(s or '').strip() for s in (o.invoice_origin or '').split(',') if s]"/>
+          <t t-set="orders"
+            t-value="so_names and env['sale.order'].sudo().search([('name','in', so_names)]) or env['sale.order']"/>
+          <div t-esc="orders and ', '.join([so.order_number or so.name for so in orders]) or ''"/>
+        </div>
+      </xpath>
+    </template>
+
+
+    <!-- Thay ' on ' -> ' trên ' trong tổng thuế (mặc định) 
     <template id="dac_tax_on_vi"
               inherit_id="account.document_tax_totals_template">
       <xpath expr="//span[normalize-space(text())='on']" position="replace">
         <span> trên </span>
       </xpath>
-    </template>
+    </template> -->
 
-    <!-- Và trong template tổng thuế hiển thị theo tiền công ty -->
+    <!-- Và trong template tổng thuế hiển thị theo tiền công ty 
     <template id="dac_tax_on_vi_company"
               inherit_id="account.document_tax_totals_company_currency_template">
       <xpath expr="//span[normalize-space(text())='on']" position="replace">
         <span> trên </span>
       </xpath>
-    </template>
+    </template> -->
 
   </data>
 </odoo>

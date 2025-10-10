@@ -14,6 +14,7 @@ class SaleOrder(models.Model):
         ('quotation', 'Báo giá'),
         ('deposit', 'Đặt cọc'),
         ('production', 'Sản xuất'),
+        ('')
         ('delivery', 'Giao hàng'),
         ('payment', 'Thu tiền'),
         ('completed', 'Hoàn thành'),
@@ -138,7 +139,7 @@ class SaleOrder(models.Model):
 
     
     # Tiến trình giao hàng
-    delivery_address = fields.Text(string="Địa chỉ giao hàng")
+    delivery_address = fields.Text(string="Địa chỉ giao hàng", tracking=True)
 
     # Trạng thái hoàn thành đơn hàng
     is_order_completed = fields.Boolean(string="Đơn hàng đã hoàn thành", default=False)
@@ -232,17 +233,32 @@ class SaleOrder(models.Model):
             if address_parts:
                 self.delivery_address = ', '.join(address_parts)
 
-    @api.depends('order_line', 'order_line.price_unit', 'order_line.product_uom_qty')
+    @api.depends('invoice_ids', 'invoice_ids.payment_state', 'invoice_ids.amount_total', 'invoice_ids.dac_deposit_invoice')
     def _compute_total_deposit_paid(self):
-        """Tính tổng tiền cọc đã thanh toán từ hóa đơn"""
+        """Tính tổng tiền cọc đã thanh toán từ relationship invoice_ids"""
         for order in self:
-            deposit_invoices = self.env['account.move'].search([
-                ('move_type', '=', 'out_invoice'),
-                ('invoice_origin', '=', order.name),
-                ('dac_deposit_invoice', '=', True),
-                ('payment_state', '=', 'paid')
-            ])
-            order.total_deposit_paid = sum(deposit_invoices.mapped('amount_total'))
+            total_paid = 0.0
+            
+            # Sử dụng invoice_ids relationship thay vì search
+            paid_deposit_invoices = order.invoice_ids.filtered(
+                lambda inv: inv.move_type == 'out_invoice' 
+                and inv.dac_deposit_invoice 
+                and inv.payment_state == 'paid'
+                and inv.state != 'cancel'
+            )
+            
+            # Nếu không tìm thấy qua relationship, fallback sang search (để tương thích)
+            if not paid_deposit_invoices and order.name:
+                paid_deposit_invoices = self.env['account.move'].search([
+                    ('move_type', '=', 'out_invoice'),
+                    ('invoice_origin', '=', order.name),
+                    ('dac_deposit_invoice', '=', True),
+                    ('payment_state', '=', 'paid'),
+                    ('state', '!=', 'cancel')
+                ])
+            
+            total_paid = sum(paid_deposit_invoices.mapped('amount_total'))
+            order.total_deposit_paid = total_paid
 
     @api.depends('order_line', 'order_line.price_unit', 'order_line.product_uom_qty')
     def _compute_amount_untaxed_original(self):
@@ -273,17 +289,19 @@ class SaleOrder(models.Model):
         for order in self:
             order.amount_total = order.amount_untaxed_original + order.amount_tax
 
-    @api.depends('amount_untaxed_original', 'amount_tax', 'total_deposit_paid', 'is_payment_confirmed', 'is_order_completed')
+    @api.depends('amount_total', 'total_deposit_paid', 'is_order_completed', 'order_state_custom')
     def _compute_remaining_amount_display(self):
-        """Tính số tiền còn lại cần thu để hiển thị cho user"""
+        """Tính số tiền còn lại cần thu để hiển thị cho user - Logic cải tiến"""
         for order in self:
-            if order.is_payment_confirmed and order.is_order_completed:
-                # Đã hoàn thành -> hiển thị 0
+            # Nếu đơn hàng đã hoàn thành -> luôn hiển thị 0
+            if order.is_order_completed:
+                order.remaining_amount_display = 0.0
+            # Nếu đơn hàng bị hủy -> không tính toán (sẽ ẩn ở view)
+            elif order.order_state_custom == 'cancel':
                 order.remaining_amount_display = 0.0
             else:
-                # Số tiền còn lại = (Thành tiền + Thuế) - Tiền cọc đã thanh toán
-                total_with_tax = order.amount_untaxed_original + order.amount_tax
-                remaining = total_with_tax - order.total_deposit_paid
+                # Tính số tiền còn lại = Tổng - Cọc đã thanh toán
+                remaining = order.amount_total - order.total_deposit_paid
                 order.remaining_amount_display = max(remaining, 0.0)  # Không để âm
 
     @api.depends('name', 'create_date', 'order_state_custom', 'partner_id')
@@ -1966,3 +1984,81 @@ class SaleOrder(models.Model):
                 'sticky': True
             }
         }
+
+    def action_debug_payment_calculations(self):
+        """Debug method để kiểm tra chi tiết tính toán thanh toán - Cải thiện"""
+        self.ensure_one()
+        debug_info = []
+        debug_info.append(f"=== DEBUG SALE ORDER: {self.name} ===")
+        debug_info.append(f"Amount Total: {self.amount_total:,.0f}")
+        debug_info.append(f"Order State: {self.order_state_custom}")
+        debug_info.append(f"Is Completed: {self.is_order_completed}")
+        debug_info.append("")
+        
+        # KIỂM TRA INVOICE_IDS RELATIONSHIP
+        debug_info.append(f"=== INVOICE_IDS RELATIONSHIP ===")
+        all_invoices = self.invoice_ids
+        debug_info.append(f"Total invoice_ids count: {len(all_invoices)}")
+        
+        if all_invoices:
+            for inv in all_invoices:
+                debug_info.append(f"  • {inv.name} | Type: {inv.move_type} | State: {inv.state} | Payment: {inv.payment_state} | Deposit: {inv.dac_deposit_invoice}")
+        else:
+            debug_info.append("  (Không có invoice_ids)")
+        
+        debug_info.append("")
+        
+        # KIỂM TRA SEARCH FALLBACK
+        debug_info.append(f"=== SEARCH FALLBACK ===")
+        search_invoices = self.env['account.move'].search([
+            ('invoice_origin', '=', self.name),
+            ('move_type', '=', 'out_invoice'),
+            ('state', '!=', 'cancel')
+        ])
+        debug_info.append(f"Search fallback count: {len(search_invoices)}")
+        
+        if search_invoices:
+            for inv in search_invoices:
+                debug_info.append(f"  • {inv.name} | State: {inv.state} | Payment: {inv.payment_state} | Deposit: {inv.dac_deposit_invoice}")
+        
+        debug_info.append("")
+        
+        # TÍNH TOÁN DEPOSIT
+        debug_info.append(f"=== DEPOSIT CALCULATION ===")
+        
+        # Từ relationship
+        relationship_deposits = self.invoice_ids.filtered(
+            lambda inv: inv.move_type == 'out_invoice' 
+            and inv.dac_deposit_invoice 
+            and inv.payment_state == 'paid'
+            and inv.state != 'cancel'
+        )
+        relationship_total = sum(relationship_deposits.mapped('amount_total'))
+        debug_info.append(f"From relationship: {relationship_total:,.0f}")
+        
+        # Từ search
+        search_deposits = search_invoices.filtered(
+            lambda inv: inv.dac_deposit_invoice and inv.payment_state == 'paid'
+        )
+        search_total = sum(search_deposits.mapped('amount_total'))
+        debug_info.append(f"From search: {search_total:,.0f}")
+        
+        debug_info.append(f"Field total_deposit_paid: {self.total_deposit_paid:,.0f}")
+        debug_info.append(f"Remaining amount display: {self.remaining_amount_display:,.0f}")
+        
+        message = "\\n".join(debug_info)
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'Payment Debug Info Enhanced',
+                'message': message,
+                'type': 'info',
+                'sticky': True,
+            }
+        }
+        
+        
+        
+        #

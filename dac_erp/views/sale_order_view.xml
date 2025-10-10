@@ -59,6 +59,13 @@
                                     string="Debug Payment"
                                     help="Kiểm tra trạng thái thanh toán hiện tại"
                                     groups="base.group_system"/>
+                            <button name="action_debug_payment_calculations"
+                                    type="object"
+                                    class="oe_stat_button"
+                                    icon="fa-calculator"
+                                    string="Debug Calculations"
+                                    help="Debug chi tiết tính toán thanh toán và invoice relationships"
+                                    groups="base.group_system"/>
                         </div>
                         <div class="oe_title">
                             <h1>
@@ -285,43 +292,39 @@
                         </div> -->
                         <div style="text-align: right; margin-top: 16px;">
                             <field name="currency_id" invisible="1"/>
-                            <!-- Thành tiền (bắt buộc có) -->
+                            <!-- 1. Thành tiền (bắt buộc có) -->
                             <div>
                                 <label for="amount_untaxed_original">Thành tiền:</label>
                                 <span style="font-weight: bold; margin-left: 16px;">
                                     <field name="amount_untaxed_original" readonly="1" widget="monetary"/>
                                 </span>
                             </div>
-                            <!-- Thuế (bắt buộc có) -->
+                            <!-- 2. Thuế (bắt buộc có) -->
                             <div>
                                 <label for="amount_tax">Thuế:</label>
                                 <span style="font-weight: bold; margin-left: 16px;">
                                     <field name="amount_tax" readonly="1" widget="monetary"/>
                                 </span>
                             </div>
-                            <!-- Tiền cọc (tùy đơn hàng có cọc hay không) -->
+                            <!-- 3. Tổng (bắt buộc có) -->
+                            <div>
+                                <label for="amount_total">Tổng:</label>
+                                <span style="font-weight: bold; margin-left: 16px; font-size: 1.2em;">
+                                    <field name="amount_total" readonly="1" widget="monetary"/>
+                                </span>
+                            </div>
+                            <!-- 4. Cọc đã thu (nếu có) -->
                             <div invisible="total_deposit_paid == 0">
-                                <label for="total_deposit_paid">Tiền cọc đã thanh toán:</label>
+                                <label for="total_deposit_paid">Cọc đã thu:</label>
                                 <span style="font-weight: bold; margin-left: 16px; color: green;">
                                     <field name="total_deposit_paid" readonly="1" widget="monetary"/>
                                 </span>
                             </div>
-                            <!-- Số tiền còn lại cần thu (phụ thuộc vào tổng và cọc) -->
-                            <div invisible="is_order_completed or remaining_amount_display == 0">
-                                <label for="remaining_amount_display">Còn lại cần thu:</label>
-                                <span style="font-weight: bold; margin-left: 16px; color: #e55353;">
+                            <!-- 5. Số tiền phải thu (nổi bật) -->
+                            <div invisible="order_state_custom == 'cancel'">
+                                <label for="remaining_amount_display" style="font-weight: bold; color: #e55353;">Số tiền phải thu:</label>
+                                <span style="font-weight: bold; margin-left: 16px; color: #e55353; font-size: 1.3em; border: 2px solid #e55353; padding: 4px 8px; border-radius: 4px; background-color: #ffeaea;">
                                     <field name="remaining_amount_display" readonly="1" widget="monetary"/>
-                                </span>
-                            </div>
-                            <!-- Tổng (bắt buộc có, không thay đổi) -->
-                            <div>
-                                <span style="font-weight: bold; font-size: 1.5em;" invisible="is_order_completed">
-                                    Tổng:
-                                    <field name="amount_total" readonly="1" widget="monetary"/>
-                                </span>
-                                <span style="font-weight: bold; font-size: 1.5em; color: green;" invisible="not is_order_completed">
-                                    Tổng (Đã hoàn thành):
-                                    <field name="amount_total" readonly="1" widget="monetary"/>
                                 </span>
                             </div>
                             <div invisible="not is_order_completed" style="text-align: center; padding: 10px; background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 5px; margin: 10px 0;">
