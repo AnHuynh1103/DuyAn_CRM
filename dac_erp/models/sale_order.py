@@ -14,7 +14,6 @@ class SaleOrder(models.Model):
         ('quotation', 'Báo giá'),
         ('deposit', 'Đặt cọc'),
         ('production', 'Sản xuất'),
-        ('')
         ('delivery', 'Giao hàng'),
         ('payment', 'Thu tiền'),
         ('completed', 'Hoàn thành'),
