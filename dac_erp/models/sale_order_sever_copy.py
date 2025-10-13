@@ -113,7 +113,6 @@ class SaleOrderInherit(models.Model):
 
     
     # --- Pancake Functions ---
-
     def action_open_pancake_link(self):
         self.ensure_one()
         if not self.pancake_order_link:

@@ -10,21 +10,21 @@
                 groups="dac_erp.group_dac_erp_manager,base.group_system"/>
 
         <menuitem id="menu_page_fm_synced_pages_main"
-                name="📄 Trang đã đồng bộ"
+                name="Trang đã đồng bộ"
                 parent="menu_page_fm_sync_root"
                 action="action_page_fm_page_simplified"
                 sequence="10"
                 groups="dac_erp.group_dac_erp_manager,base.group_system"/>
 
         <menuitem id="menu_page_fm_all_conversations_optional"
-                name="💬 Cuộc trò chuyện"
+                name="Cuộc trò chuyện"
                 parent="menu_page_fm_sync_root"
                 action="action_page_fm_conversation_all"
                 sequence="20"
                 groups="dac_erp.group_dac_erp_manager,base.group_system"/>
 
         <menuitem id="menu_page_fm_all_tags_optional"
-                name="🏷️ Tất cả Tag"
+                name="Tất cả Tag Pancake"
                 parent="menu_page_fm_sync_root"
                 action="action_page_fm_tag"
                 sequence="30"

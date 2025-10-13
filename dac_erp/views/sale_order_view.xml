@@ -6,7 +6,7 @@
             <field name="model">sale.order</field>
             <field name="priority">1</field> <!-- Ưu tiên view này -->
             <field name="arch" type="xml">
-                <form string="Báo giá">
+                <form string="Báo giá" class="dac-sale-form">
                     <header>
                         <field name="order_state_custom" 
                                 widget="statusbar" 
@@ -82,6 +82,11 @@
                         <group name="sale_header">
                             <group name="partner_details">
                                 <field name="partner_id" options="{'no_create_edit': True}" context="{'show_address': 1, 'show_vat': True}"/>
+                                 <!-- Số đơn trên excel -->
+                                <field name="order_number"
+                                       string="Số đặt hàng"
+                                       placeholder="VD: 8766"
+                                       />
                                 <field name="phone" 
                                        string="Số điện thoại"
                                        placeholder="Số điện thoại"
@@ -92,11 +97,6 @@
                                        invisible="order_state_custom not in ['delivery', 'payment']"
                                        readonly="is_delivery_confirmed"
                                        widget="text"/>
-                                <!-- Số đơn trên excel -->
-                                <field name="order_number"
-                                       string="Số đặt hàng"
-                                       placeholder="VD: 8766"
-                                       />
                                 <field name="is_priority" 
                                         string="Ưu tiên" 
                                         widget="boolean_toggle"/>
@@ -149,41 +149,38 @@
                                        readonly="is_deposit_confirmed or order_state_custom != 'deposit' or is_production_confirmed"/>
                                 <!-- Div tiền cọc: Luôn hiện ở mọi tiến trình trừ báo giá đầu tiên, chỉ ẩn nếu không có cọc hoặc đang ở quotation -->
                                 <div invisible="(order_state_custom == 'quotation' and not is_deposit_confirmed) or not has_deposit" 
-                                style="max-width: 500px; margin-bottom: 8px;">
-                                    <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
-                                        <label for="deposit_amount" style="font-weight: 600; font-size: 14px; color: #007bff; margin-bottom: 0; min-width: 70px; white-space: nowrap;">Tiền cọc</label>
-                                        <div style="display: flex; align-items: center; justify-content: center; background: #fffbe6; border-radius: 5px; border: 1px solid #ffe066; width: 180px; padding: 3px 6px;">
-                                            <div style="display: flex; align-items: center; width: 100%; justify-content: center;">
+                                     class="dac-deposit-container">
+                                    <div class="dac-deposit-flex">
+                                        <label for="deposit_amount" class="dac-deposit-label">TIỀN CỌC</label>
+                                        <div class="dac-deposit-amount-container">
+                                            <div class="dac-deposit-amount-inner">
                                                 <field name="deposit_amount"
-                                                       style="font-size: 1.08rem; font-weight: 600; color: #e55353; text-align: center; border: none; background: transparent; width: 100%; min-width: 0; max-width: 100%; padding: 0; margin: 0; letter-spacing: 0.2px;"
+                                                       class="dac-deposit-amount-field"
                                                        readonly="is_deposit_confirmed"
                                                        widget="integer"/>
-                                                <span style="font-size: 1.08rem; font-weight: 600; color: #e55353; margin-left: 4px;">đ</span>
+                                                <span class="dac-deposit-currency">đ</span>
                                             </div>
                                         </div>
                                         <button name="action_deposit_invoice"
                                             string="Lên cọc"
                                             type="object"
-                                            class="btn btn-success"
-                                            style="min-width: 70px; font-size: 0.98rem; font-weight: 600; padding: 7px 0; margin-left: 8px;"
+                                            class="btn btn-success dac-invoice-button"
                                             invisible="not (order_state_custom == 'deposit' and has_deposit and not is_deposit_confirmed)"/>
                                         <!-- Nút Xem hóa đơn cho đơn CÓ cọc - nằm cùng hàng -->
                                         <button name="action_view_all_invoices"
                                             string="Xem hóa đơn"
                                             type="object"
-                                            class="btn btn-success"
-                                            style="min-width: 80px; font-size: 0.98rem; font-weight: 600; padding: 7px 0; margin-left: 8px;"
+                                            class="btn btn-success dac-invoice-button"
                                             groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"
                                             invisible="total_invoice_count == 0"/>
                                     </div>
                                 </div>
                                 <!-- Nút Xem hóa đơn cho đơn KHÔNG cọc - hiện riêng lẻ và đẹp hơn -->
-                                <div style="margin-bottom: 8px;" invisible="has_deposit or total_invoice_count == 0">
+                                <div class="dac-invoice-button-container" invisible="has_deposit or total_invoice_count == 0">
                                     <button name="action_view_all_invoices"
                                         string="Xem hóa đơn"
                                         type="object"
-                                        class="btn btn-success"
-                                        style="min-width: 80px; font-size: 0.98rem; font-weight: 600; padding: 7px 0;"/>
+                                        class="btn btn-success dac-invoice-button-standalone"/>
                                 </div>
                             </group>
                             <group>
@@ -191,15 +188,14 @@
                                 <field name="production_image" 
                                        string="Hình ảnh" 
                                        widget="image"
-                                       class="oe_avatar"
-                                       invisible="order_state_custom == 'quotation'"
-                                       style="max-width: 360px; max-height: 360px;"/>
+                                       class="oe_avatar dac-production-image"
+                                       invisible="order_state_custom == 'quotation'"/>
                                 <!-- Nút tiện ích cho ảnh -->
                                 <button name="action_view_production_image"
                                         type="object"
                                         class="btn btn-secondary"
                                         invisible="not production_image">
-                                    <i class="fa fa-external-link" style="margin-right:6px;"/>
+                                    <i class="fa fa-external-link dac-image-button"/>
                                     <span>Xem ảnh</span>
                                 </button>
 
@@ -208,17 +204,17 @@
                                         type="object"
                                         class="btn btn-secondary"
                                         invisible="not production_image">
-                                    <i class="fa fa-download" style="margin-right:6px;"/>
+                                    <i class="fa fa-download dac-image-button"/>
                                     <span>Tải xuống</span>
                                 </button>
                                 <!-- Trường deadline sản xuất - thiết kế lại: luôn nằm trên, điều kiện invisible gốc, giao diện hài hòa -->
                                 <div invisible="order_state_custom == 'quotation' and not is_deposit_confirmed"
-                                     style="margin-bottom: 8px; display: flex; align-items: center; gap: 6px; background: #fffbe6; border: 1px solid #ffc107; border-radius: 5px; padding: 4px 10px; width: fit-content;">
-                                    <i class="fa fa-calendar" style="color: #ffc107;"></i>
-                                    <span class="o_form_label" style="font-weight: 600; color: #e55353; font-size: 13px;">Ngày dự kiến hoàn tất sản xuất</span>
+                                     class="dac-deadline-container">
+                                    <i class="fa fa-calendar dac-deadline-icon"></i>
+                                    <span class="o_form_label dac-deadline-label">Ngày dự kiến hoàn tất sản xuất</span>
                                     <field name="production_deadline"
                                            placeholder="VD: 01/09/2025"
-                                           style="font-size: 1em; font-weight: 600; color: #007bff; width: 120px; background: #fff; border: 1px solid #007bff; border-radius: 3px; padding: 2px 8px; margin-left: 6px;"/>
+                                           class="dac-deadline-field"/>
                                 </div>
                                 <!-- Trường hợp sản xuất bị trễ -->
                                 <field name="production_is_delayed"
@@ -271,7 +267,7 @@
                                         <field name="height" string="Chiều cao" invisible="display_type"/>
                                         <field name="width" string="Chiều ngang" invisible="display_type"/>
                                         <field name="product_uom_qty" string="Số lượng" invisible="display_type"/>
-                                        <field name="price_unit" string="Đơn giá" invisible="display_type"/>
+                                        <field name="price_unit" string="Đơn giá" widget="integer" invisible="display_type"/>
                                         <field name="tax_id" string="Thuế" widget="many2many_tags" invisible="display_type"/>
                                         <field name="price_subtotal" string="Thành tiền" readonly="1" invisible="display_type"/>
                                         <!-- Hiển thị name CHỈ khi là dòng section/note và giữ cột này không trong menu tùy chọn -->
@@ -290,63 +286,59 @@
                         <!-- <div style="text-align: left; margin-top: 24px;">
                             <field name="note" placeholder="Ghi chú" nolabel="1"/>
                         </div> -->
-                        <div style="text-align: right; margin-top: 16px;">
+                        <div class="dac-summary-container">
                             <field name="currency_id" invisible="1"/>
                             <!-- 1. Thành tiền (bắt buộc có) -->
-                            <div>
-                                <label for="amount_untaxed_original">Thành tiền:</label>
-                                <span style="font-weight: bold; margin-left: 16px;">
+                            <div class="dac-summary-row">
+                                <label for="amount_untaxed_original" class="dac-summary-label">Thành tiền:</label>
+                                <span class="dac-summary-value">
                                     <field name="amount_untaxed_original" readonly="1" widget="monetary"/>
                                 </span>
                             </div>
                             <!-- 2. Thuế (bắt buộc có) -->
-                            <div>
-                                <label for="amount_tax">Thuế:</label>
-                                <span style="font-weight: bold; margin-left: 16px;">
+                            <div class="dac-summary-row">
+                                <label for="amount_tax" class="dac-summary-label">Thuế:</label>
+                                <span class="dac-summary-value">
                                     <field name="amount_tax" readonly="1" widget="monetary"/>
                                 </span>
                             </div>
                             <!-- 3. Tổng (bắt buộc có) -->
-                            <div>
-                                <label for="amount_total">Tổng:</label>
-                                <span style="font-weight: bold; margin-left: 16px; font-size: 1.2em;">
+                            <div class="dac-summary-row">
+                                <label for="amount_total" class="dac-summary-label">Tổng:</label>
+                                <span class="dac-summary-value dac-summary-value--large">
                                     <field name="amount_total" readonly="1" widget="monetary"/>
                                 </span>
                             </div>
                             <!-- 4. Cọc đã thu (nếu có) -->
-                            <div invisible="total_deposit_paid == 0">
-                                <label for="total_deposit_paid">Cọc đã thu:</label>
-                                <span style="font-weight: bold; margin-left: 16px; color: green;">
+                            <div class="dac-summary-row" invisible="total_deposit_paid == 0">
+                                <label for="total_deposit_paid" class="dac-summary-label">Cọc đã thu:</label>
+                                <span class="dac-summary-value dac-summary-value--deposit">
                                     <field name="total_deposit_paid" readonly="1" widget="monetary"/>
                                 </span>
                             </div>
                             <!-- 5. Số tiền phải thu (nổi bật) -->
-                            <div invisible="order_state_custom == 'cancel'">
-                                <label for="remaining_amount_display" style="font-weight: bold; color: #e55353;">Số tiền phải thu:</label>
-                                <span style="font-weight: bold; margin-left: 16px; color: #e55353; font-size: 1.3em; border: 2px solid #e55353; padding: 4px 8px; border-radius: 4px; background-color: #ffeaea;">
+                            <div class="dac-summary-row" invisible="order_state_custom == 'cancel'">
+                                <label for="remaining_amount_display" class="dac-summary-label" style="font-weight: bold; color: #e55353;">Số tiền phải thu:</label>
+                                <span class="dac-summary-value--highlight">
                                     <field name="remaining_amount_display" readonly="1" widget="monetary"/>
                                 </span>
                             </div>
-                            <div invisible="not is_order_completed" style="text-align: center; padding: 10px; background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 5px; margin: 10px 0;">
-                                <span style="font-weight: bold; color: #155724; font-size: 1.2em;">
-                                    Đơn hàng đã thanh toán
-                                </span>
+                            <div invisible="not is_order_completed" class="dac-alert dac-alert--completed">
+                                <span>Đơn hàng đã thanh toán</span>
                             </div>
-                            <div invisible="order_state_custom != 'cancel'" style="text-align: center; padding: 10px; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 5px; margin: 10px 0;">
-                                <span style="font-weight: bold; color: #721c24; font-size: 1.2em;">
-                                    Đơn hàng đã hủy
-                                </span>
+                            <div invisible="order_state_custom != 'cancel'" class="dac-alert dac-alert--cancel">
+                                <span>Đơn hàng đã hủy</span>
                             </div>
                             <field name="is_order_completed" invisible="1"/>
                             <field name="remaining_amount_display" invisible="1"/>
-                            <div style="display: flex; gap: 16px; justify-content: flex-end; margin-top: 16px;">
+                            <div class="dac-action-buttons">
                                 <!-- Nút Hủy đơn hàng - chỉ hiện ở trạng thái báo giá và đã lưu và chưa có hóa đơn cọc -->
                                 <button name="action_cancel_order"
                                     string="Hủy đơn hàng"
                                     type="object"
                                     class="btn-danger"
                                     invisible="not id or order_state_custom != 'quotation' or deposit_invoice_count > 0"
-                                    confirm="Bạn có chắc chắn muốn hủy đơn hàng này không?"/>
+                                    confirm="Bạn có chắc chắn muốn HỦY đơn hàng này không?"/>
 
                                 <!-- Nút Lưu -->
                                 <button name="action_save_custom"
@@ -433,50 +425,40 @@
                     <!-- Conversation Widget - TRONG form với position fixed để hiện ở control panel -->
                     <div id="conversation-floating-widget" 
                          class="conversation-widget-container"
-                         style="position: fixed; top: 55px; right: 190px; z-index: 1050; width: 200px;"
                          groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"
                          invisible="conversation_count == 0">
                         
                         <!-- Static Conversation Widget -->
-                        <div class="conversation-widget" 
-                             style="background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
-                                    border: 1px solid #dee2e6; overflow: hidden;">
+                        <div class="conversation-widget">
                                     
                             <!-- Header (Non-draggable) -->
-                            <div class="conversation-header"
-                                 style="background: linear-gradient(135deg, #007bff, #0056b3); color: white; padding: 10px 14px; 
-                                        display: flex; align-items: center; justify-content: space-between;
-                                        user-select: none;">
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <i class="fa fa-comments" style="font-size: 14px;"></i>
-                                    <span style="font-weight: 600; font-size: 13px;">Tin nhắn Pancake</span>
-                                    <span style="background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 10px; font-size: 10px;">
+                            <div class="conversation-header">
+                                <div class="conversation-header-left">
+                                    <i class="fa fa-comments conversation-header-icon"></i>
+                                    <span class="conversation-header-title">Tin nhắn Pancake</span>
+                                    <span class="conversation-header-count">
                                         <field name="conversation_count"/>
                                     </span>
                                 </div>
-                                <div style="display: flex; align-items: center;">
+                                <div class="conversation-header-right">
                                     <i class="fa fa-chevron-down conversation-toggle" 
-                                       style="font-size: 12px; transition: transform 0.3s ease; cursor: pointer; transform: rotate(180deg);" 
                                        title="Thu gọn/Mở rộng"></i>
                                 </div>
                             </div>
                             
                             <!-- Content (Collapsible) -->
-                            <div class="conversation-content" 
-                                 style="padding: 14px; max-height: 300px; overflow-y: auto; background: #fafafa; display: none;">
+                            <div class="conversation-content">
                                 <field name="conversation_buttons_html" nolabel="1"/>
                                 
                                 <!-- Quick Actions -->
-                                <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #e9ecef; 
-                                            display: flex; justify-content: space-between; align-items: center;">
+                                <div class="conversation-quick-actions">
                                     <button name="action_view_conversations"
                                             type="object"
-                                            class="btn btn-sm btn-outline-primary"
-                                            style="font-size: 10px; padding: 3px 10px;"
+                                            class="btn btn-sm btn-outline-primary conversation-view-all-btn"
                                             invisible="conversation_count &lt;= 5">
-                                        <i class="fa fa-list" style="margin-right: 3px;"></i>Xem tất cả
+                                        <i class="fa fa-list"></i>Xem tất cả
                                     </button>
-                                    <span style="font-size: 10px; color: #6c757d; font-style: italic;">
+                                    <span class="conversation-hint">
                                         Click để mở Pancake
                                     </span>
                                 </div>

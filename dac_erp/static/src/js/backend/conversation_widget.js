@@ -1,5 +1,11 @@
 /** @odoo-module **/
 
+// ===================================================================
+// DAC ERP - Conversation Widget & Sale Order Form JavaScript
+// File: conversation_widget.js
+// Description: Tổng hợp JavaScript cho Conversation Widget và Sale Order Form
+// ===================================================================
+
 // Simple toggle functionality for conversation widget
 let isCollapsed = true; // Mặc định thu gọn
 
@@ -54,29 +60,67 @@ function handleToggle(e) {
   }
 }
 
+// Responsive handling for conversation widget
+function handleResponsiveConversationWidget() {
+  const conversationWidget = document.querySelector(
+    ".conversation-widget-container"
+  );
+
+  if (!conversationWidget) return;
+
+  if (window.innerWidth <= 768) {
+    // Mobile: move to bottom of sheet
+    const sheet = document.querySelector(".sheet");
+    if (sheet && conversationWidget.parentNode !== sheet) {
+      sheet.appendChild(conversationWidget);
+    }
+  } else {
+    // Desktop: move back to fixed position
+    const form = document.querySelector(".dac-sale-form");
+    if (form && conversationWidget.parentNode !== form) {
+      form.appendChild(conversationWidget);
+    }
+  }
+}
+
 // Luôn gắn lại event khi widget xuất hiện (dùng MutationObserver)
 function observeWidget() {
   const target = document.body;
   const observer = new MutationObserver(() => {
     setupToggle(); // Gắn lại event mỗi khi DOM thay đổi
+    handleResponsiveConversationWidget(); // Handle responsive
   });
   observer.observe(target, { childList: true, subtree: true });
+}
+
+// Handle window resize for responsive design
+function setupResponsiveHandling() {
+  window.addEventListener("resize", handleResponsiveConversationWidget);
+  // Initial check
+  handleResponsiveConversationWidget();
 }
 
 // Initialize when DOM is ready
 document.addEventListener("DOMContentLoaded", () => {
   setupToggle();
+  setupResponsiveHandling();
   observeWidget(); // Bắt đầu observe DOM changes
 });
 
 // Also try when page changes (for Odoo SPA navigation)
 if (typeof window !== "undefined") {
   window.addEventListener("load", () => {
-    setTimeout(setupToggle, 500);
+    setTimeout(() => {
+      setupToggle();
+      setupResponsiveHandling();
+    }, 500);
   });
 
   // Listen for Odoo action changes
   window.addEventListener("hashchange", () => {
-    setTimeout(setupToggle, 1000);
+    setTimeout(() => {
+      setupToggle();
+      setupResponsiveHandling();
+    }, 1000);
   });
 }

@@ -378,6 +378,10 @@ class SaleOrder(models.Model):
 
     def write(self, vals):
         """Override write để trigger kiểm tra deposit khi cần"""
+        # 0) ĐƠN ĐÃ HỦY 
+        if any(rec.order_state_custom == 'cancel' for rec in self):
+            raise UserError(_("Đơn hàng đã hủy! không thể thay đổi!"))
+        
         # Nếu bỏ chọn ưu tiên, tự động bỏ chọn ưu tiên trong ngày
         if 'is_priority' in vals and not vals['is_priority']:
             vals['is_priority_today'] = False
