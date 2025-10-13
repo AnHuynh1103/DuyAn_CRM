@@ -547,9 +547,8 @@
             <field name="model">sale.order</field>
             <field name="arch" type="xml">
                 <search string="Tìm kiếm báo giá">
-                    <field name="order_number"/>
                     <field name="partner_id"/>
-                    <field name="user_id"/>
+                    <field name="order_number"/>
                     <field name="order_state_custom"/>
                     <filter string="Báo giá" name="quotation" domain="[('order_state_custom', '=', 'quotation')]"/>
                     <filter string="Đặt cọc" name="deposit" domain="[('order_state_custom', '=', 'deposit')]"/>
