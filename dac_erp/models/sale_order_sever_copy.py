@@ -935,8 +935,10 @@ class SaleOrderInherit(models.Model):
             final_team_id_val = self.env['crm.team']._get_default_team_id(user_id=user_id_val)
 
             # --- 3. Find or Create Customer (partner_id) ---
-            customer_info = order_data.get('customer', {})
+            customer_info = order_data.get('customer', {}) or {}
             partner = False
+
+            p_customer_id = customer_info.get('customer_id') or customer_info.get('id')  # UUID từ Pancake
             customer_phone = (customer_info.get('phone_numbers') or [None])[0]
             customer_email = (customer_info.get('emails') or [None])[0]
             customer_name = customer_info.get('name')
@@ -945,17 +947,17 @@ class SaleOrderInherit(models.Model):
                 _logger.error(f"Cannot process order {p_order_id}: Customer name is missing.")
                 return SaleOrder
 
-            # Tìm kiếm khách hàng theo tên + phone để đảm bảo chính xác
-            if customer_phone and customer_name:
-                partner = Partner.search([
-                    ('phone', '=', customer_phone),
-                    ('name', '=', customer_name)
-                ] + company_domain, limit=1)
-            elif customer_email and customer_name:
-                partner = Partner.search([
-                    ('email', '=ilike', customer_email),
-                    ('name', '=', customer_name)
-                ] + company_domain, limit=1)
+            Partner = self.env['res.partner'].sudo()
+
+            # ƯU TIÊN 1: tìm theo pancake_id
+            if p_customer_id:
+                partner = Partner.search([('pancake_id', '=', p_customer_id)] + company_domain, limit=1)
+
+            # ƯU TIÊN 2: fallback phone/email + name
+            if not partner and customer_phone and customer_name:
+                partner = Partner.search([('phone', '=', customer_phone), ('name', '=', customer_name)] + company_domain, limit=1)
+            if not partner and customer_email and customer_name:
+                partner = Partner.search([('email', '=ilike', customer_email), ('name', '=', customer_name)] + company_domain, limit=1)
 
             if not partner:
                 partner_vals = {
@@ -964,17 +966,19 @@ class SaleOrderInherit(models.Model):
                     'email': customer_email,
                     'company_type': 'person',
                     'company_id': current_company_id,
-                    # Thêm thông tin địa chỉ từ customer data
                     'street': customer_info.get('address') or customer_info.get('street'),
                     'city': customer_info.get('city'),
-                    'state_id': False,  # Có thể map từ customer_info.get('state') nếu cần
                     'zip': customer_info.get('zip'),
-                    'country_id': False,  # Có thể map từ customer_info.get('country') nếu cần
+                    # Gán pancake_id NGAY LÚC TẠO
+                    'pancake_id': p_customer_id or False,
                 }
                 partner = Partner.create(partner_vals)
                 _logger.info(f"Created new partner: {partner.name} (ID: {partner.id}) for Pancake order {p_order_id}")
             else:
-                # Cập nhật địa chỉ cho partner đã có (nếu cần)
+                # Nếu tìm bằng phone/email mà partner CHƯA có pancake_id → ghi bù để chốt liên kết lâu dài
+                if p_customer_id and not partner.pancake_id:
+                    partner.write({'pancake_id': p_customer_id})
+                # Cập nhật địa chỉ nếu có thay đổi
                 if customer_info.get('address') or customer_info.get('street'):
                     partner.street = customer_info.get('address') or customer_info.get('street')
                 if customer_info.get('city'):

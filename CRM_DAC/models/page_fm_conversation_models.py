@@ -877,21 +877,31 @@ class PageFmConversation(models.Model):
         if self.partner_id:
             return  # Already has a partner
 
-        Partner = self.env['res.partner']
-        
-        partner_domain_ID = ([('pancake_id', '=', self.customer_fm_id)])
-        partner = Partner.search(partner_domain_ID, limit=1)
+        Partner = self.env['res.partner'].sudo()
 
+        # 1) Ưu tiên tìm theo pancake_id (customer_fm_id)
+        partner = Partner.search([('pancake_id', '=', self.customer_fm_id)], limit=1)
+
+        # 2) Fallback nếu chưa có: thử phone/email + name
         if not partner:
-            partner_vals = {
-                'name': self.customer_name_fm or f"Khách hàng {self.conversation_fm_id}", 
-                'pancake_id': self.customer_fm_id, 
-                'company_type': 'person', 
+            domain_fallback = []
+            if self.phone and self.customer_name_fm:
+                domain_fallback = [('phone', '=', self.phone), ('name', '=ilike', self.customer_name_fm)]
+            # (tuỳ chọn) else thử theo email nếu có field chứa email…
+            if domain_fallback:
+                partner = Partner.search(domain_fallback, limit=1)
+                if partner and not partner.pancake_id and self.customer_fm_id:
+                    partner.write({'pancake_id': self.customer_fm_id})
+
+        # 3) Nếu vẫn không có → tạo mới với pancake_id
+        if not partner:
+            partner = Partner.create({
+                'name': self.customer_name_fm or f"Khách hàng {self.conversation_fm_id}",
+                'pancake_id': self.customer_fm_id,
+                'company_type': 'person',
                 'company_id': False,
-            }
-            partner = Partner.create(partner_vals)
-            _logger.info(f"Đã tạo partner mới: {partner.name} (ID: {partner.id}) cho hội thoại {self.conversation_fm_id}")
-            
+            })
+
         self.partner_id = partner
         
 

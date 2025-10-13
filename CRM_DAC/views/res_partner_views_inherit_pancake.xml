@@ -39,6 +39,7 @@
                     <group string="Phụ trách (Pancake)">
                         <field name="responsible_user_id"/>
                         <field name="participant_user_ids" widget="many2many_tags"/>
+                        <field name="pancake_id" readonly="1" placeholder="Pancake Customer ID"/>
                     </group>
                 </xpath>
             </field>

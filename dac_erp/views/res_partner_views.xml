@@ -11,6 +11,7 @@
     </record>
 
 
+    <!-- Action cho Khách hàng của Manager-->
     <record id="dac_res_partner_customer_action" model="ir.actions.act_window">
       <field name="name">Khách hàng</field>
       <field name="res_model">res.partner</field>

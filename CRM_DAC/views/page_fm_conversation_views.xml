@@ -19,6 +19,7 @@
                 <field name="name" string="Customer/Conv ID"/>
                 <field name="customer_name_fm"/>
                 <field name="conversation_fm_id"/>
+                <field name="customer_fm_id" string="Pancake ID"/>
                 <field name="last_message_snippet"/>
                 <field name="platform_fm"/>
                 <field name="page_fm_id_str_related" string="Page FM ID"/>

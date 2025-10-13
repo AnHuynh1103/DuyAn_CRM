@@ -1,6 +1,14 @@
 <odoo>
     <data>
-        
+
+        <menuitem id="dac_sale_manage_users_menu_root"
+                  name="Quản lý người dùng"
+                  parent="home_menu.home_root"
+                  sequence="190"
+                  action="dac_res_users_action"
+                  groups="dac_erp.group_dac_erp_manager"/>
+
+
         <!-- Menu cho Sale Order Lines -->
         <menuitem id="menu_sale_order_line_import"
                   name="Dòng đơn hàng"

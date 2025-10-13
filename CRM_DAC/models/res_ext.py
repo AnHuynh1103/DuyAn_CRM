@@ -89,3 +89,9 @@ class ResPartner(models.Model):
                 vals['participant_user_ids'] = [(6, 0, conv.participant_user_ids.ids)]
             if vals:
                 partner.write(vals)
+                
+    _sql_constraints = [
+        ('pancake_id_company_uniq',
+        'unique(pancake_id, company_id)',
+        'Pancake Customer ID must be unique per company.')
+    ]

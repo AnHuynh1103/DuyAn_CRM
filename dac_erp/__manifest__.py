@@ -49,6 +49,7 @@
         'views/account_move_view.xml',
         'views/account_payment_view.xml',
         'views/res_partner_views.xml',
+        'views/res_users_views.xml',
         'views/menuitem.xml',
         'report/account_report_invoice_inherit.xml',
     ],

@@ -44,6 +44,7 @@
         'views/page_fm_tag_view.xml',                     # Quản lý Tag
         'views/KPI_View.xml',
         'views/res_partner_views_inherit_pancake.xml',
+        'views/res_users_views_inherit_pancake.xml',
         'views/conversation_message_sync_wizard_views.xml',
         'views/menuitem.xml',
     ],
