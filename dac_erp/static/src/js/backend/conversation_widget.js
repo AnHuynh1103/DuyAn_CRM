@@ -1,15 +1,30 @@
 /** @odoo-module **/
 
 // ===================================================================
-// DAC ERP - Conversation Widget & Sale Order Form JavaScript
+// DAC ERP - Conversation Widget với Drag & Drop + Bubble Mode
 // File: conversation_widget.js
-// Description: Tổng hợp JavaScript cho Conversation Widget và Sale Order Form
+// Description: Widget có thể kéo thả và chuyển đổi bubble mode
 // ===================================================================
 
-// Simple toggle functionality for conversation widget
-let isCollapsed = true; // Mặc định thu gọn
+// Widget state
+let isCollapsed = true;
+let isBubbleMode = false;
+let isDragging = false;
+let dragOffset = { x: 0, y: 0 };
 
-// Setup toggle functionality
+// Initialize all functionality
+function initConversationWidget() {
+  setupToggle();
+  setupBubbleMode();
+  setupDragAndDrop();
+  setupResponsiveHandling();
+  loadWidgetPosition();
+  console.log(
+    "Conversation Widget fully initialized with drag & bubble features"
+  );
+}
+
+// Setup toggle functionality (existing)
 function setupToggle() {
   const toggleIcon = document.querySelector(".conversation-toggle");
   const content = document.querySelector(".conversation-content");
@@ -18,13 +33,10 @@ function setupToggle() {
     return false;
   }
 
-  // Remove any existing event listeners
   toggleIcon.removeEventListener("click", handleToggle);
-
-  // Add click event listener
   toggleIcon.addEventListener("click", handleToggle);
 
-  // Đảm bảo trạng thái ban đầu đúng
+  // Set initial state
   if (isCollapsed) {
     content.style.display = "none";
     toggleIcon.style.transform = "rotate(180deg)";
@@ -33,11 +45,10 @@ function setupToggle() {
     toggleIcon.style.transform = "rotate(0deg)";
   }
 
-  console.log("Conversation Widget toggle initialized");
   return true;
 }
 
-// Handle toggle click
+// Handle toggle click (existing)
 function handleToggle(e) {
   e.preventDefault();
   e.stopPropagation();
@@ -50,17 +61,253 @@ function handleToggle(e) {
   isCollapsed = !isCollapsed;
 
   if (isCollapsed) {
-    // Thu gọn
     content.style.display = "none";
     toggleIcon.style.transform = "rotate(180deg)";
   } else {
-    // Mở rộng
     content.style.display = "block";
     toggleIcon.style.transform = "rotate(0deg)";
   }
 }
 
-// Responsive handling for conversation widget
+// NEW: Setup bubble mode functionality
+function setupBubbleMode() {
+  const bubbleToggleBtn = document.querySelector(".bubble-toggle-btn");
+  const bubbleToggle = document.querySelector(".bubble-toggle");
+  const widget = document.querySelector(".conversation-widget");
+  const container = document.querySelector(".conversation-widget-container");
+
+  if (!bubbleToggleBtn || !widget || !container) return;
+
+  // Button to switch to bubble mode
+  bubbleToggleBtn.removeEventListener("click", switchToBubbleMode);
+  bubbleToggleBtn.addEventListener("click", switchToBubbleMode);
+
+  // Bubble toggle to switch back to normal mode
+  if (bubbleToggle) {
+    bubbleToggle.removeEventListener("click", switchToNormalMode);
+    bubbleToggle.addEventListener("click", switchToNormalMode);
+  }
+
+  // Click on bubble to expand
+  widget.removeEventListener("click", handleBubbleClick);
+  widget.addEventListener("click", handleBubbleClick);
+}
+
+// Switch to bubble mode
+function switchToBubbleMode(e) {
+  e.preventDefault();
+  e.stopPropagation();
+
+  const widget = document.querySelector(".conversation-widget");
+  const container = document.querySelector(".conversation-widget-container");
+  const bubbleNotification = document.querySelector(".bubble-notification");
+  const bubbleToggle = document.querySelector(".bubble-toggle");
+
+  if (!widget || !container) return;
+
+  isBubbleMode = true;
+  widget.classList.add("bubble-mode");
+  container.classList.add("bubble-mode");
+
+  // Show bubble elements
+  if (bubbleNotification) bubbleNotification.style.display = "block";
+  if (bubbleToggle) bubbleToggle.style.display = "flex";
+
+  // Save state
+  localStorage.setItem("conversation_widget_bubble_mode", "true");
+
+  console.log("Switched to bubble mode");
+}
+
+// Switch to normal mode
+function switchToNormalMode(e) {
+  e.preventDefault();
+  e.stopPropagation();
+
+  const widget = document.querySelector(".conversation-widget");
+  const container = document.querySelector(".conversation-widget-container");
+  const bubbleNotification = document.querySelector(".bubble-notification");
+  const bubbleToggle = document.querySelector(".bubble-toggle");
+
+  if (!widget || !container) return;
+
+  isBubbleMode = false;
+  widget.classList.remove("bubble-mode");
+  container.classList.remove("bubble-mode");
+
+  // Hide bubble elements
+  if (bubbleNotification) bubbleNotification.style.display = "none";
+  if (bubbleToggle) bubbleToggle.style.display = "none";
+
+  // Save state
+  localStorage.setItem("conversation_widget_bubble_mode", "false");
+
+  console.log("Switched to normal mode");
+}
+
+// Handle bubble click (expand to normal mode)
+function handleBubbleClick(e) {
+  if (isBubbleMode && !e.target.closest(".bubble-toggle")) {
+    switchToNormalMode(e);
+  }
+}
+
+// NEW: Setup drag and drop functionality
+function setupDragAndDrop() {
+  const container = document.querySelector(".conversation-widget-container");
+  const header = document.querySelector(".conversation-header");
+
+  if (!container || !header) return;
+
+  // Make container draggable
+  header.addEventListener("mousedown", startDrag);
+  document.addEventListener("mousemove", handleDrag);
+  document.addEventListener("mouseup", endDrag);
+
+  // Touch events for mobile
+  header.addEventListener("touchstart", startDrag);
+  document.addEventListener("touchmove", handleDrag);
+  document.addEventListener("touchend", endDrag);
+}
+
+// Start dragging
+function startDrag(e) {
+  // Don't drag if clicking on toggle buttons
+  if (
+    e.target.closest(".conversation-toggle") ||
+    e.target.closest(".bubble-toggle-btn") ||
+    isBubbleMode
+  ) {
+    return;
+  }
+
+  e.preventDefault();
+  isDragging = true;
+
+  const container = document.querySelector(".conversation-widget-container");
+  const widget = document.querySelector(".conversation-widget");
+
+  if (!container || !widget) return;
+
+  // Get mouse/touch position
+  const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+  const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+
+  // Calculate offset from container's top-left corner
+  const rect = container.getBoundingClientRect();
+  dragOffset.x = clientX - rect.left;
+  dragOffset.y = clientY - rect.top;
+
+  // Add dragging classes
+  container.classList.add("is-dragging");
+  widget.classList.add("dragging");
+  document.body.style.cursor = "grabbing";
+  document.body.style.userSelect = "none";
+
+  console.log("Started dragging widget");
+}
+
+// Handle dragging
+function handleDrag(e) {
+  if (!isDragging) return;
+
+  e.preventDefault();
+
+  const container = document.querySelector(".conversation-widget-container");
+  if (!container) return;
+
+  // Get mouse/touch position
+  const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+  const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+
+  // Calculate new position
+  let newX = clientX - dragOffset.x;
+  let newY = clientY - dragOffset.y;
+
+  // Keep widget within viewport bounds
+  const maxX = window.innerWidth - container.offsetWidth;
+  const maxY = window.innerHeight - container.offsetHeight;
+
+  newX = Math.max(0, Math.min(newX, maxX));
+  newY = Math.max(0, Math.min(newY, maxY));
+
+  // Update position
+  container.style.left = newX + "px";
+  container.style.top = newY + "px";
+  container.style.right = "auto"; // Remove right positioning
+}
+
+// End dragging
+function endDrag(e) {
+  if (!isDragging) return;
+
+  isDragging = false;
+
+  const container = document.querySelector(".conversation-widget-container");
+  const widget = document.querySelector(".conversation-widget");
+
+  if (container && widget) {
+    container.classList.remove("is-dragging");
+    widget.classList.remove("dragging");
+
+    // Save position
+    saveWidgetPosition();
+  }
+
+  document.body.style.cursor = "";
+  document.body.style.userSelect = "";
+
+  console.log("Stopped dragging widget");
+}
+
+// Save widget position to localStorage
+function saveWidgetPosition() {
+  const container = document.querySelector(".conversation-widget-container");
+  if (!container) return;
+
+  const position = {
+    left: container.style.left,
+    top: container.style.top,
+    right: container.style.right,
+  };
+
+  localStorage.setItem(
+    "conversation_widget_position",
+    JSON.stringify(position)
+  );
+}
+
+// Load widget position from localStorage
+function loadWidgetPosition() {
+  const container = document.querySelector(".conversation-widget-container");
+  if (!container) return;
+
+  // Load position
+  const savedPosition = localStorage.getItem("conversation_widget_position");
+  if (savedPosition) {
+    try {
+      const position = JSON.parse(savedPosition);
+      if (position.left) container.style.left = position.left;
+      if (position.top) container.style.top = position.top;
+      if (position.left) container.style.right = "auto"; // Remove right when left is set
+    } catch (e) {
+      console.warn("Could not load widget position:", e);
+    }
+  }
+
+  // Load bubble mode state
+  const savedBubbleMode = localStorage.getItem(
+    "conversation_widget_bubble_mode"
+  );
+  if (savedBubbleMode === "true") {
+    setTimeout(() => {
+      const event = { preventDefault: () => {}, stopPropagation: () => {} };
+      switchToBubbleMode(event);
+    }, 100);
+  }
+}
+
+// Responsive handling (updated)
 function handleResponsiveConversationWidget() {
   const conversationWidget = document.querySelector(
     ".conversation-widget-container"
@@ -69,58 +316,64 @@ function handleResponsiveConversationWidget() {
   if (!conversationWidget) return;
 
   if (window.innerWidth <= 768) {
-    // Mobile: move to bottom of sheet
+    // On mobile, reset to default position
+    conversationWidget.style.position = "relative";
+    conversationWidget.style.top = "auto";
+    conversationWidget.style.left = "auto";
+    conversationWidget.style.right = "auto";
+
+    // Move to bottom of sheet
     const sheet = document.querySelector(".sheet");
     if (sheet && conversationWidget.parentNode !== sheet) {
       sheet.appendChild(conversationWidget);
     }
   } else {
-    // Desktop: move back to fixed position
+    // On desktop, restore fixed positioning
+    conversationWidget.style.position = "fixed";
+
+    // Move back to form
     const form = document.querySelector(".dac-sale-form");
     if (form && conversationWidget.parentNode !== form) {
       form.appendChild(conversationWidget);
     }
+
+    // Restore saved position
+    loadWidgetPosition();
   }
 }
 
-// Luôn gắn lại event khi widget xuất hiện (dùng MutationObserver)
+// Setup responsive handling
+function setupResponsiveHandling() {
+  window.addEventListener("resize", handleResponsiveConversationWidget);
+  handleResponsiveConversationWidget(); // Initial check
+}
+
+// Observe DOM changes
 function observeWidget() {
   const target = document.body;
   const observer = new MutationObserver(() => {
-    setupToggle(); // Gắn lại event mỗi khi DOM thay đổi
-    handleResponsiveConversationWidget(); // Handle responsive
+    initConversationWidget();
   });
   observer.observe(target, { childList: true, subtree: true });
 }
 
-// Handle window resize for responsive design
-function setupResponsiveHandling() {
-  window.addEventListener("resize", handleResponsiveConversationWidget);
-  // Initial check
-  handleResponsiveConversationWidget();
-}
-
 // Initialize when DOM is ready
 document.addEventListener("DOMContentLoaded", () => {
-  setupToggle();
-  setupResponsiveHandling();
-  observeWidget(); // Bắt đầu observe DOM changes
+  initConversationWidget();
+  observeWidget();
 });
 
 // Also try when page changes (for Odoo SPA navigation)
 if (typeof window !== "undefined") {
   window.addEventListener("load", () => {
     setTimeout(() => {
-      setupToggle();
-      setupResponsiveHandling();
+      initConversationWidget();
     }, 500);
   });
 
-  // Listen for Odoo action changes
   window.addEventListener("hashchange", () => {
     setTimeout(() => {
-      setupToggle();
-      setupResponsiveHandling();
+      initConversationWidget();
     }, 1000);
   });
 }

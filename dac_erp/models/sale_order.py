@@ -2,6 +2,7 @@ from odoo import models, fields, api, _
 from odoo.exceptions import UserError, AccessError, ValidationError
 import logging
 from datetime import date, datetime, timedelta
+from odoo.tools import html_escape
 
 _logger = logging.getLogger(__name__)
 
@@ -14,6 +15,7 @@ class SaleOrder(models.Model):
         ('quotation', 'Báo giá'),
         ('deposit', 'Đặt cọc'),
         ('production', 'Sản xuất'),
+        ('installation', 'Thi công - lắp đặt'),
         ('delivery', 'Giao hàng'),
         ('payment', 'Thu tiền'),
         ('completed', 'Hoàn thành'),
@@ -72,6 +74,7 @@ class SaleOrder(models.Model):
     is_deposit_confirmed = fields.Boolean(string="Đã xác nhận đặt cọc", default=False)
     is_production_confirmed = fields.Boolean(string="Đã xác nhận sản xuất", default=False)
     is_delivery_confirmed = fields.Boolean(string="Đã xác nhận giao hàng", default=False)
+    is_installation_confirmed = fields.Boolean(string="Đã xác nhận thi công/lắp đặt", default=False)
     is_payment_confirmed = fields.Boolean(string="Đã xác nhận thanh toán", default=False)
 
     # Đặt cọc
@@ -84,6 +87,7 @@ class SaleOrder(models.Model):
     # --- flags đánh dấu đã chạm các mốc quy trình ---
     reached_production = fields.Boolean(default=False, copy=False)
     started_delivery   = fields.Boolean(default=False, copy=False)
+    started_installation = fields.Boolean(default=False, copy=False)
     
     # --- Sản xuất trễ ---
     production_is_delayed = fields.Boolean(
@@ -389,8 +393,9 @@ class SaleOrder(models.Model):
         protected_keys = {'production_is_delayed', 'production_delay_date', 'production_delay_reason'}
         if protected_keys.intersection(vals.keys()):
             for rec in self:
-                if rec.is_delivery_confirmed or rec.order_state_custom in ('delivery', 'payment', 'completed'):
-                    raise UserError(_("Không thể sửa thông tin trễ sau khi đơn đã chuyển sang Giao hàng."))
+                if rec.is_delivery_confirmed or rec.is_installation_confirmed \
+                    or rec.order_state_custom in ('delivery', 'installation', 'payment', 'completed'):
+                        raise UserError(_("Không thể sửa thông tin trễ sau khi đơn đã chuyển sang Giao hàng."))
 
         # 2) Ghi nhận xem có chạm đến ảnh hay không (áp dụng cho nhiều record)
         image_key_present = 'production_image' in vals
@@ -500,8 +505,9 @@ class SaleOrder(models.Model):
     
     
     def action_back_custom_step(self):
-        """Quay lại xem tiến trình trước đó - CHỈ ĐỂ XEM, KHÔNG THAY ĐỔI TRẠNG THÁI XÁC NHẬN"""
-        state_order = ['quotation', 'deposit', 'production', 'delivery', 'payment']
+        """Quay lại xem tiến trình trước đó - CHỈ ĐỂ XEM, KHÔNG THAY ĐỔI TRẠNG THÁI XÁC NHẬN
+        gom 2 nhánh song song về production."""
+        state_order = ['quotation', 'deposit', 'production', 'delivery', 'installation' , 'payment']
         allowed_groups = [self.env.ref('dac_erp.group_dac_erp_manager'), 
                           self.env.ref('base.group_system')]
         for order in self:
@@ -510,33 +516,47 @@ class SaleOrder(models.Model):
                                 "Vui lòng liên hệ quản lý để được hỗ trợ!")
             if order.order_state_custom in state_order:
                 idx = state_order.index(order.order_state_custom)
-                if idx > 0:
-                    # CHỈ thay đổi trạng thái hiển thị, KHÔNG đụng đến các trạng thái xác nhận
-                    order.order_state_custom = state_order[idx - 1]
-                    # LƯU Ý: Không reset các trường is_*_confirmed
+            # --- Collapse 2 nhánh song song về production ---
+            if order.order_state_custom in ('installation', 'delivery'):
+                order.order_state_custom = 'production'
+                continue
+            # --- Từ payment lùi về đúng nhánh đã đi ---
+            if order.order_state_custom == 'payment':
+                if order.started_installation and not order.started_delivery:
+                    order.order_state_custom = 'installation'
+                else:
+                    order.order_state_custom = 'delivery'
+                continue
+            # --- Tuyến tính cho các bước còn lại ---
+            if idx > 0:
+                order.order_state_custom = state_order[idx - 1]
+
         return True
     
 
     def action_next_step(self):
-        state_order = ['quotation', 'deposit', 'production', 'delivery', 'payment']
+        state_order = ['quotation', 'deposit', 'production', 'delivery', 'installation' ,'payment']
         for order in self:
-            idx = state_order.index(order.order_state_custom)
+            idx = state_order.index(order.order_state_custom) 
             # Kiểm tra xác nhận tiến trình hiện tại
             confirmed_field = {
                 'quotation': 'is_quotation_confirmed',
                 'deposit': 'is_deposit_confirmed',
                 'production': 'is_production_confirmed',
                 'delivery': 'is_delivery_confirmed',
+                'installation': 'is_installation_confirmed',
                 'payment': 'is_payment_confirmed',
             }[order.order_state_custom]
             if not getattr(order, confirmed_field):
                 raise UserError("Vui lòng xác nhận tiến trình hiện tại trước khi chuyển sang tiến trình tiếp theo!")
-            if idx < len(state_order) - 1:
+            if order.order_state_custom == 'production':
+                order.order_state_custom = (order.fulfillment_method or 'delivery')
+            elif idx < len(state_order) - 1:
                 order.order_state_custom = state_order[idx + 1]
         return True
     
     def action_confirm_info(self):
-        state_order = ['quotation', 'deposit', 'production', 'delivery', 'payment']
+        state_order = ['quotation', 'deposit', 'production', 'delivery', 'installation', 'payment']
         for order in self:
             idx = state_order.index(order.order_state_custom)
             # Kiểm tra ở tiến trình đầu tiên (báo giá)
@@ -575,8 +595,17 @@ class SaleOrder(models.Model):
             elif order.order_state_custom == 'payment':
                 order.is_payment_confirmed = True
             
+            elif order.order_state_custom == 'installation':
+                # Dùng chung 'delivery_address' cho địa điểm thi công để giảm chạm code.
+                if not order.delivery_address or not order.delivery_address.strip():
+                    raise UserError("Vui lòng nhập địa chỉ thi công/lắp đặt trước khi xác nhận!")
+                order.is_installation_confirmed = True
+                order.check_and_update_completion_status()
+                if order.order_state_custom != 'completed':
+                    order.order_state_custom = 'payment'
+            
             # CHỈ tự động chuyển tiến trình cho một số trạng thái cụ thể, KHÔNG áp dụng cho 'deposit'
-            if order.order_state_custom in ['quotation', 'production', 'delivery'] and idx < len(state_order) - 1:
+            if order.order_state_custom in ['quotation', 'production', 'delivery', 'installation'] and idx < len(state_order) - 1:
                 order.order_state_custom = state_order[idx + 1]
         return True
 
@@ -652,6 +681,39 @@ class SaleOrder(models.Model):
             order.started_delivery = True                  # <— thêm dòng này
             order.order_state_custom = 'delivery'
         return True
+
+    def action_proceed_to_installation(self):
+        """Tiến hành thi công - lắp đặt từ trạng thái sản xuất"""
+        for order in self:
+            if order.order_state_custom != 'production':
+                raise UserError(_("Chỉ có thể tiến hành từ trạng thái sản xuất!"))
+            if not order.is_production_confirmed:
+                raise UserError(_("Vui lòng xác nhận sản xuất trước!"))
+
+            # Nếu có trễ sản xuất → ràng buộc giống delivery
+            if order.production_is_delayed:
+                if not order.production_delay_date or not (order.production_delay_reason or '').strip():
+                    raise UserError(_("Vui lòng chọn ngày trễ và lý do trễ."))
+                if order.production_deadline:
+                    if order.production_delay_date <= order.production_deadline:
+                        raise UserError(_("Ngày trễ phải sau 'Ngày hoàn tất'."))
+                else:
+                    if order.production_delay_date <= date.today():
+                        raise UserError(_("Ngày trễ phải sau ngày hiện tại."))
+
+            order.started_installation = True
+            order.order_state_custom = 'installation'
+        return True
+
+
+    def action_proceed_to_fulfillment(self):
+        for order in self:
+            if order.fulfillment_method == 'installation':
+                order.action_proceed_to_installation()
+            else:
+                order.action_proceed_to_delivery()
+        return True
+
 
     def action_deposit_invoice(self):
         for order in self:
@@ -1277,91 +1339,7 @@ class SaleOrder(models.Model):
             'target': 'current',
         }
 
-    def debug_deposit_info(self):
-        """Debug thông tin đặt cọc và user"""
-        self.ensure_one()
-        #_logger.info(f"=== DEBUG THÔNG TIN CHO ORDER {self.name} ===")
-        
-        # Thông tin user
-        #_logger.info(f"Current user: {self.env.user.name} (ID: {self.env.user.id})")
-        #_logger.info(f"Order user_id: {self.user_id.name} (ID: {self.user_id.id})")
-        #_logger.info(f"User groups: {[g.name for g in self.env.user.groups_id]}")
-        
-        # Thông tin cơ bản
-        #_logger.info(f"Order state: {self.order_state_custom}")
-        #_logger.info(f"has_deposit: {self.has_deposit}")
-        #_logger.info(f"deposit_amount: {self.deposit_amount}")
-        #_logger.info(f"is_deposit_confirmed: {self.is_deposit_confirmed}")
-        #_logger.info(f"production_deadline: {self.production_deadline}")
-        #_logger.info(f"delivery_address: {self.delivery_address}")
-        #_logger.info(f"is_production_confirmed: {self.is_production_confirmed}")
-        #_logger.info(f"is_delivery_confirmed: {self.is_delivery_confirmed}")
-        #_logger.info(f"is_payment_confirmed: {self.is_payment_confirmed}")
-        #_logger.info(f"is_order_completed: {self.is_order_completed}")
-        #_logger.info(f"total_deposit_paid: {self.total_deposit_paid}")
-        #_logger.info(f"remaining_amount_display: {self.remaining_amount_display}")
-        
-        # Tìm tất cả hóa đơn liên quan
-        all_invoices = self.env['account.move'].search([
-            ('move_type', '=', 'out_invoice'),
-            ('invoice_origin', '=', self.name)
-        ])
-        #_logger.info(f"Tổng số hóa đơn liên quan: {len(all_invoices)}")
-        
-        # Tìm hóa đơn đặt cọc
-        deposit_invoices = self.env['account.move'].search([
-            ('move_type', '=', 'out_invoice'),
-            ('invoice_origin', '=', self.name),
-            ('dac_deposit_invoice', '=', True)
-        ])
-        #_logger.info(f"Số hóa đơn đặt cọc: {len(deposit_invoices)}")
-        
-        for invoice in deposit_invoices:
-            _logger.info(f"  - {invoice.name}: state={invoice.state}, payment_state={invoice.payment_state}, amount={invoice.amount_total}")
-        
-        # Kiểm tra dòng order_line
-        #_logger.info(f"Tổng số dòng order_line: {len(self.order_line)}")
-        
-        # Kiểm tra tất cả dòng có giá âm (có thể là đặt cọc)
-        deposit_lines = self.order_line.filtered(lambda l: not l.display_type and l.price_unit < 0)
-        #_logger.info(f"Số dòng có giá âm (có thể là đặt cọc): {len(deposit_lines)}")
-        for line in deposit_lines:
-            _logger.info(f"  - {line.name}: sản phẩm={line.product_id.name}, qty={line.product_uom_qty}, price={line.price_unit}")
-        
-        # Kiểm tra sản phẩm DEPOSIT cụ thể (nếu có)
-        product = self.env['product.product'].search([('default_code', '=', 'DEPOSIT')], limit=1)
-        if product:
-            #_logger.info(f"Sản phẩm DEPOSIT: {product.name} (ID: {product.id})")
-            product_deposit_lines = self.order_line.filtered(lambda l: l.product_id == product)
-            #_logger.info(f"Số dòng có sản phẩm DEPOSIT: {len(product_deposit_lines)}")
-            for line in product_deposit_lines:
-                _logger.info(f"  - {line.name}: qty={line.product_uom_qty}, price={line.price_unit}")
-        else:
-            _logger.info("Không tìm thấy sản phẩm DEPOSIT")
-        
-        # Kiểm tra computed fields
-        #_logger.info(f"deposit_invoice_count: {self.deposit_invoice_count}")
-        #_logger.info(f"has_paid_deposit_invoice: {self.has_paid_deposit_invoice}")
-        
-        #_logger.info("=== KẾT THÚC DEBUG ===")
-        
-        # DEBUG: Tính toán chi tiết để so sánh
-        product_lines = self.order_line.filtered(lambda l: not l.display_type and l.price_unit >= 0)
-        total_amount_original = sum(line.price_unit * line.product_uom_qty for line in product_lines)
-        #_logger.info(f"DEBUG - Tổng giá trị sản phẩm gốc (dương): {total_amount_original}")
-        #_logger.info(f"DEBUG - amount_total của đơn hàng: {self.amount_total}")
-        #_logger.info(f"DEBUG - Chênh lệch: {total_amount_original - self.amount_total}")
-        
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'title': 'Debug',
-                'message': f'Đã log thông tin debug cho order {self.name}. Current user: {self.env.user.name}, Order user: {self.user_id.name}',
-                'type': 'info',
-                'sticky': True,
-            }
-        }
+
     
 
     # Cho nút mở hội thoại
@@ -2062,6 +2040,35 @@ class SaleOrder(models.Model):
             }
         }
         
-        
-        
-        #
+    #========== Lựa chọn 2 nhánh sau sản xuất: giao hàng hoặc lắp đặt ===========
+    fulfillment_method = fields.Selection([
+        ('installation', 'Thi công - lắp đặt'),
+        ('delivery', 'Giao hàng'),
+    ], string='Hình thức thực hiện', default='delivery', tracking=True)
+
+
+    # Badges màu riêng cho DAC 
+    # NEW: field HTML để render badge
+    order_state_badge = fields.Html(
+        string='Trạng thái',
+        compute='_compute_order_state_badge',
+        sanitize=False,  # giữ nguyên class span
+        store=False,
+    )
+
+    # NEW: helper chung để tạo badge DAC
+    def _dac_make_badge(self, key: str, label: str) -> str:
+        key = (key or '').strip()
+        label = (label or key or '').strip()
+        return (
+            f'<span class="badge rounded-pill dac-badge dac-badge--{html_escape(key)}">'
+            f'{html_escape(label)}</span>'
+        )
+
+    @api.depends('order_state_custom')
+    def _compute_order_state_badge(self):
+        selection = dict(self._fields['order_state_custom'].selection)
+        for rec in self:
+            key = rec.order_state_custom or ''
+            label = selection.get(key, key)
+            rec.order_state_badge = rec._dac_make_badge(key, label)

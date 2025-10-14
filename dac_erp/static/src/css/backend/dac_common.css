@@ -31,33 +31,46 @@
   font-size: 11px;
 }
 
+/* MARK: Custom Badge trạng thái đơn hàng DAC */
 /* Custom màu cho badge theo trạng thái đơn*/
-.dac-state-badge {
+/* Base cho badge DAC */
+.dac-badge {
   color: #fff !important;
   font-weight: 700 !important;
 }
 
-/* MARK: DAC-BADGE-MAP — mỗi state một lớp */
-.dac-state-quotation {
+/* Alias: dùng chung màu với map cũ */
+.dac-state-quotation,
+.dac-badge--quotation {
   background: #007bff !important;
 } /* Báo giá */
-.dac-state-deposit {
+.dac-state-deposit,
+.dac-badge--deposit {
   background: #e83e8c !important;
 } /* Đặt cọc */
-.dac-state-production {
+.dac-state-production,
+.dac-badge--production {
   background: #ffc107 !important;
   color: #1a1a1a !important;
 } /* Sản xuất */
-.dac-state-delivery {
+.dac-state-installation,
+.dac-badge--installation {
+  background: #17a2b8 !important;
+} /* Thi công - lắp đặt */
+.dac-state-delivery,
+.dac-badge--delivery {
   background: #6f42c1 !important;
 } /* Giao hàng */
-.dac-state-payment {
+.dac-state-payment,
+.dac-badge--payment {
   background: #29cb00 !important;
 } /* Thu tiền */
-.dac-state-completed {
+.dac-state-completed,
+.dac-badge--completed {
   background: #6c757d !important;
 } /* Hoàn thành */
-.dac-state-cancel {
+.dac-state-cancel,
+.dac-badge--cancel {
   background: #dc2626 !important;
 } /* Hủy */
 

@@ -10,7 +10,7 @@
                     <header>
                         <field name="order_state_custom" 
                                 widget="statusbar" 
-                                statusbar_visible="quotation,deposit,production,delivery,payment,completed"
+                                statusbar_visible="quotation,deposit,production,installation,delivery,payment,completed"
                                 statusbar_colors='{"cancel":"red"}'
                             />
                     </header>
@@ -23,13 +23,6 @@
                                     string="Kiểm tra cọc"
                                     help="Kiểm tra và thêm dòng đặt cọc nếu có hóa đơn cọc đã thanh toán"
                                     invisible="deposit_invoice_count == 0"/>
-                            <button name="debug_deposit_info"
-                                    type="object"
-                                    class="oe_stat_button"
-                                    icon="fa-bug"
-                                    string="Debug cọc"
-                                    help="Debug thông tin đặt cọc và log chi tiết"
-                                    groups="base.group_system"/>
                             <button name="check_and_update_completion_status"
                                     type="object"
                                     class="oe_stat_button"
@@ -79,10 +72,11 @@
                         <field name="can_delete_products" invisible="1"/>
                         <field name="conversation_count" invisible="1"/>
                         <field name="conversation_buttons_html" invisible="1"/>
-                        <group name="sale_header">
+                        <!-- TẦNG 1: Thông tin khách hàng và cơ bản -->
+                        <group name="customer_info">
                             <group name="partner_details">
                                 <field name="partner_id" options="{'no_create_edit': True}" context="{'show_address': 1, 'show_vat': True}"/>
-                                 <!-- Số đơn trên excel -->
+                                <!-- Số đơn trên excel -->
                                 <field name="order_number"
                                        string="Số đặt hàng"
                                        placeholder="VD: 8766"
@@ -97,16 +91,8 @@
                                        invisible="order_state_custom not in ['delivery', 'payment']"
                                        readonly="is_delivery_confirmed"
                                        widget="text"/>
-                                <field name="is_priority" 
-                                        string="Ưu tiên" 
-                                        widget="boolean_toggle"/>
-                                <field name="is_priority_today" 
-                                        string="Ưu tiên trong ngày" 
-                                        widget="boolean_toggle" 
-                                        readonly="not is_priority"
-                                        invisible="not is_priority"/>
                             </group>
-                            <group>
+                            <group name="staff_assignment">
                                 <!-- Hiển thị thông tin Sale, Thiết kế, Sản xuất -->
                                 <field name="user_id" 
                                        widget="many2one_avatar_user" 
@@ -117,13 +103,11 @@
                                        widget="many2one_avatar_user"
                                        string="Người thiết kế"
                                        />
-                                       
                                 <!-- Sản xuất -->
                                 <field name="user_id_production"
                                        widget="many2one_avatar_user"
                                        string="Người sản xuất"
                                        />
-
                                 <!-- Nhóm sản xuất -->
                                 <field name="production_group_ids"
                                        widget="many2many_tags"
@@ -131,8 +115,32 @@
                                        /> <!-- thêm domain="[('id','!=', user_id_production)]" nếu không để người phụ trách sản xuất vào-->
                             </group>
                         </group>
-                        <group>
-                            <group>
+
+                        <!-- TẦNG 2: Độ ưu tiên và Hình thức thực hiện -->
+                        <group name="priority_and_method">
+                            <group name="priority_settings">
+                                <separator string="Độ ưu tiên" />
+                                <field name="is_priority" 
+                                        string="Ưu tiên" 
+                                        widget="boolean_toggle"/>
+                                <field name="is_priority_today" 
+                                        string="Trong ngày" 
+                                        widget="boolean_toggle" 
+                                        readonly="not is_priority"
+                                        invisible="not is_priority"/>
+                            </group>
+                            <group name="fulfillment_settings">
+                                <separator string="Hình thức thực hiện" />
+                                <field name="fulfillment_method"
+                                       nolabel="1"
+                                       widget="radio"
+                                       invisible="order_state_custom not in ['production','delivery','installation','payment']"
+                                       readonly="order_state_custom in ['delivery','installation','payment','completed'] or is_delivery_confirmed or is_installation_confirmed"/>
+                            </group>
+                        </group>
+                        <!-- TẦNG 3: Đặt cọc & Thiết kế và Sản xuất -->
+                        <group name="deposit_design_production">
+                            <group name="deposit_design">
                                 <separator string="Đặt cọc &amp; Thiết kế" invisible="order_state_custom == 'quotation'"/>
                                 <field name="design_link" 
                                     string="Link thiết kế" 
@@ -183,7 +191,7 @@
                                         class="btn btn-success dac-invoice-button-standalone"/>
                                 </div>
                             </group>
-                            <group>
+                            <group name="production_details">
                                 <separator string="Sản xuất" invisible="order_state_custom == 'quotation'"/>
                                 <field name="production_image" 
                                        string="Hình ảnh" 
@@ -221,17 +229,17 @@
                                        string="Có trễ không?"
                                        widget="boolean_toggle"
                                        invisible="(order_state_custom in ['quotation','deposit']) and (not started_delivery)"
-                                       readonly="order_state_custom != 'production' or started_delivery"/>
+                                       readonly="order_state_custom != 'production' or started_delivery or started_installation"/>
                                 <field name="production_delay_date"
                                        string="Ngày trễ"
-                                       invisible="(not production_is_delayed) or ((order_state_custom in ['quotation','deposit']) and (not started_delivery))"
-                                       readonly="order_state_custom != 'production' or started_delivery"/>
+                                       invisible="(not production_is_delayed) or ((order_state_custom in ['quotation','deposit']) and (not started_delivery and not started_installation))"
+                                       readonly="order_state_custom != 'production' or started_delivery or started_installation"/>
                                 <field name="production_delay_reason"
                                        string="Lý do trễ"
                                        widget="text"
                                        placeholder="Hãy điền nguyên nhân trễ…"
-                                       invisible="(not production_is_delayed) or ((order_state_custom in ['quotation','deposit']) and (not started_delivery))"
-                                       readonly="order_state_custom != 'production' or started_delivery"/>
+                                       invisible="(not production_is_delayed) or ((order_state_custom in ['quotation','deposit']) and (not started_delivery and not started_installation))"
+                                       readonly="order_state_custom != 'production' or started_delivery or started_installation"/>
                                        
                                 <!-- Nút đánh dấu hoàn thành sản xuất -->
                                 <button name="action_mark_production_done"
@@ -376,6 +384,15 @@
                                         or not production_deadline
                                         or (has_deposit and (not is_deposit_confirmed or not has_paid_deposit_invoice))
                                     "/>
+                                
+                                <!-- Nút "Tiến hành thi công" cho trạng thái production -->
+                                <button name="action_proceed_to_installation"
+                                        string="Tiến hành thi công"
+                                        type="object" 
+                                        class="btn-primary"
+                                        groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"
+                                        invisible="order_state_custom != 'production' or not is_production_confirmed or fulfillment_method != 'installation'"/>
+
 
                                 <!-- Nút "Tiến hành giao hàng" cho trạng thái production -->
                                 <button name="action_proceed_to_delivery"
@@ -383,7 +400,7 @@
                                     type="object"
                                     class="btn-primary"
                                     groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"
-                                    invisible="order_state_custom != 'production' or not is_production_confirmed"/>
+                                    invisible="order_state_custom != 'production' or not is_production_confirmed or fulfillment_method != 'delivery'"/>
 
                                 <!-- Nút Xác nhận cho các tiến trình khác (chỉ delivery) -->
                                 <button name="action_confirm_info"
@@ -394,6 +411,14 @@
                                         order_state_custom != 'delivery'
                                         or is_delivery_confirmed
                                     "/>
+                                <!-- Nút Xác nhận cho tiến trình lắp đặt (installation) -->
+                                <button name="action_confirm_info" 
+                                    string="Xác nhận" 
+                                    type="object" 
+                                    class="btn-warning"
+                                    invisible="
+                                        order_state_custom != 'installation' 
+                                        or is_installation_confirmed"/>
 
                                 <!-- Nút Tạo hóa đơn ở bước cuối cùng (payment) -->
                                 <button name="action_create_final_invoice"
@@ -422,18 +447,27 @@
                         </div>
                     </sheet>
                     
-                    <!-- Conversation Widget - TRONG form với position fixed để hiện ở control panel -->
+                    <!-- Conversation Widget - Draggable với bubble mode -->
                     <div id="conversation-floating-widget" 
                          class="conversation-widget-container"
                          groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"
                          invisible="conversation_count == 0">
                         
-                        <!-- Static Conversation Widget -->
-                        <div class="conversation-widget">
-                                    
-                            <!-- Header (Non-draggable) -->
+                        <!-- Draggable Conversation Widget -->
+                        <div class="conversation-widget" id="conversation-widget">
+                            
+                            <!-- Bubble Mode Content (hidden by default) -->
+                            <div class="conversation-bubble-content">
+                                <i class="fa fa-comments" style="font-size: 20px;"></i>
+                                <div style="font-size: 10px; margin-top: 2px;">
+                                    <field name="conversation_count"/>
+                                </div>
+                            </div>
+                            
+                            <!-- Normal Widget Header (Draggable) -->
                             <div class="conversation-header">
                                 <div class="conversation-header-left">
+                                    <i class="fa fa-arrows drag-handle" title="Kéo để di chuyển"></i>
                                     <i class="fa fa-comments conversation-header-icon"></i>
                                     <span class="conversation-header-title">Tin nhắn Pancake</span>
                                     <span class="conversation-header-count">
@@ -441,6 +475,9 @@
                                     </span>
                                 </div>
                                 <div class="conversation-header-right">
+                                    <i class="fa fa-compress bubble-toggle-btn" 
+                                       title="Chuyển sang bubble mode"
+                                       style="margin-right: 8px; cursor: pointer;"></i>
                                     <i class="fa fa-chevron-down conversation-toggle" 
                                        title="Thu gọn/Mở rộng"></i>
                                 </div>
@@ -462,6 +499,16 @@
                                         Click để mở Pancake
                                     </span>
                                 </div>
+                            </div>
+                            
+                            <!-- Notification badge for bubble mode -->
+                            <div class="bubble-notification" style="display: none;">
+                                <field name="conversation_count"/>
+                            </div>
+                            
+                            <!-- Expand button for bubble mode -->
+                            <div class="bubble-toggle" style="display: none;">
+                                <i class="fa fa-expand"></i>
                             </div>
                         </div>
                     </div>
@@ -504,7 +551,7 @@
                     <field name="user_id_design" widget="many2one_avatar_user" string="Người thiết kế"/>
                     <field name="user_id_production" widget="many2one_avatar_user" string="Người sản xuất"/>
                     <field name="amount_total" sum="Total" widget="monetary"/>
-                    <field name="order_state_custom" widget="badge" string="Trạng thái"/>
+                    <field name="order_state_badge" widget="html" string="Trạng thái"/>
                     <field name="is_priority" string="Ưu tiên"/>
                     <field name="is_priority_today" string="Trong ngày"/>
                     <field name="production_deadline" string="Ngày hoàn tất sản xuất"/>
@@ -525,7 +572,6 @@
                     <field name="company_id" invisible="1" optional="hide"/>
                     <field name="currency_id" invisible="1" optional="hide"/>
                     <field name="pricelist_id" invisible="1" optional="hide"/>
-                    
                     <field name="create_date" string="Ngày tạo đơn (hệ thống)" optional="hide"/>
                     <field name="order_number" string="Số đặt hàng"/>
                     <field name="date" string="Ngày đơn hàng"/>
@@ -534,7 +580,7 @@
                     <field name="user_id_design" widget="many2one_avatar_user" string="Người thiết kế"/>
                     <field name="user_id_production" widget="many2one_avatar_user" string="Người sản xuất"/>
                     <field name="amount_total" sum="Total" widget="monetary"/>
-                    <field name="order_state_custom" widget="badge" string="Trạng thái"/>
+                    <field name="order_state_badge" widget="html" string="Trạng thái"/>
                     <field name="is_priority" string="Ưu tiên"/>
                     <field name="is_priority_today" string="Trong ngày"/>
                     <field name="production_deadline" string="Ngày hoàn tất sản xuất"/>
@@ -553,6 +599,7 @@
                     <filter string="Báo giá" name="quotation" domain="[('order_state_custom', '=', 'quotation')]"/>
                     <filter string="Đặt cọc" name="deposit" domain="[('order_state_custom', '=', 'deposit')]"/>
                     <filter string="Sản xuất" name="production" domain="[('order_state_custom', '=', 'production')]"/>
+                    <filter string="Thi công - lắp đặt" name="installation" domain="[('order_state_custom','=','installation')]"/>
                     <filter string="Giao hàng" name="delivery" domain="[('order_state_custom', '=', 'delivery')]"/>
                     <filter string="Thu tiền" name="payment" domain="[('order_state_custom', '=', 'payment')]"/>
                     <filter string="Hủy" name="cancel" domain="[('order_state_custom', '=', 'cancel')]"/>

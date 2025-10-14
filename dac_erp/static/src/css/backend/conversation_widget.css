@@ -1,44 +1,179 @@
 /* Conversation Widget Styling */
 .conversation-widget-container {
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  position: fixed !important;
+  top: 100px;
+  right: 20px;
+  z-index: 1050;
+  width: auto;
+  max-width: 250px;
+  /* Draggable properties */
+  cursor: move;
+  user-select: none;
+}
+
+.conversation-widget-container.bubble-mode {
+  width: 60px;
+  height: 60px;
+  max-width: 60px;
 }
 
 .conversation-widget {
   transition: all 0.3s ease;
-  min-width: 200px; /* Giảm từ 300px */
-  max-width: 250px; /* Giảm từ 350px */
+  min-width: 200px;
+  max-width: 250px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  border: 1px solid #dee2e6;
+  overflow: hidden;
 }
 
+.conversation-widget.bubble-mode {
+  min-width: 60px;
+  max-width: 60px;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+  border: 2px solid #007bff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  cursor: pointer;
+}
+
+/* Bubble content */
+.conversation-bubble-content {
+  display: none;
+  color: white;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.conversation-widget.bubble-mode .conversation-bubble-content {
+  display: block;
+}
+
+.conversation-widget.bubble-mode .conversation-header,
+.conversation-widget.bubble-mode .conversation-content {
+  display: none;
+}
+
+/* Dragging states */
 .conversation-widget.dragging {
   opacity: 0.9;
   transform: scale(1.02);
   box-shadow: 0 12px 35px rgba(0, 0, 0, 0.25) !important;
+  z-index: 9999;
 }
 
-/* Chỉ hiện icon kéo khi đang giữ chuột */
+.conversation-widget-container.is-dragging {
+  z-index: 9999;
+}
+
+/* Header modifications for drag handle */
+.conversation-header {
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  color: white;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+  cursor: move; /* Entire header is draggable */
+}
+
+.conversation-header:hover {
+  background: linear-gradient(135deg, #0056b3, #004085);
+}
+
+/* Drag handle icon */
 .drag-handle {
-  cursor: default !important;
-}
-
-.is-dragging .drag-handle {
-  cursor: grabbing !important;
+  cursor: move !important;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
 }
 
 .drag-handle:hover {
-  background: linear-gradient(135deg, #0056b3, #004085) !important;
+  opacity: 1;
 }
 
+.conversation-header.is-dragging {
+  cursor: grabbing !important;
+}
+
+/* Toggle button improvements */
 .conversation-toggle {
   cursor: pointer !important;
+  transition: all 0.2s ease;
+  padding: 4px;
+  border-radius: 3px;
 }
 
 .conversation-toggle:hover {
-  opacity: 1 !important;
+  background: rgba(255, 255, 255, 0.2);
   transform: scale(1.1);
 }
 
+/* Bubble toggle button */
+.bubble-toggle {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #28a745;
+  color: white;
+  border: 2px solid white;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+}
+
+.bubble-toggle:hover {
+  background: #218838;
+  transform: scale(1.1);
+}
+
+/* Content styling */
 .conversation-content {
   transition: all 0.3s ease;
+  padding: 14px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: #fafafa;
+  display: none;
+}
+
+.conversation-widget:not(.bubble-mode) .conversation-content.expanded {
+  display: block;
+}
+
+/* Notification badge on bubble */
+.bubble-notification {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: #dc3545;
+  color: white;
+  border-radius: 50%;
+  min-width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: bold;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 /* Prevent text selection during drag */
