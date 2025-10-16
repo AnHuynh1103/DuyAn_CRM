@@ -142,22 +142,46 @@
                         <group name="deposit_design_production">
                             <group name="deposit_design">
                                 <separator string="Đặt cọc &amp; Thiết kế" invisible="order_state_custom == 'quotation'"/>
-                                <field name="design_link" 
-                                    string="Link thiết kế" 
-                                    placeholder="Điền link thiết kế ở đây (Google Drive, Figma, v.v.)" 
-                                    invisible="order_state_custom == 'quotation'"/>
-                                <button name="action_submit_design_link"
-                                        type="object"
-                                        class="btn btn-secondary"
-                                        string="Xác nhận"
-                                        groups="dac_erp.group_dac_erp_design,dac_erp.group_dac_erp_production,dac_erp.group_dac_erp_manager,base.group_system"
-                                        invisible="not (order_state_custom in ['deposit','production'])"/>
+                                <!-- DESIGN + ADMIN: highlight (admin xem giống design) -->
+                                <!-- Ô nhập: kéo full bề ngang -->
+                                <div class="dac-dp-block"
+                                    groups="dac_erp.group_dac_erp_design,dac_erp.group_dac_erp_production,dac_erp.group_dac_erp_manager"
+                                    invisible="order_state_custom == 'quotation'">
+
+                                    <div class="dac-dp-card">
+                                        <field name="design_link" nolabel="1"
+                                            placeholder="Hãy nhập link thiết kế"/>
+
+
+                                        <!-- Nút 'Hoàn thành' CHỈ CHO DESIGN + PRODUCTION + MANAGER -->
+                                        <button name="action_submit_design_link"
+                                            type="object"
+                                            class="btn btn-success o_col-12 dac-dp-submit"
+                                            string="Hoàn thành"
+                                            groups="dac_erp.group_dac_erp_design,dac_erp.group_dac_erp_production,dac_erp.group_dac_erp_manager"
+                                            invisible="not (order_state_custom in ['deposit','production']) or design_done"/>
+                                    </div>       
+                                </div>
+                                
+                                <field name="design_link"
+                                    class="o_w-100"
+                                    groups="dac_erp.group_dac_erp_sale"
+                                    placeholder="Link thiết kế"/>
+
+                                <!-- 3 field lưu trạng thái hoàn tất -->
+                                <field name="design_done" readonly="1" invisible="not design_done"/>
+                                <field name="design_done_user_id" invisible="1"/>
+                                <field name="design_done_date" invisible="1"/>
+
+                                <!-- Tiền cọc-->
                                 <field name="has_deposit"
                                        invisible="order_state_custom == 'quotation' and not is_deposit_confirmed"
-                                       readonly="is_deposit_confirmed or order_state_custom != 'deposit' or is_production_confirmed"/>
+                                       readonly="is_deposit_confirmed or order_state_custom != 'deposit' or is_production_confirmed"
+                                       groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"/>
                                 <!-- Div tiền cọc: Luôn hiện ở mọi tiến trình trừ báo giá đầu tiên, chỉ ẩn nếu không có cọc hoặc đang ở quotation -->
                                 <div invisible="(order_state_custom == 'quotation' and not is_deposit_confirmed) or not has_deposit" 
-                                     class="dac-deposit-container">
+                                     class="dac-deposit-container"
+                                     groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system">
                                     <div class="dac-deposit-flex">
                                         <label for="deposit_amount" class="dac-deposit-label">TIỀN CỌC</label>
                                         <div class="dac-deposit-amount-container">
@@ -165,7 +189,8 @@
                                                 <field name="deposit_amount"
                                                        class="dac-deposit-amount-field"
                                                        readonly="is_deposit_confirmed"
-                                                       widget="integer"/>
+                                                       widget="integer"
+                                                       groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"/>
                                                 <span class="dac-deposit-currency">đ</span>
                                             </div>
                                         </div>
@@ -173,6 +198,7 @@
                                             string="Lên cọc"
                                             type="object"
                                             class="btn btn-success dac-invoice-button"
+                                            groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"
                                             invisible="not (order_state_custom == 'deposit' and has_deposit and not is_deposit_confirmed)"/>
                                         <!-- Nút Xem hóa đơn cho đơn CÓ cọc - nằm cùng hàng -->
                                         <button name="action_view_all_invoices"
@@ -188,6 +214,7 @@
                                     <button name="action_view_all_invoices"
                                         string="Xem hóa đơn"
                                         type="object"
+                                        groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"
                                         class="btn btn-success dac-invoice-button-standalone"/>
                                 </div>
                             </group>
@@ -370,8 +397,8 @@
                                     class="btn-warning"
                                     invisible="
                                         order_state_custom != 'quotation'
-                                        or is_quotation_confirmed
-                                    "/>
+                                        or is_quotation_confirmed"
+                                    groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"/>
 
                                 <!-- Nút "Tiến hành sản xuất" cho trạng thái deposit với logic mới -->
                                 <button name="action_proceed_to_production"
@@ -382,8 +409,8 @@
                                     invisible="
                                         order_state_custom != 'deposit'
                                         or not production_deadline
-                                        or (has_deposit and (not is_deposit_confirmed or not has_paid_deposit_invoice))
-                                    "/>
+                                        or (has_deposit and (not is_deposit_confirmed or not has_paid_deposit_invoice))"
+                                    groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"/>
                                 
                                 <!-- Nút "Tiến hành thi công" cho trạng thái production -->
                                 <button name="action_proceed_to_installation"
@@ -409,8 +436,8 @@
                                     class="btn-warning"
                                     invisible="
                                         order_state_custom != 'delivery'
-                                        or is_delivery_confirmed
-                                    "/>
+                                        or is_delivery_confirmed"
+                                    groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"/>
                                 <!-- Nút Xác nhận cho tiến trình lắp đặt (installation) -->
                                 <button name="action_confirm_info" 
                                     string="Xác nhận" 
@@ -418,13 +445,15 @@
                                     class="btn-warning"
                                     invisible="
                                         order_state_custom != 'installation' 
-                                        or is_installation_confirmed"/>
+                                        or is_installation_confirmed"
+                                    groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"/>
 
                                 <!-- Nút Tạo hóa đơn ở bước cuối cùng (payment) -->
                                 <button name="action_create_final_invoice"
                                     string="Tạo hóa đơn"
                                     type="object"
                                     class="btn-success"
+                                    groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"
                                     invisible="order_state_custom != 'payment' or is_payment_confirmed or has_final_invoice"/>
 
                                 <!-- Nút Chuyển sang tiến trình tiếp theo: Đặt cọc -->
@@ -432,7 +461,8 @@
                                     string="Đặt cọc"
                                     type="object"
                                     class="btn-primary"
-                                    invisible="order_state_custom != 'quotation' or not is_quotation_confirmed"/>
+                                    invisible="order_state_custom != 'quotation' or not is_quotation_confirmed"
+                                    groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"/>
                                     
                                 <!-- Nút Chuyển sang tiến trình tiếp theo: Thu tiền -->
                                 <!-- Bỏ nút Giao hàng vì đã có nút "Tiến hành giao hàng" riêng -->
@@ -440,7 +470,8 @@
                                     string="Thu tiền"
                                     type="object"
                                     class="btn-primary"
-                                    invisible="order_state_custom != 'delivery' or not is_delivery_confirmed"/>
+                                    invisible="order_state_custom != 'delivery' or not is_delivery_confirmed"
+                                    groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"/>
                                 <!-- Nút Chuyển sang tiến trình tiếp theo: Ẩn ở bước cuối cùng -->
                                 <!-- Không cần nút cho bước 'payment' vì không có bước tiếp theo -->
                             </div>

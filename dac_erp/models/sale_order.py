@@ -717,6 +717,10 @@ class SaleOrder(models.Model):
 
     def action_deposit_invoice(self):
         for order in self:
+            if not (self.env.user.has_group('dac_erp.group_dac_erp_sale')
+                    or self.env.user.has_group('dac_erp.group_dac_erp_manager')
+                    or self.env.user.has_group('base.group_system')):
+                raise AccessError(_("Bạn không có quyền tạo/xem hóa đơn cọc."))
             if order.is_deposit_confirmed:
                 raise UserError("Đặt cọc đã được xác nhận, không thể xác nhận lại!")
             if order.deposit_amount <= 0:
@@ -769,6 +773,10 @@ class SaleOrder(models.Model):
 
     def action_view_all_invoices(self):
         """Xem tất cả hóa đơn liên quan đến đơn hàng (cọc + thanh toán)"""
+        if not (self.env.user.has_group('dac_erp.group_dac_erp_sale')
+                or self.env.user.has_group('dac_erp.group_dac_erp_manager')
+                or self.env.user.has_group('base.group_system')):
+            raise AccessError(_("Bạn không có quyền xem hóa đơn."))
         self.ensure_one()
         action = self.env.ref('account.action_move_out_invoice_type').read()[0]
         all_invoices = self.env['account.move'].search([
@@ -1656,25 +1664,66 @@ class SaleOrder(models.Model):
             "target": "new",  # hoặc "self" nếu muốn tải trong tab hiện tại
         }
         
-    # --- Nút nộp link thiết kế ---
+    # ==== HOÀN TẤT THIẾT KẾ (fields) ====
+    design_done = fields.Boolean(
+        string="Đã hoàn tất thiết kế", default=False, copy=False, tracking=True
+    )
+    design_done_date = fields.Datetime(
+        string="Thời điểm hoàn tất", readonly=True, copy=False
+    )
+    design_done_user_id = fields.Many2one(
+        'res.users', string="Người xác nhận hoàn tất", readonly=True, copy=False
+    )    
+        
+    
+    # ==== NÚT 'Hoàn thành' CHO THIẾT KẾ ====
     def action_submit_design_link(self):
         self.ensure_one()
+
+        # Quyền: Design / Production / Manager / Admin
+        allowed = (
+            self.env.user.has_group('dac_erp.group_dac_erp_design')
+            or self.env.user.has_group('dac_erp.group_dac_erp_production')
+            or self.env.user.has_group('dac_erp.group_dac_erp_manager')
+            or self.env.user.has_group('base.group_system')
+        )
+        if not allowed:
+            raise UserError(_("Bạn không có quyền xác nhận hoàn thành thiết kế!"))
+
+        # Chỉ cho phép ở Đặt cọc hoặc Sản xuất
+        if self.order_state_custom not in ('deposit', 'production'):
+            raise UserError(_("Chỉ xác nhận khi đơn đang ở Đặt cọc hoặc Sản xuất."))
+
+        # Phải có link
         if not self.design_link:
-            raise UserError("Vui lòng nhập link thiết kế trước khi nộp.")
-        
+            raise UserError(_("Vui lòng nhập link thiết kế trước khi hoàn thành."))
+
+        if self.design_done:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _("Đã hoàn tất"),
+                    'message': _("Thiết kế đã được xác nhận trước đó."),
+                    'type': 'warning',
+                    'sticky': False,
+                },
+            }
+
+        self.write({
+            'design_done': True,
+            'design_done_date': fields.Datetime.now(),
+            'design_done_user_id': self.env.user.id,
+        })
+        self.message_post(body=_("%s đã xác nhận hoàn tất thiết kế.") % self.env.user.name)
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
-            'params': {
-                'title': 'Thành công!',
-                'message': 'Link thiết kế đã được nhập và ghi nhận!',
-                'type': 'success',
-                'sticky': False,
-            }
+            'params': {'title': _("Thành công"), 'message': _("Đã đánh dấu hoàn tất thiết kế."), 'type': 'success'},
         }
+
         
-    
-                
+       
     # --- Cờ hoàn tất sản xuất ---
     production_done = fields.Boolean(string="Đã hoàn tất sản xuất", default=False, copy=False, tracking=True)
     production_done_date = fields.Datetime(string="Thời điểm hoàn tất", readonly=True, copy=False)
@@ -2072,3 +2121,26 @@ class SaleOrder(models.Model):
             key = rec.order_state_custom or ''
             label = selection.get(key, key)
             rec.order_state_badge = rec._dac_make_badge(key, label)
+                    
+    # ===== UI flags for view visibility =====
+    is_admin_user = fields.Boolean(compute="_compute_user_flags", store=False)
+    is_manager_user = fields.Boolean(compute="_compute_user_flags", store=False)
+    is_design_user = fields.Boolean(compute="_compute_user_flags", store=False)
+    is_production_user = fields.Boolean(compute="_compute_user_flags", store=False)
+    is_sale_user = fields.Boolean(compute="_compute_user_flags", store=False)
+
+
+    def _compute_user_flags(self):
+        user = self.env.user
+        is_admin = user.has_group('base.group_system')
+        is_manager = user.has_group('dac_erp.group_dac_erp_manager')
+        is_design = user.has_group('dac_erp.group_dac_erp_design')
+        is_production = user.has_group('dac_erp.group_dac_erp_production')
+        is_sale = user.has_group('dac_erp.group_dac_erp_sale')
+        
+        for rec in self:
+            rec.is_admin_user = is_admin
+            rec.is_manager_user = is_manager
+            rec.is_design_user = is_design
+            rec.is_production_user = is_production
+            rec.is_sale_user = is_sale

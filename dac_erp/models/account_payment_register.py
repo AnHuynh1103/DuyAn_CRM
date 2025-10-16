@@ -11,6 +11,52 @@ class AccountPayment(models.Model):
     # Thêm field người phụ trách để phân quyền
     dac_user_id = fields.Many2one('res.users', string='Người phụ trách', default=lambda self: self.env.user)
 
+    def read(self, fields=None, load='_classic_read'):
+        """Override read để chặn Design/Production users truy cập phiếu thu"""
+        user = self.env.user
+        
+        # Chặn Design và Production (không phải Manager/Admin/Sale)
+        if (user.has_group('dac_erp.group_dac_erp_design') or 
+            user.has_group('dac_erp.group_dac_erp_production')) and \
+           not (user.has_group('dac_erp.group_dac_erp_manager') or 
+                user.has_group('dac_erp.group_dac_erp_sale') or
+                user.has_group('base.group_system')):
+            
+            _logger.warning(f"BLOCKED READ: User {user.name} (ID: {user.id}) tried to read account.payment {self.ids}")
+            
+            raise AccessError(
+                "Bạn không có quyền xem phiếu thu!\n\n"
+                "Nếu cần xem thông tin thanh toán, vui lòng liên hệ:\n"
+                "- Sale phụ trách đơn hàng\n"
+                "- Quản lý bộ phận kế toán\n\n"
+                "Cảm ơn bạn!"
+            )
+        
+        return super().read(fields, load)
+    
+    def web_read(self, specification):
+        """Override web_read để chặn JSON-RPC calls từ Design/Production users"""
+        user = self.env.user
+        
+        # Chặn Design và Production (không phải Manager/Admin/Sale)
+        if (user.has_group('dac_erp.group_dac_erp_design') or 
+            user.has_group('dac_erp.group_dac_erp_production')) and \
+           not (user.has_group('dac_erp.group_dac_erp_manager') or 
+                user.has_group('dac_erp.group_dac_erp_sale') or
+                user.has_group('base.group_system')):
+            
+            _logger.warning(f"BLOCKED WEB_READ: User {user.name} (ID: {user.id}) tried to web_read account.payment {self.ids}")
+            
+            raise AccessError(
+                "⛔ Bạn không có quyền xem phiếu thu!\n\n"
+                "Nếu cần xem thông tin thanh toán, vui lòng liên hệ:\n"
+                "- Sale phụ trách đơn hàng\n"
+                "- Quản lý bộ phận kế toán\n\n"
+                "Cảm ơn bạn!"
+            )
+        
+        return super().web_read(specification)
+
     def action_confirm_payment_custom(self):
         """Custom method để xác nhận thanh toán - từ draft sang posted"""
         self.ensure_one()

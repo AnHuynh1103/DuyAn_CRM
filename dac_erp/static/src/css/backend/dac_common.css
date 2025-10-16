@@ -116,3 +116,32 @@
 .dac-tickets-tall .dac-ticket {
   --dac-ticket-min-h: 120px;
 }
+
+/* ==== Highlight cho Design + Production ==== */
+.dac-dp-block {
+  /* container: xếp dọc, nút nằm dưới */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+.dac-dp-card {
+  /* khung nổi bật */
+  padding: 10px;
+  border: 2px dashed #1a73e8;
+  background: #e8f0fe;
+  border-radius: 8px;
+}
+
+/* field kéo full chiều ngang trong khung */
+.dac-dp-card .o_field_widget,
+.dac-dp-card .o_input,
+.dac-dp-card input,
+.dac-dp-card textarea {
+  width: 100% !important;
+}
+/* nút bên dưới, không full width dù dùng o_col-12 để xuống dòng */
+.dac-dp-submit {
+  width: auto;
+  display: inline-block;
+}

@@ -10,6 +10,52 @@ class AccountMove(models.Model):
 
     dac_deposit_invoice = fields.Boolean(string='Hóa đơn đặt cọc', default=False)
 
+    def read(self, fields=None, load='_classic_read'):
+        """Override read để chặn Design/Production users truy cập hóa đơn"""
+        user = self.env.user
+        
+        # Chặn Design và Production (không phải Manager/Admin/Sale)
+        if (user.has_group('dac_erp.group_dac_erp_design') or 
+            user.has_group('dac_erp.group_dac_erp_production')) and \
+           not (user.has_group('dac_erp.group_dac_erp_manager') or 
+                user.has_group('dac_erp.group_dac_erp_sale') or
+                user.has_group('base.group_system')):
+            
+            _logger.warning(f"BLOCKED READ: User {user.name} (ID: {user.id}) tried to read account.move {self.ids}")
+            
+            raise AccessError(
+                "Bạn không có quyền xem hóa đơn!\n\n"
+                "Nếu cần xem thông tin hóa đơn, vui lòng liên hệ:\n"
+                "- Sale phụ trách đơn hàng\n"
+                "- Quản lý bộ phận kế toán\n\n"
+                "Cảm ơn bạn!"
+            )
+        
+        return super().read(fields, load)
+    
+    def web_read(self, specification):
+        """Override web_read để chặn JSON-RPC calls từ Design/Production users"""
+        user = self.env.user
+        
+        # Chặn Design và Production (không phải Manager/Admin/Sale)
+        if (user.has_group('dac_erp.group_dac_erp_design') or 
+            user.has_group('dac_erp.group_dac_erp_production')) and \
+           not (user.has_group('dac_erp.group_dac_erp_manager') or 
+                user.has_group('dac_erp.group_dac_erp_sale') or
+                user.has_group('base.group_system')):
+            
+            _logger.warning(f"BLOCKED WEB_READ: User {user.name} (ID: {user.id}) tried to web_read account.move {self.ids}")
+            
+            raise AccessError(
+                "Bạn không có quyền xem hóa đơn!\n\n"
+                "Nếu cần xem thông tin hóa đơn, vui lòng liên hệ:\n"
+                "- Sale phụ trách đơn hàng\n"
+                "- Quản lý bộ phận kế toán\n\n"
+                "Cảm ơn bạn!"
+            )
+        
+        return super().web_read(specification)
+
     def unlink(self):
         """Kiểm tra quyền xóa hóa đơn - CHỈ ÁP DỤNG CHO SALES USERS"""
         for move in self:
@@ -476,16 +522,79 @@ class AccountMove(models.Model):
         return {'type': 'ir.actions.act_window_close'}
 
     def action_back_to_sale_order(self):
-        """Quay về đơn hàng"""
+        """Quay về đơn hàng - smart redirect với access check"""
         self.ensure_one()
         if self.invoice_origin:
             sale_order = self.env['sale.order'].search([('name', '=', self.invoice_origin)], limit=1)
             if sale_order:
-                return {
-                    'type': 'ir.actions.act_window',
-                    'res_model': 'sale.order',
-                    'view_mode': 'form',
-                    'res_id': sale_order.id,
-                    'target': 'current',
-                }
+                user = self.env.user
+                
+                # KIỂM TRA QUYỀN TRUY CẬP TRƯỚC KHI REDIRECT
+                if (user.has_group('dac_erp.group_dac_erp_design') or 
+                    user.has_group('dac_erp.group_dac_erp_production')) and \
+                   not (user.has_group('dac_erp.group_dac_erp_manager') or 
+                        user.has_group('dac_erp.group_dac_erp_sale') or
+                        user.has_group('base.group_system')):
+                    
+                    # Check xem user có quyền truy cập đơn hàng này không
+                    can_access = False
+                    if user.has_group('dac_erp.group_dac_erp_design'):
+                        can_access = (sale_order.user_id_design == user)
+                    elif user.has_group('dac_erp.group_dac_erp_production'):
+                        can_access = (sale_order.user_id_production == user or user in sale_order.production_group_ids)
+                    
+                    if not can_access:
+                        # User không có quyền → redirect về menu action với URL trực tiếp
+                        _logger.warning(f"ACCESS DENIED: User {user.name} (ID: {user.id}) tried to access order {sale_order.name} but not assigned")
+                        
+                        # Hiển thị thông báo qua bus
+                        self.env['bus.bus']._sendone(
+                            self.env.user.partner_id,
+                            'simple_notification',
+                            {
+                                'type': 'warning',
+                                'title': '⛔ Không có quyền truy cập',
+                                'message': f'Đơn hàng {sale_order.name} không được phân công cho bạn.\n\nVui lòng liên hệ Sale phụ trách.',
+                                'sticky': False,
+                            }
+                        )
+                        
+                        # Redirect về menu "Đang sản xuất > Đơn hàng" bằng cách return URL
+                        # Odoo sẽ tự động navigate đến menu action
+                        menu_design = self.env.ref('dac_erp.dac_sale_order_menu_design')
+                        
+                        return {
+                            'type': 'ir.actions.act_url',
+                            'url': f'/web#menu_id={menu_design.id}',
+                            'target': 'self',
+                        }
+                    
+                    # User có quyền → redirect về form view với action context
+                    action = self.env.ref('dac_erp.dac_sale_order_custom_action_design')
+                    form_view = self.env.ref('dac_erp.dac_sale_order_custom_view_form')
+                    
+                    return {
+                        'type': 'ir.actions.act_window',
+                        'name': 'Đơn hàng',
+                        'res_model': 'sale.order',
+                        'view_mode': 'form',
+                        'views': [(form_view.id, 'form')],
+                        'res_id': sale_order.id,
+                        'target': 'current',
+                        'context': dict(action.context or {}, **{
+                            'form_view_initial_mode': 'edit',
+                        }),
+                    }
+                else:
+                    # Manager/Sale/Admin → normal form view
+                    form_view = self.env.ref('dac_erp.dac_sale_order_custom_view_form')
+                    return {
+                        'type': 'ir.actions.act_window',
+                        'name': 'Đơn hàng',
+                        'res_model': 'sale.order',
+                        'view_mode': 'form',
+                        'views': [(form_view.id, 'form')],
+                        'res_id': sale_order.id,
+                        'target': 'current',
+                    }
         return {'type': 'ir.actions.act_window_close'}
