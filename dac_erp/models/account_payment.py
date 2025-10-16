@@ -254,7 +254,7 @@ class AccountPayment(models.Model):
 
     def action_back_to_sale_order(self):
         """
-        Quay về đơn hàng liên quan - cải thiện tìm kiếm
+        Quay về đơn hàng liên quan - smart redirect với access check
         """
         self.ensure_one()
         
@@ -265,14 +265,77 @@ class AccountPayment(models.Model):
                     ('name', '=', invoice.invoice_origin)
                 ], limit=1)
                 if sale_order:
-                    return {
-                        'type': 'ir.actions.act_window',
-                        'name': f'Đơn hàng - {sale_order.name}',
-                        'view_mode': 'form',
-                        'res_model': 'sale.order',
-                        'res_id': sale_order.id,
-                        'target': 'current',
-                    }
+                    user = self.env.user
+                    
+                    # KIỂM TRA QUYỀN TRUY CẬP
+                    if (user.has_group('dac_erp.group_dac_erp_design') or 
+                        user.has_group('dac_erp.group_dac_erp_production')) and \
+                       not (user.has_group('dac_erp.group_dac_erp_manager') or 
+                            user.has_group('dac_erp.group_dac_erp_sale') or
+                            user.has_group('base.group_system')):
+                        
+                        # Check access rights
+                        can_access = False
+                        if user.has_group('dac_erp.group_dac_erp_design'):
+                            can_access = (sale_order.user_id_design == user)
+                        elif user.has_group('dac_erp.group_dac_erp_production'):
+                            can_access = (sale_order.user_id_production == user or user in sale_order.production_group_ids)
+                        
+                        if not can_access:
+                            # User không có quyền → redirect về menu action với URL trực tiếp
+                            import logging
+                            _logger = logging.getLogger(__name__)
+                            _logger.warning(f"ACCESS DENIED: User {user.name} (ID: {user.id}) tried to access order {sale_order.name} but not assigned")
+                            
+                            # Hiển thị thông báo qua bus
+                            self.env['bus.bus']._sendone(
+                                self.env.user.partner_id,
+                                'simple_notification',
+                                {
+                                    'type': 'warning',
+                                    'title': '⛔ Không có quyền truy cập',
+                                    'message': f'Đơn hàng {sale_order.name} không được phân công cho bạn.\n\nVui lòng liên hệ Sale phụ trách.',
+                                    'sticky': False,
+                                }
+                            )
+                            
+                            # Redirect về menu "Đang sản xuất > Đơn hàng" bằng URL
+                            menu_design = self.env.ref('dac_erp.dac_sale_order_menu_design')
+                            
+                            return {
+                                'type': 'ir.actions.act_url',
+                                'url': f'/web#menu_id={menu_design.id}',
+                                'target': 'self',
+                            }
+                        
+                        # Có quyền → redirect về form view
+                        action = self.env.ref('dac_erp.dac_sale_order_custom_action_design')
+                        form_view = self.env.ref('dac_erp.dac_sale_order_custom_view_form')
+                        
+                        return {
+                            'type': 'ir.actions.act_window',
+                            'name': 'Đơn hàng',
+                            'res_model': 'sale.order',
+                            'view_mode': 'form',
+                            'views': [(form_view.id, 'form')],
+                            'res_id': sale_order.id,
+                            'target': 'current',
+                            'context': dict(action.context or {}, **{
+                                'form_view_initial_mode': 'edit',
+                            }),
+                        }
+                    else:
+                        # Manager/Sale/Admin → normal form view
+                        form_view = self.env.ref('dac_erp.dac_sale_order_custom_view_form')
+                        return {
+                            'type': 'ir.actions.act_window',
+                            'name': f'Đơn hàng - {sale_order.name}',
+                            'view_mode': 'form',
+                            'views': [(form_view.id, 'form')],
+                            'res_model': 'sale.order',
+                            'res_id': sale_order.id,
+                            'target': 'current',
+                        }
         
         # Cách 2: Tìm qua name field (fallback)
         if self.name:
