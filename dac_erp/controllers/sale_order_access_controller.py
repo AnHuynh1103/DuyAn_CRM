@@ -98,9 +98,16 @@ class SaleOrderAccessController(http.Controller):
                         }
                     )
                     
-                    # Redirect về menu Design/Production
-                    menu_design = request.env.ref('dac_erp.dac_sale_order_menu_design')
-                    return request.redirect(f'/web#menu_id={menu_design.id}')
+                    # Redirect về menu phù hợp theo group
+                    if user.has_group('dac_erp.group_dac_erp_design'):
+                        menu = request.env.ref('dac_erp.dac_sale_order_menu_design_only')
+                    elif user.has_group('dac_erp.group_dac_erp_production'):
+                        menu = request.env.ref('dac_erp.dac_sale_order_menu_production_only')
+                    else:
+                        # Fallback: redirect về root menu "Đang sản xuất"
+                        menu = request.env.ref('dac_erp.dac_design_root_menu')
+                    
+                    return request.redirect(f'/web#menu_id={menu.id}')
             
             # CASE 3: User không thuộc nhóm nào → Deny
             _logger.warning(f"[INTERCEPT] User {user.name} has no relevant groups")
@@ -115,9 +122,21 @@ class SaleOrderAccessController(http.Controller):
         Redirect đến form view của đơn hàng với action phù hợp
         """
         if is_design_production:
-            # Design/Production → dùng action của họ
-            action = request.env.ref('dac_erp.dac_sale_order_custom_action_design')
-            form_view = request.env.ref('dac_erp.dac_sale_order_custom_view_form')
+            # Xác định action cụ thể dựa vào user group
+            user = request.env.user
+            
+            if user.has_group('dac_erp.group_dac_erp_design'):
+                # Người thiết kế → action thiết kế
+                action = request.env.ref('dac_erp.dac_sale_order_action_design_only')
+                _logger.info(f"[INTERCEPT] Using Design action for user {user.name}")
+            elif user.has_group('dac_erp.group_dac_erp_production'):
+                # Người sản xuất → action sản xuất
+                action = request.env.ref('dac_erp.dac_sale_order_action_production_only')
+                _logger.info(f"[INTERCEPT] Using Production action for user {user.name}")
+            else:
+                # Fallback - dùng action cũ
+                action = request.env.ref('dac_erp.dac_sale_order_custom_action_design')
+                _logger.info(f"[INTERCEPT] Using fallback action for user {user.name}")
             
             # Build URL với action, view_id, và id
             url = f'/web#id={sale_order_id}&model=sale.order&view_type=form&action={action.id}'

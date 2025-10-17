@@ -299,17 +299,29 @@ class AccountPayment(models.Model):
                                 }
                             )
                             
-                            # Redirect về menu "Đang sản xuất > Đơn hàng" bằng URL
-                            menu_design = self.env.ref('dac_erp.dac_sale_order_menu_design')
+                            # Redirect về menu phù hợp theo group
+                            if user.has_group('dac_erp.group_dac_erp_design'):
+                                menu = self.env.ref('dac_erp.dac_sale_order_menu_design_only')
+                            elif user.has_group('dac_erp.group_dac_erp_production'):
+                                menu = self.env.ref('dac_erp.dac_sale_order_menu_production_only')
+                            else:
+                                # Fallback: redirect về root menu "Đang sản xuất"
+                                menu = self.env.ref('dac_erp.dac_design_root_menu')
                             
                             return {
                                 'type': 'ir.actions.act_url',
-                                'url': f'/web#menu_id={menu_design.id}',
+                                'url': f'/web#menu_id={menu.id}',
                                 'target': 'self',
                             }
                         
-                        # Có quyền → redirect về form view
-                        action = self.env.ref('dac_erp.dac_sale_order_custom_action_design')
+                        # Có quyền → redirect về form view với action đúng theo group
+                        if user.has_group('dac_erp.group_dac_erp_design'):
+                            action = self.env.ref('dac_erp.dac_sale_order_action_design_only')
+                        elif user.has_group('dac_erp.group_dac_erp_production'):
+                            action = self.env.ref('dac_erp.dac_sale_order_action_production_only')
+                        else:
+                            action = self.env.ref('dac_erp.dac_sale_order_custom_action_design')  # fallback
+                        
                         form_view = self.env.ref('dac_erp.dac_sale_order_custom_view_form')
                         
                         return {
