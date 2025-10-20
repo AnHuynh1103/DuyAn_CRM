@@ -8,8 +8,10 @@
       <field name="arch" type="xml">
         <!-- Chèn vào group đầu tiên trên sheet -->
         <xpath expr="//sheet//group" position="inside">
-          <group string="Pancake">
-            <field name="pancake_id" placeholder="Pancake Admin ID" readonly="1"/>
+          <group string="Pancake" groups="dac_erp.group_dac_erp_manager">
+            <field name="pancake_id" 
+                   placeholder="Pancake Admin ID" 
+                   readonly="1"/>
           </group>
         </xpath>
       </field>
@@ -23,8 +25,10 @@
       <field name="priority">100</field>
       <field name="arch" type="xml">
         <xpath expr="//sheet//group" position="inside">
-          <group string="Pancake">
-            <field name="pancake_id" placeholder="Pancake Admin ID" readonly="1"/>
+          <group string="Pancake" groups="dac_erp.group_dac_erp_manager">
+            <field name="pancake_id" 
+                   placeholder="Pancake Admin ID" 
+                   readonly="1"/>
           </group>
         </xpath>
       </field>

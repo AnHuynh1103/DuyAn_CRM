@@ -145,3 +145,22 @@
   width: auto;
   display: inline-block;
 }
+
+/* Accent riêng cho dashboard Design */
+.o_dac_dashboard.dac-theme-design .k-value {
+  color: #2563eb;
+} /* KPI */
+.o_dac_dashboard.dac-theme-design .badge-priority {
+  background: #2563eb !important;
+}
+.o_dac_dashboard.dac-theme-design .badge-today {
+  background: #dc2626 !important;
+}
+.ticket-done {
+  background: #f2fbf5;
+  border-left: 6px solid #28a745;
+}
+.badge-done {
+  background: #28a745;
+  color: #fff;
+}

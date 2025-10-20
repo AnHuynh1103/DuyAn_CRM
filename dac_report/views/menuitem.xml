@@ -4,6 +4,7 @@
     <menuitem id="dac_sale_dashboard_menu_root"
               name="Dashboard"
               action="dac_sale_dashboard_action"
+              groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager"
               sequence="-100"/>
 
 

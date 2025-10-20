@@ -41,7 +41,7 @@
         'security/account_access_rules.xml',
         'data/currency_data.xml',
         'data/cron_data.xml',  
-        'views/design_dashboard_action.xml',
+        'views/action_dashboard.xml',
         'views/sale_order_view.xml',
         'views/sale_order_design_view.xml',
         'views/deposit_confirm_wizard_view.xml',

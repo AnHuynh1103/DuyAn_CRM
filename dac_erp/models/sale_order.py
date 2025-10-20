@@ -415,6 +415,52 @@ class SaleOrder(models.Model):
             for record in self:
                 record._auto_sync_deposit_line()
         
+        if 'is_priority_today' in vals:
+            today = fields.Date.context_today(self)
+            for rec in self:
+                if rec.order_state_custom == 'deposit' and not rec.design_done:
+                    base_date = rec.design_assigned_date or today
+                    vals2 = {}
+                    # Bảo đảm có ngày phân công
+                    if not rec.design_assigned_date:
+                        vals2['design_assigned_date'] = base_date
+                    # Luôn cập nhật lại deadline theo rule ưu tiên/ngày thường
+                    vals2['design_deadline'] = base_date if rec.is_priority_today else (base_date + timedelta(days=3))
+                    if vals2:
+                        super(SaleOrder, rec.with_context(skip_design_autoset=True)).write(vals2)
+         
+        if 'user_id_design' in vals:
+            today = fields.Date.context_today(self)
+            for rec in self:
+                # chỉ set khi đang gán designer (không phải bỏ gán) và chưa có ngày phân công
+                if vals.get('user_id_design') and not rec.design_assigned_date:
+                    # tránh đệ quy sang block autoset phía dưới
+                    super(SaleOrder, rec.with_context(skip_design_autoset=True)).write({
+                        'design_assigned_date': today
+                    })
+                  
+        
+        # 6) === Auto set ngày giao & deadline thiết kế khi vào Đặt cọc / Sản xuất ===
+        if not self.env.context.get('skip_design_autoset'):
+            today = fields.Date.context_today(self)
+            for rec in self:
+                # Chạy khi đang ở deposit và chưa hoàn tất thiết kế
+                if rec.order_state_custom == 'deposit' and not rec.design_done:
+                    base_date = rec.design_assigned_date or today  # CHỈ dựa vào ngày phân công
+
+                    vals2 = {}
+                    # Nếu chưa có ngày phân công mà đã vào luồng thiết kế → gán hôm nay
+                    if not rec.design_assigned_date:
+                        vals2['design_assigned_date'] = base_date
+                    # Nếu chưa có deadline → dựa trên base_date và ưu tiên trong ngày
+                    if not rec.design_deadline:
+                        vals2['design_deadline'] = (
+                            base_date if rec.is_priority_today else (base_date + timedelta(days=3))
+                        )
+                    if vals2:
+                        super(SaleOrder, rec.with_context(skip_design_autoset=True)).write(vals2)
+        
+        
         # Nếu đổi lead hoặc đổi nhóm → dọn cho chắc
         if 'user_id_production' in vals or 'production_group_ids' in vals:
             for rec in self:
@@ -1664,7 +1710,12 @@ class SaleOrder(models.Model):
             "target": "new",  # hoặc "self" nếu muốn tải trong tab hiện tại
         }
         
-    # ==== HOÀN TẤT THIẾT KẾ (fields) ====
+    # ==== HOÀN TẤT THIẾT KẾ & DEADLINE ====
+    design_assigned_date = fields.Date(string="Ngày giao thiết kế", tracking=True)
+    design_deadline = fields.Date(string="Deadline thiết kế", 
+                                  tracking=True,
+                                  help="Hạn chót hoàn tất thiết kế")
+    
     design_done = fields.Boolean(
         string="Đã hoàn tất thiết kế", default=False, copy=False, tracking=True
     )
@@ -1675,6 +1726,21 @@ class SaleOrder(models.Model):
         'res.users', string="Người xác nhận hoàn tất", readonly=True, copy=False
     )    
         
+    # Deadline mặc định 3 ngày sau khi tạo đơn
+    @api.onchange('user_id_design', 'design_assigned_date', 'is_priority_today')
+    def _onchange_default_design_deadline(self):
+        """Khi gán designer hoặc set ngày phân công mà chưa có deadline → tự set:
+        - 'Trong ngày' → hôm nay
+        - bình thường → +3 ngày
+        """
+        for order in self:
+            # Nếu có designer mà chưa có ngày phân công → lấy hôm nay
+            if order.user_id_design and not order.design_assigned_date:
+                order.design_assigned_date = fields.Date.context_today(order)
+            if order.design_assigned_date and not order.design_deadline:
+                base = order.design_assigned_date
+                order.design_deadline = base if order.is_priority_today else base + timedelta(days=3)
+    
     
     # ==== NÚT 'Hoàn thành' CHO THIẾT KẾ ====
     def action_submit_design_link(self):
@@ -1698,6 +1764,7 @@ class SaleOrder(models.Model):
         if not self.design_link:
             raise UserError(_("Vui lòng nhập link thiết kế trước khi hoàn thành."))
 
+        # Đã hoàn tất trước đó?
         if self.design_done:
             return {
                 'type': 'ir.actions.client',
@@ -1710,17 +1777,20 @@ class SaleOrder(models.Model):
                 },
             }
 
-        self.write({
+        # Bổ sung ngày giao & deadline nếu còn trống 
+        today = fields.Date.context_today(self)
+        vals_done = {
             'design_done': True,
             'design_done_date': fields.Datetime.now(),
             'design_done_user_id': self.env.user.id,
-        })
-        self.message_post(body=_("%s đã xác nhận hoàn tất thiết kế.") % self.env.user.name)
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {'title': _("Thành công"), 'message': _("Đã đánh dấu hoàn tất thiết kế."), 'type': 'success'},
         }
+        base = self.design_assigned_date or today
+        if not self.design_assigned_date:
+            vals_done['design_assigned_date'] = base
+        if not self.design_deadline:
+            vals_done['design_deadline'] = base if self.is_priority_today else (base + timedelta(days=3))
+        self.write(vals_done)
+        return {'type': 'ir.actions.client', 'tag': 'reload'}
 
         
        
