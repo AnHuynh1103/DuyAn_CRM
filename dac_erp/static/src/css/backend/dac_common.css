@@ -164,3 +164,20 @@
   background: #28a745;
   color: #fff;
 }
+.badge-missing {
+  background: #ff9f1a !important;
+  color: #fff !important;
+}
+
+/* nắn khoảng cách giữa KPI và board theo chủ đề Design */
+.o_dac_dashboard.dac-theme-design .kpi-row {
+  margin-bottom: 16px;
+}
+@media (min-width: 992px) {
+  .o_dac_dashboard.dac-theme-design .kpi-row {
+    margin-bottom: 20px;
+  }
+}
+.o_dac_dashboard.dac-theme-design .board-row {
+  margin-top: 8px;
+}

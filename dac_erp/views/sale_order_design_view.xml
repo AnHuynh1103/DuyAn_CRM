@@ -48,7 +48,7 @@
             </field>
         </record>
 
-        <!-- Action MỚI cho NGƯỜI THIẾT KẾ: Báo giá → Đặt cọc -->
+        <!-- Action MỚI cho NGƯỜI THIẾT KẾ: Chỉ xem đơn chưa có link thiết kế -->
         <record id="dac_sale_order_action_design_only" model="ir.actions.act_window">
             <field name="name">Đơn hàng - Thiết kế</field>
             <field name="res_model">sale.order</field>
@@ -58,8 +58,11 @@
             <field name="context">{}</field>
             <field name="domain">
                 [
-                    ('order_state_custom', 'in', ['quotation', 'deposit']),
-                    ('user_id_design', '=', uid)
+                    ('order_state_custom', 'in', ['quotation', 'deposit', 'production']),
+                    ('user_id_design', '=', uid),
+                    '|',
+                        ('design_link', '=', False),
+                        ('design_done', '=', False)
                 ]
             </field>
             <field name="groups_id" eval="[(4, ref('dac_erp.group_dac_erp_design'))]"/>

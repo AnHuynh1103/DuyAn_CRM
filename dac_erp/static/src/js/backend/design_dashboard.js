@@ -58,7 +58,10 @@ class DesignDashboard extends Component {
         "dac_get_dashboard_design",
         []
       );
-      this.state.data = data || { kpi: {}, lists: { todo: [], designing: [] } };
+      this.state.data = data || {
+        kpi: {},
+        lists: { todo: [], designing: [], missing_link: [], done: [] },
+      };
     } catch (e) {
       this.state.error = (e && e.message) || String(e);
       console.error(e);
