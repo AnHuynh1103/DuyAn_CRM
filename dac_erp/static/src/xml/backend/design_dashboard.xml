@@ -33,7 +33,7 @@
             <div class="col-lg-3 col-md-6">
               <div class="dac-card is-hoverable h-100">
                 <div class="k-label">Đơn Mới Chờ TK</div>
-                <div class="k-value text-primary">
+                <div class="k-value">
                   <t t-esc="(state.data.kpi and state.data.kpi.new_pending) or 0"/>
                 </div>
               </div>
@@ -41,7 +41,7 @@
             <div class="col-lg-3 col-md-6">
               <div class="dac-card is-hoverable h-100">
                 <div class="k-label">Đang Thực Hiện</div>
-                <div class="k-value text-warning">
+                <div class="k-value">
                   <t t-esc="(state.data.kpi and state.data.kpi.in_progress) or 0"/>
                 </div>
               </div>
@@ -49,7 +49,7 @@
             <div class="col-lg-3 col-md-6">
               <div class="dac-card is-hoverable h-100">
                 <div class="k-label">Sắp Trễ Hạn</div>
-                <div class="k-value text-danger">
+                <div class="k-value">
                   <t t-esc="(state.data.kpi and state.data.kpi.due_soon) or 0"/>
                 </div>
               </div>
@@ -57,7 +57,7 @@
             <div class="col-lg-3 col-md-6">
               <div class="dac-card is-hoverable h-100">
             <div class="k-label">Chưa Có Link TK</div>
-              <div class="k-value text-warning">
+              <div class="k-value">
                 <t t-esc="(state.data.kpi and state.data.kpi.missing_link) or 0"/>
               </div>
               </div>
@@ -65,7 +65,7 @@
             <div class="col-lg-3 col-md-6">
               <div class="dac-card is-hoverable h-100">
                 <div class="k-label">Hoàn Thành (Tuần)</div>
-                <div class="k-value text-success">
+                <div class="k-value">
                   <t t-esc="(state.data.kpi and state.data.kpi.done_week) or 0"/>
                 </div>
               </div>
@@ -85,7 +85,7 @@
                     <div class="list-scroll">
                       <t t-if="(state.data.lists.todo || []).length">
                         <t t-foreach="state.data.lists.todo" t-as="it" t-key="it.id">
-                          <div t-attf-class="ticket #{ (it.late_days &gt; 0 or it.is_priority_today or it.days_left === 0) ? 'ticket-late' : '' }"
+                          <div t-attf-class="ticket ticket-new #{ (it.late_days &gt; 0 or it.is_priority_today or it.days_left === 0) ? 'ticket-late' : '' }"
                                t-on-click.stop.prevent="() => this.openOrder(it)">
                             <div class="d-flex justify-content-between">
                               <div class="ticket__title">
@@ -177,7 +177,7 @@
               <div class="list-scroll">
                 <t t-if="(state.data.lists.missing_link || []).length">
                   <t t-foreach="state.data.lists.missing_link" t-as="it" t-key="it.id">
-                    <div t-attf-class="ticket #{ (it.late_days &gt; 0 or it.is_priority_today or it.days_left === 0) ? 'ticket-late' : '' }"
+                    <div t-attf-class="ticket ticket-missing #{ (it.late_days &gt; 0 or it.is_priority_today or it.days_left === 0) ? 'ticket-late' : '' }"
                         t-on-click.stop.prevent="() => this.openOrder(it)">
                       <div class="d-flex justify-content-between">
                         <div class="ticket__title">

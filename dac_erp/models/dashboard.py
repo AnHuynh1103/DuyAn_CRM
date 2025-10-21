@@ -1,6 +1,7 @@
 from odoo import api, fields, models, _
 from datetime import date as _date, timedelta
 from odoo.exceptions import AccessError
+import pytz
 
 class SaleOrder(models.Model):
     _inherit = "sale.order"
@@ -139,50 +140,111 @@ class SaleOrder(models.Model):
         return data
     
     
-    
     #Dashboard Production
     @api.model
     def dac_get_dashboard_production(self):
+        """Payload cho Dashboard Sản xuất (phiên bản bám cờ production_done).
+
+        Cột chính:
+          - in_production:   đang ở 'production' và CHƯA production_done
+          - done:            production_done = True (sort mới nhất)
+          - pending_confirm: đã rời 'production' nhưng CHƯA production_done
+
+        KPI:
+          - in_production:   số đang SX
+          - priority:        số ưu tiên (ưu tiên hoặc ưu tiên trong ngày)
+          - overdue:         quá hạn SX (deadline < hôm nay)
+          - due_soon:        sắp đến hạn (deadline - hôm nay ∈ [0..2])
+          - unfinished:      rời SX nhưng chưa nhấn hoàn thành
+          - finished_week:   production_done_date trong 7 ngày gần nhất
         """
-        Trả về danh sách đơn hàng đang sản xuất mà user hiện tại là user_id_design và user_id_production
-        """
-        uid = self.env.uid
+        uid  = self.env.uid
         user = self.env.user
 
+        # Quyền xem
         if user.has_group("dac_erp.group_dac_erp_production"):
-            domain = [("order_state_custom", "=", "production"),
-                      ("user_id_production", "=", uid)]
-        elif user.has_group("dac_erp.group_dac_erp_design"):
-            domain = [("order_state_custom", "=", "production"),
-                      ("user_id_design", "=", uid)]
+            base_domain = [("user_id_production", "=", uid)]
         elif user.has_group("base.group_system"):
-            # Admin: xem tất cả đơn đang sản xuất
-            domain = [("order_state_custom", "=", "production")]
+            base_domain = []
         else:
-            # Không thuộc 2 group trên và không phải admin → chặn
-            raise AccessError(_("Bạn không có quyền truy cập dashboard này."))
+            raise AccessError(_("Bạn không có quyền truy cập dashboard sản xuất."))
 
-        orders = self.search(domain, order="is_priority_today desc, is_priority desc, production_deadline asc, id asc")
+        # Mốc thời gian
+        today       = _date.today()
+        start_today = fields.Datetime.context_timestamp(
+            self, fields.Datetime.now()
+        ).replace(hour=0, minute=0, second=0, microsecond=0)
+        week_ago    = start_today - timedelta(days=7)
 
-        today = _date.today()
-        out = []
-        for so in orders:
-            deadline = so.production_deadline
-            late_days = (today - deadline).days if deadline and today > deadline else 0
-            out.append({
+        # === DOMAIN CHUẨN ===
+        # 1) Đang sản xuất & chưa hoàn thành
+        dom_inprod = base_domain + [
+            ("order_state_custom", "=", "production"),
+            ("production_done", "=", False),
+        ]
+        # 2) Đã hoàn thành sản xuất
+        dom_done = base_domain + [("production_done", "=", True)]
+        dom_done_week = dom_done + [
+            ("production_done_date", ">=", fields.Datetime.to_string(week_ago)),
+        ]
+        # 3) Đã rời 'production' nhưng chưa nhấn hoàn thành
+        dom_left_not_done = base_domain + [
+            ("order_state_custom", "in", ["delivery", "installation", "payment", "completed"]),
+            ("production_done", "=", False),
+            ("reached_production", "=", True),
+        ]
+
+        # Lấy dữ liệu
+        orders_inprod  = self.search(
+            dom_inprod,
+            order="is_priority_today desc, is_priority desc, production_deadline asc, date_order asc, id asc",
+        )
+        orders_done    = self.search(dom_done, order="production_done_date desc", limit=50)
+        orders_pending = self.search(dom_left_not_done, order="left_production_date desc, write_date desc", limit=50)
+
+        # Helper pack
+        def _pack(so):
+            dl = getattr(so, "production_deadline", False)
+            late_days  = (today - dl).days if (dl and today > dl) else 0
+            days_left  = (dl - today).days if (dl and today <= dl) else False
+
+            def _fmt_dt(dt):
+                if not dt:
+                    return False
+                # context_timestamp cần naive → Datetime field của Odoo là naive UTC, ok
+                dt_loc = fields.Datetime.context_timestamp(self, dt)
+                return dt_loc.strftime("%d/%m/%Y %H:%M")
+
+            return {
                 "id": so.id,
+                "order_number": getattr(so, "order_number", False) or False,
                 "title": so.partner_id.display_name or so.name,
-                "amount": so.amount_total,
-                "date": so.date_order,
-                "deadline": deadline,
+                "responsible_name": so.user_id_production.name if so.user_id_production else "—",
+                "group_names": ", ".join(so.production_group_ids.mapped("name")) if so.production_group_ids else False,
+                "deadline": dl,
+                "deadline_str": dl.strftime("%d/%m/%Y") if dl else False,
+                "days_left": days_left,
                 "late_days": late_days,
-                "order_number": (
-                    getattr(so, 'order_number', None) or None
-                ),
                 "is_priority": bool(getattr(so, "is_priority", False)),
                 "is_priority_today": bool(getattr(so, "is_priority_today", False)),
-            })
-        return {
-            "lists": {"manufacturing": out},
-            "user_name": self.env.user.name,
+                "done_date_str": _fmt_dt(getattr(so, "production_done_date", False)) or _fmt_dt(getattr(so, "left_production_date", False)),
+            }
+
+        data = {
+            "kpi": {
+                "in_production": self.search_count(dom_inprod),
+                "priority": sum(1 for s in orders_inprod if s.is_priority or s.is_priority_today),
+                "overdue_prod": sum(1 for s in orders_inprod if s.production_deadline and today > s.production_deadline),
+                "due_soon": sum(1 for s in orders_inprod if s.production_deadline and 0 <= (s.production_deadline - today).days <= 2),
+                "need_mark": self.search_count(dom_left_not_done),
+                "finished_week": self.search_count(dom_done_week),
+            },
+            "lists": {
+                "my_tasks":       [_pack(s) for s in orders_inprod],
+                "all_tasks":      [_pack(s) for s in orders_inprod],  # thêm cho tab Lead
+                "finished":       [_pack(s) for s in orders_done],
+                "need_mark":      [_pack(s) for s in orders_pending],
+            },
+            "user_can_lead": user.has_group("base.group_system"),
         }
+        return data

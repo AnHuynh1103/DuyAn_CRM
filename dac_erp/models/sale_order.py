@@ -86,6 +86,7 @@ class SaleOrder(models.Model):
     
     # --- flags đánh dấu đã chạm các mốc quy trình ---
     reached_production = fields.Boolean(default=False, copy=False)
+    left_production_date = fields.Datetime(string="Ngày rời SX", tracking=True)
     started_delivery   = fields.Boolean(default=False, copy=False)
     started_installation = fields.Boolean(default=False, copy=False)
     
@@ -438,7 +439,17 @@ class SaleOrder(models.Model):
                     super(SaleOrder, rec.with_context(skip_design_autoset=True)).write({
                         'design_assigned_date': today
                     })
-                  
+        
+        if "order_state_custom" in vals:
+            new_state = vals["order_state_custom"]
+            now = fields.Datetime.now()
+            for rec in self:
+                # Lần đầu vào pha sản xuất
+                if new_state == "production" and not rec.reached_production:
+                    rec.reached_production = True
+                # Từ production rời sang pha khác → đóng dấu rời SX
+                if rec.order_state_custom == "production" and new_state != "production":
+                    rec.left_production_date = now     
         
         # 6) === Auto set ngày giao & deadline thiết kế khi vào Đặt cọc / Sản xuất ===
         if not self.env.context.get('skip_design_autoset'):
