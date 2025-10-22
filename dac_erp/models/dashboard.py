@@ -219,6 +219,7 @@ class SaleOrder(models.Model):
                 "id": so.id,
                 "order_number": getattr(so, "order_number", False) or False,
                 "title": so.partner_id.display_name or so.name,
+                "customer_name": so.partner_id.display_name or "",
                 "responsible_name": so.user_id_production.name if so.user_id_production else "—",
                 "group_names": ", ".join(so.production_group_ids.mapped("name")) if so.production_group_ids else False,
                 "deadline": dl,

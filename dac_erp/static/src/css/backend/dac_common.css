@@ -490,3 +490,53 @@
   min-height: 14vh; /* chống co quá nhỏ */
   overflow: auto;
 }
+/* 1) HẠ chiều cao chung của 2 panel trên */
+.o_dac_dashboard.dac-theme-production {
+  --prod-pane-h: 50vh; /*  50vh (có thể 44–48 tùy mắt) */
+}
+
+/* 2) CHỈ áp height cho card cha trực tiếp trong 2 cột của hàng trên */
+.dac-theme-production .prod-top-row > [class*="col-"] > .dac-card {
+  display: flex;
+  flex-direction: column;
+  height: var(--prod-pane-h);
+}
+
+/* 3) Vùng cuộn trong 2 panel: chiếm trọn phần còn lại, không “trần” */
+.dac-theme-production .prod-top-row .work-scroll,
+.dac-theme-production .prod-top-row .list-scroll {
+  flex: 1 1 auto;
+  overflow: auto;
+  max-height: unset;
+  padding-bottom: 0; /* tránh dư khoảng trắng đáy */
+}
+
+/* 4) Ticket KHÔNG bị kéo cao theo panel */
+.dac-theme-production .prod-top-row .dac-ticket {
+  height: auto;
+  min-height: var(--dac-ticket-min-h);
+}
+/* Card cha của 2 cột trên: khóa chiều cao + CẮT tràn nội dung vào trong khung trắng */
+.dac-theme-production .prod-top-row > [class*="col-"] > .dac-card {
+  display: flex;
+  flex-direction: column;
+  height: var(--prod-pane-h) !important; /* thắng mọi h-100 còn sót */
+  overflow: hidden; /* quan trọng: cắt phần tràn */
+  border-radius: 12px; /* bo góc cắt mượt */
+}
+
+/* Vùng cuộn trong 2 panel trên: chỉ chiếm phần còn lại, KHÔNG min/max từ rule chung */
+.dac-theme-production .prod-top-row .work-scroll,
+.dac-theme-production .prod-top-row .list-scroll {
+  flex: 1 1 auto;
+  min-height: 0 !important; /* hạ min-height 28vh cũ */
+  max-height: none !important; /* gỡ max-height 22/32/46vh cũ */
+  overflow: auto;
+  padding-bottom: 0;
+}
+
+/* Gọn mép đáy: bỏ khoảng cách dư của phần tử cuối */
+.dac-theme-production .prod-top-row .list-scroll > :last-child,
+.dac-theme-production .prod-top-row .work-scroll > .row > :last-child {
+  margin-bottom: 0;
+}

@@ -84,69 +84,100 @@
 
           <!-- Tab: Việc Của Tôi → mỗi ticket là 1 .dac-card (giống Design) -->
           <t t-if="state.tab === 'my'">
-            <!-- Vùng chứa các thẻ đang sản xuất (có cuộn) -->
-            <div class="dac-card p-0">
-                <div class="p-3 pb-0 sec-title">Việc đang sản xuất</div>
-                <div class="work-scroll p-3">
-                <div class="row g-4">
-                    <t t-if="myTasks.length">
-                    <t t-foreach="myTasks" t-as="so" t-key="so.id">
-                        <div class="col-md-6 col-lg-4">
-                        <div t-attf-class="dac-card dac-ticket p-3 cursor-pointer #{ (so.is_priority or so.is_priority_today or so.late_days &gt; 0) ? 'ticket-urgent' : (so.days_left !== false and so.days_left &lt;= 2) ? 'ticket-warning' : 'ticket-inprod' }"
-                            t-on-click.stop.prevent="() => this.openOrder(so)">
-                            <div class="d-flex justify-content-between">
-                            <div class="task-card-header">
-                                <t t-if="so.order_number"><t t-esc="so.order_number"/></t>
-                                <t t-else="">Chưa có số ĐH</t>
-                                <t> - </t><t t-esc="so.title"/>
-                            </div>
-                            <div>
-                                <t t-if="so.is_priority_today"><span class="badge badge-today">Trong ngày</span></t>
-                                <t t-elif="so.is_priority"><span class="badge badge-priority">Ưu tiên</span></t>
-                            </div>
-                            </div>
+            <!-- HÀNG 1: Chỉ sửa phần "Việc đang sản xuất" → 7 cột -->
+            <div class="row prod-top-row">
+              <div class="col-xl-7 col-lg-7 d-flex">
+                <div class="dac-card p-0 d-flex flex-column">
+                    <div class="p-3 pb-0 sec-title">Việc đang sản xuất</div>
+                    <div class="work-scroll p-3 flex-grow-1">
+                      <div class="row g-4">
+                        <t t-if="myTasks.length">
+                          <t t-foreach="myTasks" t-as="so" t-key="so.id">
+                            <!-- FULL WIDTH trong 7 cột -->
+                            <div class="col-12">
+                              <div t-attf-class="dac-card dac-ticket p-3 cursor-pointer #{ (so.is_priority or so.is_priority_today or so.late_days &gt; 0) ? 'ticket-urgent' : (so.days_left !== false and so.days_left &lt;= 2) ? 'ticket-warning' : 'ticket-inprod' }"
+                                  t-on-click.stop.prevent="() => this.openOrder(so)">
+                                  <div class="d-flex justify-content-between">
+                                    <div class="task-card-header">
+                                      <t t-if="so.order_number"><t t-esc="so.order_number"/></t>
+                                      <t t-else="">Chưa có số ĐH</t>
+                                      <t> - </t><t t-esc="so.title"/>
+                                    </div>
+                                    <div>
+                                      <t t-if="so.is_priority_today"><span class="badge badge-today">Trong ngày</span></t>
+                                      <t t-elif="so.is_priority"><span class="badge badge-priority">Ưu tiên</span></t>
+                                    </div>
+                                  </div>
 
-                            <div class="text-muted">Người phụ trách: <t t-esc="so.responsible_name"/></div>
-                            <div class="text-muted">Nhóm tham gia: <t t-esc="so.group_names or '—'"/></div>
-                            <hr class="my-2"/>
+                                  <div class="text-muted">Người phụ trách: <t t-esc="so.responsible_name"/></div>
+                                  <div class="text-muted">Nhóm tham gia: <t t-esc="so.group_names or '—'"/></div>
+                                  <hr class="my-2"/>
 
-                            <div class="d-flex justify-content-between align-items-center">
-                            <span class="btn btn-sm btn-outline-primary">Xem chi tiết</span>
-                            <div>
-                                <t t-if="so.late_days &gt; 0">
-                                <span class="text-danger fw-semibold">
-                                    <i class="fa fa-calendar-xmark me-1"/>Hạn: trễ <t t-esc="so.late_days"/> ngày
-                                </span>
-                                </t>
-                                <t t-elif="so.deadline">
-                                <t t-set="__dLeft" t-value="Math.max(0, Math.ceil((new Date(so.deadline) - new Date())/86400000))"/>
-                                <t t-if="__dLeft === 0">
-                                    <span class="badge badge-due"><i class="fa fa-star me-1"/>Đến hạn</span>
-                                </t>
-                                <t t-else="">
-                                    <span class="text-warning fw-semibold">
-                                    <i class="fa fa-calendar-days me-1"/>Hạn: còn <t t-esc="__dLeft"/> ngày
-                                    </span>
-                                </t>
-                                </t>
-                                <t t-else=""><span class="text-muted">—</span></t>
-                            </div>
-                            </div>
-                        </div>
-                        </div>
-                    </t>
-                    </t>
-                    <t t-else="">
-                    <div class="no-data">Không có dữ liệu</div>
-                    </t>
+                                  <div class="d-flex justify-content-between align-items-center">
+                                    <span class="btn btn-sm btn-outline-primary">Xem chi tiết</span>
+                                    <div>
+                                      <t t-if="so.late_days &gt; 0">
+                                        <span class="text-danger fw-semibold">
+                                          <i class="fa fa-calendar-xmark me-1"/>Hạn: trễ <t t-esc="so.late_days"/> ngày
+                                        </span>
+                                      </t>
+                                      <t t-elif="so.deadline">
+                                        <t t-set="__dLeft" t-value="Math.max(0, Math.ceil((new Date(so.deadline) - new Date())/86400000))"/>
+                                        <t t-if="__dLeft === 0">
+                                          <span class="badge badge-due"><i class="fa fa-star me-1"/>Đến hạn</span>
+                                        </t>
+                                        <t t-else="">
+                                          <span class="text-warning fw-semibold">
+                                            <i class="fa fa-calendar-days me-1"/>Hạn: còn <t t-esc="__dLeft"/> ngày
+                                          </span>
+                                        </t>
+                                      </t>
+                                      <t t-else=""><span class="text-muted">—</span></t>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </t>
+                          </t>
+                        <t t-else=""><div class="no-data">Không có dữ liệu</div></t>
+                      </div>
+                  </div>
                 </div>
+              </div>
+
+              <!-- Chừa 5 cột bên phải để dùng ở bước sau -->
+              <div class="col-xl-5 col-lg-5">
+                <div class="dac-card">
+                  <div class="sec-title p-3">Chưa Xác Nhận Hoàn Tất</div>
+                  <div class="list-scroll p-3">
+                    <t t-if="needMarkList.length">
+                      <t t-foreach="needMarkList" t-as="it" t-key="it.id">
+                        <div class="ticket ticket-warning cursor-pointer"
+                            t-on-click.stop.prevent="() => this.openOrder(it)">
+                          <div class="d-flex justify-content-between">
+                            <div class="ticket__title">
+                              <t t-if="it.order_number"><t t-esc="it.order_number"/></t>
+                              <t t-else="">Chưa có số ĐH</t> – <t t-esc="it.title"/>
+                            </div>
+                            <span class="badge bg-warning text-dark">CẦN XÁC NHẬN</span>
+                          </div>
+                          <div class="text-muted small">
+                            <t t-if="it.done_date_str">Ngày rời SX: <t t-esc="it.done_date_str"/></t>
+                            <t t-else="">—</t>
+                          </div>
+                        </div>
+                      </t>
+                    </t>
+                    <t t-else=""><div class="no-data">Không có dữ liệu</div></t>
+                  </div>
                 </div>
+              </div>
             </div>
 
             <!-- Hàng bên dưới: chia đôi 2 card -->
             <div class="row mt-3">
                 <!-- Trái: ĐÃ HOÀN THÀNH SẢN XUẤT -->
-                <div class="col-lg-6">
+              <div class="col-lg-6">
                 <div class="dac-card h-100">
                     <div class="sec-title">Đã Hoàn Thành Sản Xuất</div>
                     <div class="list-scroll">
@@ -169,34 +200,10 @@
                     <t t-else=""><div class="no-data">Không có dữ liệu</div></t>
                     </div>
                 </div>
-                </div>
+              </div>
 
                 <!-- Phải: CHƯA NHẤN HOÀN THÀNH -->
-                <div class="col-lg-6">
-                <div class="dac-card h-100">
-                    <div class="sec-title">Chưa Xác Nhận Hoàn Tất</div>
-                    <div class="list-scroll">
-                    <t t-if="needMarkList.length">
-                        <t t-foreach="needMarkList" t-as="it" t-key="it.id">
-                        <div class="ticket ticket-warning cursor-pointer" t-on-click.stop.prevent="() => this.openOrder(it)">
-                            <div class="d-flex justify-content-between">
-                            <div class="ticket__title">
-                                <t t-if="it.order_number"><t t-esc="it.order_number"/></t>
-                                <t t-else="">Chưa có số ĐH</t> – <t t-esc="it.title"/>
-                            </div>
-                            <span class="badge bg-warning text-dark">CẦN XÁC NHẬN</span>
-                            </div>
-                            <div class="text-muted small">
-                            <t t-if="it.done_date_str">Ngày rời SX: <t t-esc="it.done_date_str"/></t>
-                            <t t-else="">—</t>
-                            </div>
-                        </div>
-                        </t>
-                    </t>
-                    <t t-else=""><div class="no-data">Không có dữ liệu</div></t>
-                    </div>
-                </div>
-                </div>
+                <div class="col-lg-6"></div>
             </div>
           </t>
 
@@ -252,7 +259,6 @@
               </div>
             </div>
           </t>
-
 
         </t>
       </div>
