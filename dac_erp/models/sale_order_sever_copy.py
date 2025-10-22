@@ -816,7 +816,7 @@ class SaleOrderInherit(models.Model):
                         'price_unit': p_item_price,
                         'discount': line_discount_percentage,
                         'product_uom': product_variant.uom_id.id,
-                        'company_id': current_company_id if current_company_id else False,
+                        'company_id': current_company_id,  # Đã đảm bảo current_company_id luôn có giá trị
                     }
                     order_line_commands.append(Command.create(line_vals))
 
@@ -829,7 +829,7 @@ class SaleOrderInherit(models.Model):
                         'product_uom_qty': 1,
                         'price_unit': p_shipping_fee,
                         'is_delivery': True,
-                        'company_id': current_company_id if current_company_id else False,
+                        'company_id': current_company_id,  # Đã đảm bảo current_company_id luôn có giá trị
                     }))
 
                 # --- Add Surcharge as Order Line ---
@@ -840,7 +840,7 @@ class SaleOrderInherit(models.Model):
                         'name': surcharge_product.name,
                         'product_uom_qty': 1,
                         'price_unit': p_surcharge_val,
-                        'company_id': current_company_id if current_company_id else False,
+                        'company_id': current_company_id,  # Đã đảm bảo current_company_id luôn có giá trị
                     }))
 
                 if existing_order:
@@ -1156,6 +1156,7 @@ class SaleOrderInherit(models.Model):
                         'name': product_variant.name,
                         'product_uom_qty': item_data.get('quantity', 0.0),
                         'price_unit': variation_info.get('retail_price', 0.0),
+                        'company_id': current_company_id,  # QUAN TRỌNG: Phải có company_id
                     }))
 
             # --- 7. Prepare Main Order Values ---
