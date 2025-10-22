@@ -54,14 +54,7 @@ class BeeoneHome(Home):
                         return resp
 
             # Gọi parent method để render trang bình thường
-            resp = super().web_client(s_action=s_action, subpath=subpath, **kw)
-
-            # Double-check: Luôn xóa debug cookies cho non-admin
-            if request.session.uid and not request.env.user.has_group('base.group_system'):
-                for cookie_name in ('debug', 'odoo-debug', 'debugMode'):
-                    resp.delete_cookie(cookie_name, path='/')
-            
-            return resp
+            return super().web_client(s_action=s_action, subpath=subpath, **kw)
             
         except Exception as e:
             _logger.error(f"======= Error in debug_guard controller: {str(e)}")

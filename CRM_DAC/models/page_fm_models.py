@@ -79,17 +79,21 @@ class PageFmPage(models.Model):
         cache_key = f"page_token_{page_fm_id}"
         cached_token = self.env['ir.config_parameter'].sudo().get_param(cache_key)
         
-        # Kiểm tra cache validity (cache 10 phút)
+        # Kiểm tra cache validity (cache 20 giờ thay vì 24 để an toàn)
         cache_time_key = f"page_token_time_{page_fm_id}"
         cached_time = self.env['ir.config_parameter'].sudo().get_param(cache_time_key)
         
         if cached_token and cached_time:
             try:
                 cached_datetime = datetime.fromisoformat(cached_time)
-                if (datetime.now() - cached_datetime).total_seconds() < 86400:  # 24 giờ
-                    _logger.debug(f"Using cached token for page {page_fm_id}")
+                # Giảm xuống 20 giờ để tránh token expire (Pages.fm có thể renew < 24h)
+                if (datetime.now() - cached_datetime).total_seconds() < 72000:  # 20 giờ = 72000 giây
+                    _logger.debug(f"Using cached token for page {page_fm_id} (age: {(datetime.now() - cached_datetime).total_seconds() / 3600:.1f}h)")
                     return cached_token
+                else:
+                    _logger.info(f"Cache token expired for page {page_fm_id}, generating new token")
             except:
+                _logger.warning(f"Invalid cache time format for page {page_fm_id}, generating new token")
                 pass  # Invalid cache time, proceed to generate new token
         
         generate_token_url = f"{PAGES_FM_API_V1_BASE_URL}/pages/{page_fm_id}/generate_page_access_token?access_token={main_access_token}&page_id={page_fm_id}"
@@ -103,6 +107,7 @@ class PageFmPage(models.Model):
                 _logger.info(f"Retry {retry_count}/{max_retries} after {wait_time}s for page {page_fm_id}")
                 time.sleep(wait_time)
             
+            _logger.info(f"Generating NEW page token for {page_fm_id}")
             response = requests.post(
                 generate_token_url, 
                 headers={'Content-Type': 'application/json', 'Accept': 'application/json'}, 
@@ -116,11 +121,22 @@ class PageFmPage(models.Model):
                 # CACHE TOKEN mới
                 self.env['ir.config_parameter'].sudo().set_param(cache_key, token)
                 self.env['ir.config_parameter'].sudo().set_param(cache_time_key, datetime.now().isoformat())
+                _logger.info(f"✅ Generated and cached new token for page {page_fm_id}")
                 
                 if retry_count > 0:
                     _logger.info(f"Retry thành công cho page {page_fm_id} sau {retry_count} lần thử")
                 return token
-            _logger.error(f"Failed to generate page token for {page_fm_id}: {data.get('message')}")
+            
+            error_msg = data.get('message', 'Unknown error')
+            _logger.error(f"Failed to generate page token for {page_fm_id}: {error_msg}")
+            
+            # Nếu lỗi là token expired, xóa cache và retry
+            if 'expired' in error_msg.lower() or 'invalid' in error_msg.lower():
+                _logger.warning(f"Main access token might be expired, clearing cache")
+                self.clear_token_cache()
+                if retry_count < max_retries:
+                    return self._generate_page_specific_access_token(main_access_token, retry_count + 1, max_retries)
+            
             return None
             
         except (requests.exceptions.ConnectTimeout, requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:

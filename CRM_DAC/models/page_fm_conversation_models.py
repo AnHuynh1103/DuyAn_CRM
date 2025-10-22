@@ -1913,18 +1913,25 @@ class PageFmConversation(models.Model):
         }
 
     def action_sync_messages_button(self):
-        """Nút sync tin nhắn cho form - có thông báo và reload"""
+        """Nút sync tin nhắn cho form - có thông báo và reload FORM"""
         for record in self:
             try:
                 _logger.info(f"Bắt đầu sync tin nhắn cho conversation {record.id} ({record.name})")
                 result = record.action_sync_messages()
                 
-                # Hiển thị thông báo thành công và reload
-                self.env.cr.commit()  # Đảm bảo dữ liệu được lưu
+                # Đảm bảo dữ liệu được lưu
+                self.env.cr.commit()
+                _logger.info(f"✅ Đồng bộ thành công tin nhắn cho conversation {record.conversation_fm_id}")
                 
+                # QUAN TRỌNG: Trả về action mở lại FORM hiện tại thay vì reload dashboard
                 return {
-                    'type': 'ir.actions.client',
-                    'tag': 'reload',
+                    'type': 'ir.actions.act_window',
+                    'res_model': 'page.fm.conversation',
+                    'res_id': record.id,
+                    'view_mode': 'form',
+                    'view_type': 'form',
+                    'target': 'current',  # Mở trong tab hiện tại
+                    'context': self.env.context,
                 }
             except Exception as e:
                 _logger.error(f"Lỗi khi sync tin nhắn cho conversation {record.id}: {e}")
@@ -1932,9 +1939,10 @@ class PageFmConversation(models.Model):
                     'type': 'ir.actions.client',
                     'tag': 'display_notification', 
                     'params': {
-                        'title': 'Lỗi đồng bộ',
+                        'title': '❌ Lỗi đồng bộ',
                         'message': f'Lỗi: {str(e)}',
-                        'type': 'danger'
+                        'type': 'danger',
+                        'sticky': True
                     }
                 }
 
