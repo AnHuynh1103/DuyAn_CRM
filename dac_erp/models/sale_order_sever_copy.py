@@ -1199,8 +1199,14 @@ class SaleOrderInherit(models.Model):
                 current_sale_order = existing_order
                 _logger.info(f"Updated SaleOrder Odoo ID: {current_sale_order.id} for Pancake Order ID: {p_order_id}")
             else:
-                current_sale_order = SaleOrder.create(order_vals)
-                _logger.info(f"Created SaleOrder Odoo ID: {current_sale_order.id} for Pancake Order ID: {p_order_id}")
+                # TẮT auto-subscribe và email notification khi tạo từ webhook
+                current_sale_order = SaleOrder.with_context(
+                    mail_create_nolog=True,          # Không tạo log message
+                    mail_create_nosubscribe=True,    # Không auto-subscribe
+                    mail_notrack=True,                # Không tracking changes
+                    tracking_disable=True             # Disable tracking hoàn toàn
+                ).create(order_vals)
+                _logger.info(f"✅ Created SaleOrder Odoo ID: {current_sale_order.id} for Pancake Order ID: {p_order_id}")
             
             # --- 9. Final State Transition ---
             if odoo_state == 'sale' and current_sale_order.state == 'draft':
