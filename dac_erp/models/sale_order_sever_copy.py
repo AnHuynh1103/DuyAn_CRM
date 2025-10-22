@@ -776,25 +776,20 @@ class SaleOrderInherit(models.Model):
                     p_item_price = item_data.get('variation_info', {}).get('retail_price', 0.0)
                     p_item_discount_val = item_data.get('total_discount', 0.0)
 
+                    # LUÔN TẠO SẢN PHẨM MỚI từ Pancake (không search sản phẩm cũ)
                     product_variant = False
-                    # Search product by SKU first, then by name
-                    if p_item_sku and p_item_sku != 'None' and p_item_sku != '0': # 'None' hoặc '0' là string rỗng hoặc không có SKU
-                        product_variant_domain = ([('default_code', '=', p_item_sku)] +company_domain)
-                        product_variant = Product.search(product_variant_domain, limit=1)
-                    
-                    if not product_variant and p_item_name:
-                        product_name_domain = ([('name', '=', p_item_name)]+company_domain)
-                        product_variant = Product.search(product_name_domain, limit=1)
-                    
-                    if not product_variant and p_item_name: # Tạo mới nếu không tìm thấy
+                    if p_item_name:
                         _logger.info(f"Creating new product {p_item_name} (SKU: {p_item_sku}) for Pancake order {p_order_id}")
                         try:
-                            product_variant = Product.sudo().create({ # Sudo nếu user không có quyền tạo product
+                            product_variant = Product.sudo().create({
                                 'name': p_item_name, 
                                 'default_code': p_item_sku if (p_item_sku and p_item_sku != 'None' and p_item_sku != '0') else False,
-                                'type': 'product', 'categ_id': self.env.ref('product.product_category_all').id,
-                                'sale_ok': True, 'purchase_ok': False, 'lst_price': p_item_price,
-                                'company_id': current_company_id if current_company_id else False,
+                                'type': 'product', 
+                                'categ_id': self.env.ref('product.product_category_all').id,
+                                'sale_ok': True, 
+                                'purchase_ok': False, 
+                                'lst_price': p_item_price,
+                                'company_id': current_company_id,  # CRITICAL: Đã đảm bảo luôn có giá trị
                             })
                             _logger.info(f"Created product {product_variant.name} (SKU: {product_variant.default_code}) for order {p_order_id}")
                         except Exception as e_prod:
@@ -1134,21 +1129,19 @@ class SaleOrderInherit(models.Model):
                 p_item_name = variation_info.get('name')
                 p_item_sku = str(variation_info.get('sku') or variation_info.get('display_id')) or None
                 
+                # LUÔN TẠO SẢN PHẨM MỚI từ Pancake (không search sản phẩm cũ)
                 product_variant = False
-                if p_item_sku and p_item_sku != 'None':
-                    product_variant = Product.search([('default_code', '=', p_item_sku)] + company_domain, limit=1)
-                if not product_variant and p_item_name:
-                    product_variant = Product.search([('name', '=', p_item_name)] + company_domain, limit=1)
-
-                if not product_variant and p_item_name:
+                if p_item_name:
                     product_variant = Product.create({
                         'name': p_item_name,
                         'default_code': p_item_sku,
                         'type': 'product',
-                        'sale_ok': True, 'purchase_ok': False,
+                        'sale_ok': True, 
+                        'purchase_ok': False,
                         'lst_price': variation_info.get('retail_price', 0.0),
-                        'company_id': current_company_id,
+                        'company_id': current_company_id,  # CRITICAL: Sản phẩm phải thuộc công ty
                     })
+                    _logger.info(f"✅ Created new product from Pancake: {p_item_name} (SKU: {p_item_sku})")
 
                 if product_variant:
                     order_line_commands.append((0, 0, {
