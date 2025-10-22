@@ -128,7 +128,7 @@
                     <div class="list-scroll">
                       <t t-if="(state.data.lists.designing || []).length">
                         <t t-foreach="state.data.lists.designing" t-as="it" t-key="it.id">
-                          <div t-attf-class="ticket #{ (it.late_days &gt; 0 or it.is_priority_today or it.days_left === 0) ? 'ticket-late' : '' }"
+                          <div t-attf-class="ticket ticket-inprogress #{ (it.late_days &gt; 0 or it.is_priority_today or it.days_left === 0) ? 'ticket-late' : '' }"
                                t-on-click.stop.prevent="() => this.openOrder(it)">
                             <div class="d-flex justify-content-between">
                               <div class="ticket__title">

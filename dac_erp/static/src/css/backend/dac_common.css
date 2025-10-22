@@ -180,6 +180,12 @@
   background: rgba(37, 99, 235, 0.05) !important;
 }
 
+/* Ticket đang thực hiện - tím */
+.ticket-inprogress {
+  border-left: 4px solid #d6339d !important;
+  background: rgba(108, 51, 214, 0.05) !important;
+}
+
 /* Ticket chưa có link thiết kế - vàng */
 .ticket-missing {
   border-left: 4px solid #ff9f1a !important;
@@ -201,13 +207,13 @@
   color: #2563eb;
 }
 
-/* KPI - Đang thực hiện (vàng) */
+/* KPI - Đang thực hiện (hồng) */
 .dac-theme-design .kpi-row > .col-lg-3:nth-child(2) .dac-card {
-  border-left: 4px solid #f59e0b !important;
+  border-left: 4px solid #d6339d !important;
   background: #fff !important;
 }
 .dac-theme-design .kpi-row > .col-lg-3:nth-child(2) .k-value {
-  color: #f59e0b;
+  color: #d6339d;
 }
 
 /* KPI - Sắp trễ hạn (đỏ) */

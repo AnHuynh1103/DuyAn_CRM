@@ -90,15 +90,13 @@ class PancakeWebhookController(http.Controller):
         event_type = payload.get('type') # Hoặc payload.get('type') tùy thuộc vào Pancake
         # self._log_data_to_js_file(f'{event_type}', payload)
 
-        user_id_to_impersonate = 2 # Thay thế 3 bằng ID của người dùng bạn muốn sử dụng
-        user_to_impersonate = request.env['res.users'].browse(user_id_to_impersonate)
-        sale_order_env = request.env['sale.order'].with_user(user_to_impersonate)
-
+        # KHÔNG HARDCODE user nữa - để logic trong model tự xác định
         try:
             if event_type == 'orders': # Hoặc giá trị tương ứng với "orders" từ webhook_types
                 self._process_order_event(payload)
                 order_data = payload.get('order_details') if 'order_details' in payload else payload
-                sale_order_env.action_sync_single_pancake_order(order_data)
+                # Gọi trực tiếp không cần with_user()
+                request.env['sale.order'].sudo().action_sync_single_pancake_order(order_data)
 
             elif event_type == 'customers': # Hoặc giá trị tương ứng với "customers"
                 self._process_customer_event(payload)

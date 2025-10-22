@@ -366,102 +366,139 @@ class SaleOrderInherit(models.Model):
             try:
                 # --- Creator ---
                 creator_info = order_data.get('creator')
-                odoo_creator = self.env.user # Mặc định là người dùng hiện tại
+                odoo_creator = False # BẮT ĐẦU TỪ False thay vì self.env.user
+                
                 if creator_info:    
-                    # create_id = (creator_info.get('id')) # Không sử dụng, có thể gây nhầm lẫn với ID Odoo
-                    creator_name = (creator_info.get('name'))
-                    creator_email = (creator_info.get('email'))
-                    creator_phone = (creator_info.get('phone_number'))
+                    creator_pancake_id = str(creator_info.get('id')) if creator_info.get('id') else None
+                    creator_name = creator_info.get('name')
+                    creator_email = creator_info.get('email')
+                    creator_phone = creator_info.get('phone_number')
 
-                    # Tìm kiếm user theo email hoặc login
-                    if creator_email:
+                    # ƯU TIÊN 1: Tìm theo pancake_id (CHÍNH XÁC NHẤT)
+                    if creator_pancake_id:
+                        odoo_creator = ResUsers.sudo().search([('pancake_id', '=', creator_pancake_id)], limit=1)
+                        if odoo_creator:
+                            _logger.info(f"✅ Found creator by pancake_id: {creator_pancake_id} -> {odoo_creator.name}")
+                    
+                    # ƯU TIÊN 2: Tìm theo email/login
+                    if not odoo_creator and creator_email:
                         odoo_creator = ResUsers.sudo().search([('login', '=', creator_email)], limit=1)
+                        if odoo_creator:
+                            _logger.info(f"Found creator by email: {creator_email} -> {odoo_creator.name}")
+                            # Cập nhật pancake_id nếu chưa có
+                            if creator_pancake_id and not odoo_creator.pancake_id:
+                                odoo_creator.sudo().write({'pancake_id': creator_pancake_id})
                     
+                    # ƯU TIÊN 3: Tìm theo tên
                     if not odoo_creator and creator_name:
-                        # Tìm theo tên nếu không tìm thấy bằng email
                         odoo_creator = ResUsers.sudo().search([('name', '=ilike', creator_name), ('share', '=', False)], limit=1)
+                        if odoo_creator:
+                            _logger.info(f"Found creator by name: {creator_name} -> {odoo_creator.name}")
+                            # Cập nhật pancake_id nếu chưa có
+                            if creator_pancake_id and not odoo_creator.pancake_id:
+                                odoo_creator.sudo().write({'pancake_id': creator_pancake_id})
                     
-                    if not odoo_creator and creator_name: # Tạo user nếu không tìm thấy và có tên
-                        _logger.info(f"Creating new Odoo user for Pancake creator: {creator_name} ({creator_email})")
+                    # CUỐI CÙNG: Tạo user mới nếu không tìm thấy
+                    if not odoo_creator and creator_name:
+                        _logger.info(f"Creating new Odoo user for Pancake creator: {creator_name} (pancake_id: {creator_pancake_id})")
                         try:
-                            # Lấy group nội bộ (Internal User) để gán quyền cơ bản
                             internal_group = self.env.ref('base.group_user')
                             odoo_creator = ResUsers.sudo().create({
                                 'name': creator_name,
-                                'login': creator_email if creator_email else creator_name.lower().replace(' ', '.'), # Tạo login từ email hoặc tên
+                                'login': creator_email if creator_email else f'pancake_{creator_pancake_id}',
                                 'email': creator_email,
                                 'phone': creator_phone,
-                                'password': creator_email if creator_email else 'odoo_temp_pass', # Đặt password tạm thời
+                                'pancake_id': creator_pancake_id,  # LƯU PANCAKE_ID
+                                'password': creator_email if creator_email else 'odoo_temp_pass',
                                 'active': True,
-                                'share': False, # Không phải user chia sẻ
+                                'share': False,
                                 'company_id': current_company_id if current_company_id else False,
                                 'groups_id': [(6, 0, [internal_group.id])],
                             })
+                            _logger.info(f"✅ Created user: {odoo_creator.name} with pancake_id: {creator_pancake_id}")
                         except Exception as e_user:
-                            _logger.error(f"Failed to create Odoo user for Pancake creator {creator_name}: {e_user}")
-                            # Nếu không tạo được user, vẫn dùng user mặc định (self.env.user)
+                            _logger.error(f"❌ Failed to create Odoo user for Pancake creator {creator_name}: {e_user}")
+                
+                # FALLBACK: Nếu vẫn không có creator, dùng user hiện tại
+                if not odoo_creator:
+                    odoo_creator = self.env.user
+                    _logger.warning(f"⚠️ No creator found, using current user: {odoo_creator.name}")
 
                 # ---- Salesperson (user_id) & Team (team_id) ---
                 assigning_seller_info = order_data.get('assigning_seller')
-                p_assigning_seller_name = (assigning_seller_info.get('name') 
-                                             if isinstance(assigning_seller_info, dict) else None)
-                p_assigning_seller_email = (assigning_seller_info.get('email')
-                                             if isinstance(assigning_seller_info, dict) else None)
-                
-                # Ưu tiên 1: Người được gán bán hàng từ Pancake
-                # Ưu tiên 2: Người tạo đơn trên Pancake  
-                # Ưu tiên 3: Người đồng bộ hiện tại
-                user_id_val = self.env.user.id # Default to current user's ID
                 salesperson = False
-
-                if p_assigning_seller_name:
-                    salesperson = ResUsers.search([
-                        ('name', '=ilike', p_assigning_seller_name),
-                        ('share', '=', False) # Chỉ tìm kiếm user nội bộ
-                    ], limit=1)
-
+                
+                if isinstance(assigning_seller_info, dict):
+                    p_seller_pancake_id = str(assigning_seller_info.get('id')) if assigning_seller_info.get('id') else None
+                    p_assigning_seller_name = assigning_seller_info.get('name')
+                    p_assigning_seller_email = assigning_seller_info.get('email')
+                    p_assigning_seller_phone = assigning_seller_info.get('phone_number')
+                    
+                    # ƯU TIÊN 1: Tìm theo pancake_id
+                    if p_seller_pancake_id:
+                        salesperson = ResUsers.sudo().search([('pancake_id', '=', p_seller_pancake_id)], limit=1)
+                        if salesperson:
+                            _logger.info(f"✅ Found salesperson by pancake_id: {p_seller_pancake_id} -> {salesperson.name}")
+                    
+                    # ƯU TIÊN 2: Tìm theo email/login
                     if not salesperson and p_assigning_seller_email:
-                        salesperson = ResUsers.search([
-                            ('login', '=', p_assigning_seller_email),
-                            ('share', '=', False)
-                        ], limit=1)
-
-                    if not salesperson:
-                        _logger.info(f"Creating new Odoo user for Pancake salesperson: {p_assigning_seller_name} ({p_assigning_seller_email})")
+                        salesperson = ResUsers.sudo().search([('login', '=', p_assigning_seller_email), ('share', '=', False)], limit=1)
+                        if salesperson:
+                            _logger.info(f"Found salesperson by email: {p_assigning_seller_email} -> {salesperson.name}")
+                            # Cập nhật pancake_id nếu chưa có
+                            if p_seller_pancake_id and not salesperson.pancake_id:
+                                salesperson.sudo().write({'pancake_id': p_seller_pancake_id})
+                    
+                    # ƯU TIÊN 3: Tìm theo tên
+                    if not salesperson and p_assigning_seller_name:
+                        salesperson = ResUsers.sudo().search([('name', '=ilike', p_assigning_seller_name), ('share', '=', False)], limit=1)
+                        if salesperson:
+                            _logger.info(f"Found salesperson by name: {p_assigning_seller_name} -> {salesperson.name}")
+                            # Cập nhật pancake_id nếu chưa có
+                            if p_seller_pancake_id and not salesperson.pancake_id:
+                                salesperson.sudo().write({'pancake_id': p_seller_pancake_id})
+                    
+                    # CUỐI CÙNG: Tạo user mới
+                    if not salesperson and p_assigning_seller_name:
+                        _logger.info(f"Creating new Odoo user for Pancake salesperson: {p_assigning_seller_name} (pancake_id: {p_seller_pancake_id})")
                         try:
-                            login_val = p_assigning_seller_email if p_assigning_seller_email else p_assigning_seller_name.lower().replace(' ', '_')
-                            # Đảm bảo login là duy nhất
-                            existing_user_with_login = ResUsers.search([('login', '=', login_val)], limit=1)
+                            login_val = p_assigning_seller_email if p_assigning_seller_email else f'pancake_{p_seller_pancake_id}'
+                            # Đảm bảo login duy nhất
+                            existing_user_with_login = ResUsers.sudo().search([('login', '=', login_val)], limit=1)
                             if existing_user_with_login:
-                                login_val = f"{login_val}_{existing_user_with_login.id}" # Thêm ID để đảm bảo duy nhất
+                                login_val = f"{login_val}_{p_seller_pancake_id}"
 
                             internal_group = self.env.ref('base.group_user')
-                            salesperson = ResUsers.create({
+                            salesperson = ResUsers.sudo().create({
                                 'name': p_assigning_seller_name,
                                 'login': login_val,
                                 'email': p_assigning_seller_email,
-                                'password': login_val, # Đặt password tạm thời
+                                'phone': p_assigning_seller_phone,
+                                'pancake_id': p_seller_pancake_id,  # LƯU PANCAKE_ID
+                                'password': p_assigning_seller_email if p_assigning_seller_email else 'odoo_temp_pass',
                                 'company_id': current_company_id if current_company_id else False,
                                 'active': True,
-                                'share': False, # Không phải user chia sẻ 
+                                'share': False,
                                 'groups_id': [(6, 0, [internal_group.id])],
                             })
-                            _logger.info(f"Created salesperson {salesperson.name} (ID: {salesperson.id}) for Pancake order {p_order_id}")
+                            _logger.info(f"✅ Created salesperson: {salesperson.name} with pancake_id: {p_seller_pancake_id}")
                         except Exception as e_saler:
-                            _logger.error(f"Failed to create Odoo user for Pancake salesperson {p_assigning_seller_name}: {e_saler}")
-                            salesperson = False # Đảm bảo salesperson là False nếu tạo lỗi
-
-                    if salesperson:
-                        user_id_val = salesperson.id
-                    else:
-                        _logger.warning(f"Could not find or create salesperson for Pancake Order ID: {p_order_id}. Checking creator.")
-                        
-                # Nếu không có salesperson, ưu tiên người tạo đơn trên Pancake (nếu khác với user hiện tại)
-                if not salesperson and odoo_creator and odoo_creator.id != self.env.user.id:
+                            _logger.error(f"❌ Failed to create Odoo user for Pancake salesperson {p_assigning_seller_name}: {e_saler}")
+                            salesperson = False
+                
+                # === XÁC ĐỊNH user_id_val (Sale Person cho đơn hàng) ===
+                # Ưu tiên 1: Người được gán bán hàng từ Pancake
+                # Ưu tiên 2: Người tạo đơn trên Pancake
+                # Ưu tiên 3: Người đồng bộ hiện tại
+                if salesperson:
+                    user_id_val = salesperson.id
+                    _logger.info(f"✅ Using salesperson: {salesperson.name} (ID: {user_id_val})")
+                elif odoo_creator:
                     user_id_val = odoo_creator.id
-                    _logger.info(f"Assigning creator '{odoo_creator.name}' as salesperson for Pancake order {p_order_id}")
-                elif not salesperson:
-                    user_id_val = self.env.user.id # Nếu không tìm/tạo được, dùng user hiện tại
+                    _logger.info(f"✅ Using creator as salesperson: {odoo_creator.name} (ID: {user_id_val})")
+                else:
+                    user_id_val = self.env.user.id
+                    _logger.warning(f"⚠️ Using sync user as salesperson: {self.env.user.name} (ID: {user_id_val})")
 
                 # TÌM HOẶC TẠO SALES TEAM dựa trên Salesperson nếu có
                 final_team_id_val = False
@@ -897,40 +934,73 @@ class SaleOrderInherit(models.Model):
         try:
             # --- 1. Find or Create Creator (res.users) ---
             creator_info = order_data.get('creator', {})
-            odoo_creator = self.env.user # Default to current user
+            odoo_creator = False # BẮT ĐẦU TỪ False
+            
             if creator_info:
-                creator_email = creator_info.get('email')
+                creator_pancake_id = str(creator_info.get('id')) if creator_info.get('id') else None
                 creator_name = creator_info.get('name')
-                if creator_email:
-                    odoo_creator = ResUsers.sudo().search([('login', '=', creator_email)], limit=1)
+                creator_email = creator_info.get('email')
                 
+                # ƯU TIÊN 1: Tìm theo pancake_id
+                if creator_pancake_id:
+                    odoo_creator = ResUsers.sudo().search([('pancake_id', '=', creator_pancake_id)], limit=1)
+                    if odoo_creator:
+                        _logger.info(f"✅ [WEBHOOK] Found creator by pancake_id: {creator_pancake_id} -> {odoo_creator.name}")
+                
+                # ƯU TIÊN 2: Tìm theo email
+                if not odoo_creator and creator_email:
+                    odoo_creator = ResUsers.sudo().search([('login', '=', creator_email)], limit=1)
+                    if odoo_creator and creator_pancake_id and not odoo_creator.pancake_id:
+                        odoo_creator.sudo().write({'pancake_id': creator_pancake_id})
+                
+                # ƯU TIÊN 3: Tìm theo tên
                 if not odoo_creator and creator_name:
-                    # Tìm theo tên nếu không tìm thấy bằng email
                     odoo_creator = ResUsers.sudo().search([('name', '=ilike', creator_name), ('share', '=', False)], limit=1)
-                    
-                if not odoo_creator:
-                    _logger.warning(f"Creator '{creator_name}' with email '{creator_email}' not found. Using current user.")
-                    odoo_creator = self.env.user
+                    if odoo_creator and creator_pancake_id and not odoo_creator.pancake_id:
+                        odoo_creator.sudo().write({'pancake_id': creator_pancake_id})
+            
+            # FALLBACK: Dùng user hiện tại
+            if not odoo_creator:
+                odoo_creator = self.env.user
+                _logger.warning(f"⚠️ [WEBHOOK] Creator not found, using current user: {odoo_creator.name}")
 
             # --- 2. Find or Create Salesperson (user_id) & Sales Team (team_id) ---
             assigning_seller_info = order_data.get('assigning_seller', {})
-            p_assigning_seller_name = assigning_seller_info.get('name')
-            
-            # Ưu tiên 1: Người được gán bán hàng từ Pancake
-            # Ưu tiên 2: Người tạo đơn trên Pancake  
-            # Ưu tiên 3: Người đồng bộ hiện tại
-            user_id_val = self.env.user.id # Default
             salesperson = False
             
-            if p_assigning_seller_name:
-                salesperson = ResUsers.search([('name', '=ilike', p_assigning_seller_name), ('share', '=', False)], limit=1)
-
+            if isinstance(assigning_seller_info, dict):
+                p_seller_pancake_id = str(assigning_seller_info.get('id')) if assigning_seller_info.get('id') else None
+                p_assigning_seller_name = assigning_seller_info.get('name')
+                p_assigning_seller_email = assigning_seller_info.get('email')
+                
+                # ƯU TIÊN 1: Tìm theo pancake_id
+                if p_seller_pancake_id:
+                    salesperson = ResUsers.sudo().search([('pancake_id', '=', p_seller_pancake_id)], limit=1)
+                    if salesperson:
+                        _logger.info(f"✅ [WEBHOOK] Found salesperson by pancake_id: {p_seller_pancake_id} -> {salesperson.name}")
+                
+                # ƯU TIÊN 2: Tìm theo email
+                if not salesperson and p_assigning_seller_email:
+                    salesperson = ResUsers.sudo().search([('login', '=', p_assigning_seller_email), ('share', '=', False)], limit=1)
+                    if salesperson and p_seller_pancake_id and not salesperson.pancake_id:
+                        salesperson.sudo().write({'pancake_id': p_seller_pancake_id})
+                
+                # ƯU TIÊN 3: Tìm theo tên
+                if not salesperson and p_assigning_seller_name:
+                    salesperson = ResUsers.sudo().search([('name', '=ilike', p_assigning_seller_name), ('share', '=', False)], limit=1)
+                    if salesperson and p_seller_pancake_id and not salesperson.pancake_id:
+                        salesperson.sudo().write({'pancake_id': p_seller_pancake_id})
+            
+            # === XÁC ĐỊNH user_id_val ===
             if salesperson:
                 user_id_val = salesperson.id
-            elif odoo_creator and odoo_creator.id != self.env.user.id:
-                # Nếu không có người bán được gán, ưu tiên người tạo đơn trên Pancake
+                _logger.info(f"✅ [WEBHOOK] Using salesperson: {salesperson.name}")
+            elif odoo_creator:
                 user_id_val = odoo_creator.id
-                _logger.info(f"Assigning creator '{odoo_creator.name}' as salesperson for Pancake order {p_order_id}")
+                _logger.info(f"✅ [WEBHOOK] Using creator as salesperson: {odoo_creator.name}")
+            else:
+                user_id_val = self.env.user.id
+                _logger.warning(f"⚠️ [WEBHOOK] Using sync user as salesperson")
 
             final_team_id_val = self.env['crm.team']._get_default_team_id(user_id=user_id_val)
 
