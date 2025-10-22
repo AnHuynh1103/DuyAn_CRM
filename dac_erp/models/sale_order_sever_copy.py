@@ -1132,7 +1132,7 @@ class SaleOrderInherit(models.Model):
                 # LUÔN TẠO SẢN PHẨM MỚI từ Pancake (không search sản phẩm cũ)
                 product_variant = False
                 if p_item_name:
-                    product_variant = Product.create({
+                    product_variant = Product.sudo().create({
                         'name': p_item_name,
                         'default_code': p_item_sku,
                         'type': 'product',
@@ -1141,7 +1141,14 @@ class SaleOrderInherit(models.Model):
                         'lst_price': variation_info.get('retail_price', 0.0),
                         'company_id': current_company_id,  # CRITICAL: Sản phẩm phải thuộc công ty
                     })
-                    _logger.info(f"✅ Created new product from Pancake: {p_item_name} (SKU: {p_item_sku})")
+                    _logger.info(f"✅ Created new product from Pancake: {p_item_name} (company_id: {current_company_id})")
+                    # Verify product was created with correct company_id
+                    _logger.info(f"🔍 Product variant company_id: {product_variant.company_id.id if product_variant.company_id else None}")
+                    _logger.info(f"🔍 Product template company_id: {product_variant.product_tmpl_id.company_id.id if product_variant.product_tmpl_id.company_id else None}")
+                    if not product_variant.company_id or product_variant.company_id.id != current_company_id:
+                        _logger.error(f"❌ Product variant company_id mismatch! Expected: {current_company_id}, Got: {product_variant.company_id.id if product_variant.company_id else None}")
+                    if not product_variant.product_tmpl_id.company_id or product_variant.product_tmpl_id.company_id.id != current_company_id:
+                        _logger.error(f"❌ Product template company_id mismatch! Expected: {current_company_id}, Got: {product_variant.product_tmpl_id.company_id.id if product_variant.product_tmpl_id.company_id else None}")
 
                 if product_variant:
                     order_line_commands.append((0, 0, {
