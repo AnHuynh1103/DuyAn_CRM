@@ -9,36 +9,56 @@ _logger = logging.getLogger(__name__)
 
 class SaleOrderAccessController(http.Controller):
     """
-    Controller để intercept URL truy cập đơn hàng và redirect đúng action
+    Controller để intercept URL truy cập action và redirect đúng menu/action
     dựa trên quyền của user
     
     Pattern URL hỗ trợ:
-    - /odoo/action-371/10041
+    - /odoo/action-XXX (any action ID)
+    - /odoo/action-371/10041 (with sale order ID)
     - /odoo/action-371/10041/invoicing/53/account.payment/27/sale.order/10041
     
     QUAN TRỌNG:
-    - Route pattern PHẢI cụ thể để tránh conflict với các /odoo/ routes khác
-    - CHỈ match URL có dạng: action-NUMBER/NUMBER (đảm bảo có sale order ID)
+    - Intercept TẤT CẢ /odoo/action-* URLs
+    - Kiểm tra quyền user và redirect về menu phù hợp
     """
     
     @http.route([
+        '/odoo/action-<int:action_id>',
         '/odoo/action-<int:action_id>/<int:sale_order_id>',
         '/odoo/action-<int:action_id>/<int:sale_order_id>/<path:breadcrumb>'
     ], type='http', auth='user', website=False)
-    def intercept_sale_order_url(self, action_id, sale_order_id, breadcrumb=None, **kwargs):
+    def intercept_sale_order_url(self, action_id, sale_order_id=None, breadcrumb=None, **kwargs):
         """
-        Intercept URL dạng /odoo/action-xxx/[SALE_ORDER_ID]/...
+        Intercept URL dạng /odoo/action-xxx hoặc /odoo/action-xxx/[SALE_ORDER_ID]/...
         
         Parameters:
         - action_id: ID của action (từ URL)
-        - sale_order_id: ID của sale order (từ URL) 
+        - sale_order_id: ID của sale order (từ URL, optional)
         - breadcrumb: Phần còn lại của URL (optional)
         - kwargs: Query parameters (?debug=1, etc.)
         """
         _logger.info(f"[INTERCEPT] Action {action_id}, Sale Order ID: {sale_order_id}, Breadcrumb: {breadcrumb}, kwargs: {kwargs}")
         
-        # KHÔNG cần parse nữa vì route pattern đã extract sẵn sale_order_id
-        return self._check_access_and_redirect(sale_order_id, kwargs)
+        # Kiểm tra quyền user TRƯỚC
+        user = request.env.user
+        
+        # Nếu user KHÔNG có bất kỳ DAC group nào → redirect về home menu
+        if not (user.has_group('dac_erp.group_dac_erp_manager') or 
+                user.has_group('dac_erp.group_dac_erp_sale') or
+                user.has_group('dac_erp.group_dac_erp_design') or
+                user.has_group('dac_erp.group_dac_erp_production') or
+                user.has_group('base.group_system')):
+            
+            _logger.warning(f"[INTERCEPT] User {user.name} has no DAC groups - redirecting to home menu")
+            return request.redirect('/web#action=home_menu.home_menu_action')
+        
+        # Nếu có sale_order_id → kiểm tra quyền truy cập đơn hàng
+        if sale_order_id:
+            return self._check_access_and_redirect(sale_order_id, kwargs)
+        
+        # Nếu không có sale_order_id → cho phép truy cập action bình thường
+        _logger.info(f"[INTERCEPT] User {user.name} accessing action {action_id} (no order ID) - allowing")
+        return request.redirect(f'/web#action={action_id}')
     
     def _check_access_and_redirect(self, sale_order_id, url_params):
         """
@@ -50,7 +70,26 @@ class SaleOrderAccessController(http.Controller):
             
             if not sale_order.exists():
                 _logger.warning(f"[INTERCEPT] Sale order {sale_order_id} not found")
-                return request.redirect('/web#action=dac_erp.dac_sale_order_custom_action_design')
+                
+                # Redirect về đúng DASHBOARD theo group của user
+                user = request.env.user
+                
+                if user.has_group('dac_erp.group_dac_erp_design'):
+                    # Design → về Design Dashboard
+                    return request.redirect('/web#action=dac_erp.dac_design_dashboard_action')
+                elif user.has_group('dac_erp.group_dac_erp_production'):
+                    # Production → về Production Dashboard
+                    return request.redirect('/web#action=dac_erp.dac_production_dashboard_action')
+                elif (user.has_group('dac_erp.group_dac_erp_manager') or 
+                      user.has_group('dac_erp.group_dac_erp_sale')):
+                    # Manager/Sale → về Dashboard chính của họ (từ dac_report module)
+                    return request.redirect('/web#action=dac_report.dac_sale_dashboard_action')
+                elif user.has_group('base.group_system'):
+                    # Admin → về trang chủ Odoo
+                    return request.redirect('/web')
+                else:
+                    # User không có quyền gì → redirect về Home menu
+                    return request.redirect('/web#action=home_menu.home_menu_action')
             
             user = request.env.user
             _logger.info(f"[INTERCEPT] User: {user.name} (ID: {user.id}) accessing order {sale_order.name}")
@@ -98,20 +137,20 @@ class SaleOrderAccessController(http.Controller):
                         }
                     )
                     
-                    # Redirect về menu phù hợp theo group
+                    # Redirect về DASHBOARD phù hợp theo group (KHÔNG phải menu!)
                     if user.has_group('dac_erp.group_dac_erp_design'):
-                        menu = request.env.ref('dac_erp.dac_sale_order_menu_design_only')
+                        # Design → về Design Dashboard
+                        return request.redirect('/web#action=dac_erp.dac_design_dashboard_action')
                     elif user.has_group('dac_erp.group_dac_erp_production'):
-                        menu = request.env.ref('dac_erp.dac_sale_order_menu_production_only')
+                        # Production → về Production Dashboard
+                        return request.redirect('/web#action=dac_erp.dac_production_dashboard_action')
                     else:
-                        # Fallback: redirect về root menu "Đang sản xuất"
-                        menu = request.env.ref('dac_erp.dac_design_root_menu')
-                    
-                    return request.redirect(f'/web#menu_id={menu.id}')
+                        # Fallback: redirect về Home menu
+                        return request.redirect('/web#action=home_menu.home_menu_action')
             
-            # CASE 3: User không thuộc nhóm nào → Deny
-            _logger.warning(f"[INTERCEPT] User {user.name} has no relevant groups")
-            return request.redirect('/web')
+            # CASE 3: User không thuộc nhóm nào → Redirect về Home menu
+            _logger.warning(f"[INTERCEPT] User {user.name} has no relevant groups - redirecting to home menu")
+            return request.redirect('/web#action=home_menu.home_menu_action')
             
         except Exception as e:
             _logger.error(f"[INTERCEPT] Error checking access: {e}", exc_info=True)
@@ -134,9 +173,9 @@ class SaleOrderAccessController(http.Controller):
                 action = request.env.ref('dac_erp.dac_sale_order_action_production_only')
                 _logger.info(f"[INTERCEPT] Using Production action for user {user.name}")
             else:
-                # Fallback - dùng action cũ
-                action = request.env.ref('dac_erp.dac_sale_order_custom_action_design')
-                _logger.info(f"[INTERCEPT] Using fallback action for user {user.name}")
+                # Fallback - dùng action Design (mặc định)
+                action = request.env.ref('dac_erp.dac_sale_order_action_design_only')
+                _logger.info(f"[INTERCEPT] Using fallback Design action for user {user.name}")
             
             # Build URL với action, view_id, và id
             url = f'/web#id={sale_order_id}&model=sale.order&view_type=form&action={action.id}'

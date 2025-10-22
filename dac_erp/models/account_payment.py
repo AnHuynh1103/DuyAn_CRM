@@ -320,7 +320,8 @@ class AccountPayment(models.Model):
                         elif user.has_group('dac_erp.group_dac_erp_production'):
                             action = self.env.ref('dac_erp.dac_sale_order_action_production_only')
                         else:
-                            action = self.env.ref('dac_erp.dac_sale_order_custom_action_design')  # fallback
+                            # Manager/Sale/Admin - dùng action manager
+                            action = self.env.ref('dac_erp.dac_sale_order_manager_action')
                         
                         form_view = self.env.ref('dac_erp.dac_sale_order_custom_view_form')
                         

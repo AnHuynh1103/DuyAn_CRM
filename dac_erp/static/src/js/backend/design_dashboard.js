@@ -70,9 +70,9 @@ class DesignDashboard extends Component {
     }
   }
 
-  // mở danh sách đơn (legacy)
+  // mở danh sách đơn hàng (dùng action mới)
   async openOrderList() {
-    await this.action.doAction("dac_erp.dac_sale_order_custom_action_design");
+    await this.action.doAction("dac_erp.dac_sale_order_action_design_only");
   }
   async openOrder(so) {
     if (!so || !so.id) return;

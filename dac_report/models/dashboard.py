@@ -1,5 +1,6 @@
 from odoo import api, fields, models, _
 from odoo.tools.misc import formatLang
+from odoo.exceptions import AccessError
 import calendar
 from datetime import datetime, timedelta
 
@@ -154,6 +155,13 @@ class SaleOrderDashboardService(models.Model):
 
     @api.model
     def dac_get_dashboard(self, date_from=False, date_to=False, company_id=False):
+        # Kiểm tra quyền xem Dashboard Sale
+        user = self.env.user
+        if not (user.has_group('dac_erp.group_dac_erp_manager') or 
+                user.has_group('dac_erp.group_dac_erp_sale') or
+                user.has_group('base.group_system')):
+            raise AccessError(_("Bạn không có quyền truy cập dashboard này."))
+        
         company = self.env["res.company"].browse(company_id) if company_id else self.env.company
         currency = company.currency_id
         today = fields.Date.context_today(self)
