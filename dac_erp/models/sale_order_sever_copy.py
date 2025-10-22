@@ -966,6 +966,22 @@ class SaleOrderInherit(models.Model):
                     odoo_creator = ResUsers.sudo().search([('name', '=ilike', creator_name), ('share', '=', False)], limit=1)
                     if odoo_creator and creator_pancake_id and not odoo_creator.pancake_id:
                         odoo_creator.sudo().write({'pancake_id': creator_pancake_id})
+                
+                # TẠO USER MỚI nếu không tìm thấy
+                if not odoo_creator and creator_name and creator_email:
+                    try:
+                        odoo_creator = ResUsers.sudo().create({
+                            'name': creator_name,
+                            'login': creator_email,
+                            'email': creator_email,
+                            'pancake_id': creator_pancake_id,
+                            'company_id': current_company_id,
+                            'company_ids': [(4, current_company_id)],
+                            'groups_id': [(4, self.env.ref('sales_team.group_sale_salesman').id)],
+                        })
+                        _logger.info(f"✅ [WEBHOOK] Created new creator: {odoo_creator.name} (pancake_id: {creator_pancake_id})")
+                    except Exception as e:
+                        _logger.warning(f"⚠️ [WEBHOOK] Failed to create creator: {e}")
             
             # FALLBACK: Dùng user hiện tại hoặc tìm admin
             if not odoo_creator:
@@ -1013,6 +1029,22 @@ class SaleOrderInherit(models.Model):
                     salesperson = ResUsers.sudo().search([('name', '=ilike', p_assigning_seller_name), ('share', '=', False)], limit=1)
                     if salesperson and p_seller_pancake_id and not salesperson.pancake_id:
                         salesperson.sudo().write({'pancake_id': p_seller_pancake_id})
+                
+                # TẠO USER MỚI nếu không tìm thấy
+                if not salesperson and p_assigning_seller_name and p_assigning_seller_email:
+                    try:
+                        salesperson = ResUsers.sudo().create({
+                            'name': p_assigning_seller_name,
+                            'login': p_assigning_seller_email,
+                            'email': p_assigning_seller_email,
+                            'pancake_id': p_seller_pancake_id,
+                            'company_id': current_company_id,
+                            'company_ids': [(4, current_company_id)],
+                            'groups_id': [(4, self.env.ref('sales_team.group_sale_salesman').id)],  # Salesperson group
+                        })
+                        _logger.info(f"✅ [WEBHOOK] Created new salesperson: {salesperson.name} (pancake_id: {p_seller_pancake_id})")
+                    except Exception as e:
+                        _logger.warning(f"⚠️ [WEBHOOK] Failed to create salesperson: {e}")
             
             # === XÁC ĐỊNH user_id_val ===
             if salesperson:
