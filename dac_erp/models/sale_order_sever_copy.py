@@ -918,8 +918,21 @@ class SaleOrderInherit(models.Model):
         status_mapping = self._get_pancake_status_to_odoo_state_mapping()
 
         # --- Company Context ---
-        current_company_id = self.env.company.id if self.env.company else False
-        company_domain = ['|', ('company_id', '=', False), ('company_id', '=', current_company_id)] if current_company_id else [('company_id', '=', False)]
+        # QUAN TRỌNG: LUÔN PHẢI CÓ company_id hợp lệ, không được để False
+        if self.env.company:
+            current_company_id = self.env.company.id
+        elif self.env.user and self.env.user.company_id:
+            current_company_id = self.env.user.company_id.id
+        else:
+            # Fallback: lấy company đầu tiên trong hệ thống
+            default_company = self.env['res.company'].sudo().search([], limit=1)
+            if not default_company:
+                _logger.error(f"❌ [WEBHOOK] No company found in system! Cannot create order {order_data.get('id')}")
+                return SaleOrder
+            current_company_id = default_company.id
+            _logger.warning(f"⚠️ [WEBHOOK] Using fallback company: {default_company.name} (ID: {current_company_id})")
+        
+        company_domain = ['|', ('company_id', '=', False), ('company_id', '=', current_company_id)]
 
         p_order_id = str(order_data.get('id'))
         if not p_order_id:
@@ -959,10 +972,25 @@ class SaleOrderInherit(models.Model):
                     if odoo_creator and creator_pancake_id and not odoo_creator.pancake_id:
                         odoo_creator.sudo().write({'pancake_id': creator_pancake_id})
             
-            # FALLBACK: Dùng user hiện tại
+            # FALLBACK: Dùng user hiện tại hoặc tìm admin
             if not odoo_creator:
-                odoo_creator = self.env.user
-                _logger.warning(f"⚠️ [WEBHOOK] Creator not found, using current user: {odoo_creator.name}")
+                if self.env.user and self.env.user.id and self.env.user.company_id:
+                    odoo_creator = self.env.user
+                    _logger.warning(f"⚠️ [WEBHOOK] Creator not found, using current user: {odoo_creator.name}")
+                else:
+                    # Webhook context không có user hợp lệ → tìm Admin
+                    odoo_creator = ResUsers.sudo().search([
+                        ('company_id', '=', current_company_id),
+                        ('groups_id', 'in', [self.env.ref('base.group_system').id])
+                    ], limit=1)
+                    if not odoo_creator:
+                        # Fallback cuối: user đầu tiên của company
+                        odoo_creator = ResUsers.sudo().search([('company_id', '=', current_company_id)], limit=1)
+                    _logger.warning(f"⚠️ [WEBHOOK] No user context, using fallback user: {odoo_creator.name if odoo_creator else 'NONE'}")
+            
+            if not odoo_creator:
+                _logger.error(f"❌ [WEBHOOK] Cannot find any valid user for order {p_order_id}")
+                return SaleOrder
 
             # --- 2. Find or Create Salesperson (user_id) & Sales Team (team_id) ---
             assigning_seller_info = order_data.get('assigning_seller', {})
@@ -999,8 +1027,9 @@ class SaleOrderInherit(models.Model):
                 user_id_val = odoo_creator.id
                 _logger.info(f"✅ [WEBHOOK] Using creator as salesperson: {odoo_creator.name}")
             else:
-                user_id_val = self.env.user.id
-                _logger.warning(f"⚠️ [WEBHOOK] Using sync user as salesperson")
+                # Không nên đến đây vì odoo_creator đã được bảo đảm ở trên
+                _logger.error(f"❌ [WEBHOOK] No valid salesperson for order {p_order_id}")
+                return SaleOrder
 
             final_team_id_val = self.env['crm.team']._get_default_team_id(user_id=user_id_val)
 
