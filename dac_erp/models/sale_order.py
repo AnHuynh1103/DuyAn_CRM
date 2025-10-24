@@ -144,6 +144,9 @@ class SaleOrder(models.Model):
     
     # Tiến trình giao hàng
     delivery_address = fields.Text(string="Địa chỉ giao hàng", tracking=True)
+    
+    # Tiến trình thi công - lắp đặt
+    installation_address = fields.Text(string="Địa chỉ thi công/lắp đặt", tracking=True)
 
     # Trạng thái hoàn thành đơn hàng
     is_order_completed = fields.Boolean(string="Đơn hàng đã hoàn thành", default=False)
@@ -653,8 +656,8 @@ class SaleOrder(models.Model):
                 order.is_payment_confirmed = True
             
             elif order.order_state_custom == 'installation':
-                # Dùng chung 'delivery_address' cho địa điểm thi công để giảm chạm code.
-                if not order.delivery_address or not order.delivery_address.strip():
+                # Kiểm tra địa chỉ thi công/lắp đặt riêng
+                if not order.installation_address or not order.installation_address.strip():
                     raise UserError("Vui lòng nhập địa chỉ thi công/lắp đặt trước khi xác nhận!")
                 order.is_installation_confirmed = True
                 order.check_and_update_completion_status()
@@ -1088,15 +1091,18 @@ class SaleOrder(models.Model):
 
             # NEW: Nếu CHỈ có hóa đơn đặt cọc, nhưng tổng cọc đã trả >= tổng đơn => cũng hoàn thành
             # (Không có hóa đơn cuối nào)
+            # ⚠️ ĐIỀU KIỆN BỔ SUNG: Phải đã xác nhận delivery HOẶC installation
             if not order_invoices.filtered(lambda inv: not inv.dac_deposit_invoice):
                 # Tổng tiền của các invoice đã 'paid' (deposit)
                 paid_total = sum(inv.amount_total for inv in paid_invoices)
                 # Epsilon nhỏ để tránh sai số làm tròn
                 if order.currency_id.compare_amounts(paid_total, order.amount_total) >= 0:
-                    order.is_order_completed = True
-                    order.is_payment_confirmed = True
-                    if order.order_state_custom != 'completed':
-                        order.order_state_custom = 'completed'
+                    # ✅ CHỈ CHUYỂN COMPLETED NẾU ĐÃ XÁC NHẬN DELIVERY HOẶC INSTALLATION
+                    if order.is_delivery_confirmed or order.is_installation_confirmed:
+                        order.is_order_completed = True
+                        order.is_payment_confirmed = True
+                        if order.order_state_custom != 'completed':
+                            order.order_state_custom = 'completed'
 
             # CHỈ INVALIDATE MỘT LẦN
             order.invalidate_recordset()

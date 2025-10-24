@@ -96,11 +96,17 @@
                                        string="Số điện thoại"
                                        placeholder="Số điện thoại"
                                        readonly="is_design_user or is_production_user"/>
-                                <!-- Trường địa chỉ giao hàng - hiện từ tiến trình giao hàng -->
+                                <!-- Trường địa chỉ giao hàng - hiện khi chọn "Giao hàng" -->
                                 <field name="delivery_address" 
                                        string="Địa chỉ giao hàng"
-                                       invisible="order_state_custom not in ['delivery', 'payment']"
+                                       invisible="fulfillment_method != 'delivery' or order_state_custom not in ['delivery', 'payment','completed']"
                                        readonly="is_delivery_confirmed or is_design_user or is_production_user"
+                                       widget="text"/>
+                                <!-- Trường địa chỉ thi công/lắp đặt - hiện khi chọn "Thi công - lắp đặt" -->
+                                <field name="installation_address" 
+                                       string="Địa chỉ thi công/lắp đặt"
+                                       invisible="fulfillment_method != 'installation' or order_state_custom not in ['installation', 'payment','completed']"
+                                       readonly="is_installation_confirmed or is_design_user or is_production_user"
                                        widget="text"/>
                             </group>
                             <group name="staff_assignment">

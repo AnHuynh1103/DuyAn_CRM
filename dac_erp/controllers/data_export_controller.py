@@ -426,6 +426,7 @@ class DataExportController(http.Controller):
                 'delay_reason': getattr(so, 'delay_reason', None),
             }
             delivery = {'address': getattr(so, 'delivery_address', None)}
+            installation = {'address': getattr(so, 'installation_address', None)}
 
             # ---- order_number (đa tên field) ----
             order_number = (
@@ -467,6 +468,7 @@ class DataExportController(http.Controller):
                 'design': design,
                 'production': production,
                 'delivery': delivery,
+                'installation': installation,
             }
             
             # Safe access cho conversation_id & build conversation data
