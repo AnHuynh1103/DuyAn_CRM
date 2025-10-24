@@ -2,7 +2,16 @@ from odoo import models, fields, api, _
 
 class ResUsers(models.Model):
     _inherit = 'res.users'
+    
+    # Field chính - đang dùng trong code
     pancake_id = fields.Char(string="Pancake Admin ID", index=True, copy=False)
+
+    
+    # Field mới - phân biệt rõ ràng 2 loại ID
+    pancake_uuid = fields.Char(string="Pancake UUID (Đúng)", index=True, copy=False,
+                                help="UUID từ creator.id - Định dạng: bd901904-38fd-4e4d-a839-1adc1e651f54")
+    pancake_number_id = fields.Char(string="Pancake number ID (Số)", index=True, copy=False,
+                                 help="id số - Định dạng: 741331342729875")
 
 class ResPartner(models.Model):
     _inherit = 'res.partner'

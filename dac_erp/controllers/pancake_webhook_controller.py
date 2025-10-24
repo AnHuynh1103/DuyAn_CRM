@@ -61,10 +61,10 @@ class PancakeWebhookController(http.Controller):
             payload = json.loads(raw_data)
             _logger.info(f"Pancake Webhook: Dữ liệu nhận được: json.dumps(payload, indent=2)")
             _logger.info("=====================================================")
-            # _logger.info(
-            #     "Pancake Webhook: Dữ liệu nhận được: %s",
-            #     json.dumps(payload, ensure_ascii=False, indent=2)
-            # )
+            _logger.info(
+                 "Pancake Webhook: Dữ liệu nhận được: %s",
+                 json.dumps(payload, ensure_ascii=False, indent=2)
+             )
 
             
 

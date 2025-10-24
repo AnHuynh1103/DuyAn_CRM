@@ -8,10 +8,21 @@
       <field name="arch" type="xml">
         <!-- Chèn vào group đầu tiên trên sheet -->
         <xpath expr="//sheet//group" position="inside">
-          <group string="Pancake" groups="dac_erp.group_dac_erp_manager">
+          <group string="Pancake Integration" groups="dac_erp.group_dac_erp_manager">
             <field name="pancake_id" 
-                   placeholder="Pancake Admin ID" 
-                   readonly="1"/>
+                   placeholder="ID hiện tại đang dùng trong code" 
+                   readonly="0"
+                   help="Field đang được sử dụng - có thể là UUID hoặc Number ID"/>
+            <field name="pancake_uuid" 
+                   placeholder="UUID đúng: bd901904-38fd-4e4d-a839-1adc1e651f54" 
+                   readonly="0"
+                   string="UUID (Chuẩn)"
+                   help="UUID từ creator.id - định dạng: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/>
+            <field name="pancake_number_id" 
+                   placeholder="Number ID: 741331342729875" 
+                   readonly="0"
+                   string="Number ID"
+                   help="ID dạng số từ Pancake (có thể từ FB, Zalo, etc)"/>
           </group>
         </xpath>
       </field>
@@ -25,10 +36,21 @@
       <field name="priority">100</field>
       <field name="arch" type="xml">
         <xpath expr="//sheet//group" position="inside">
-          <group string="Pancake" groups="dac_erp.group_dac_erp_manager">
+          <group string="Pancake Integration" groups="dac_erp.group_dac_erp_manager">
             <field name="pancake_id" 
-                   placeholder="Pancake Admin ID" 
-                   readonly="1"/>
+                   placeholder="ID hiện tại đang dùng trong code" 
+                   readonly="0"
+                   help="Field đang được sử dụng - có thể là UUID hoặc Number ID"/>
+            <field name="pancake_uuid" 
+                   placeholder="UUID đúng: bd901904-38fd-4e4d-a839-1adc1e651f54" 
+                   readonly="0"
+                   string="UUID (Chuẩn)"
+                   help="UUID từ creator.id - định dạng: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/>
+            <field name="pancake_number_id" 
+                   placeholder="Number ID: 741331342729875" 
+                   readonly="0"
+                   string="Number ID"
+                   help="ID dạng số từ Pancake (có thể từ FB, Zalo, etc)"/>
           </group>
         </xpath>
       </field>
