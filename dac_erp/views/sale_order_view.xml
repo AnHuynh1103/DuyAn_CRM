@@ -99,13 +99,13 @@
                                 <!-- Trường địa chỉ giao hàng - hiện khi chọn "Giao hàng" -->
                                 <field name="delivery_address" 
                                        string="Địa chỉ giao hàng"
-                                       invisible="fulfillment_method != 'delivery' or order_state_custom not in ['delivery', 'payment','completed']"
+                                       invisible="fulfillment_method != 'delivery' or order_state_custom not in ['production','delivery', 'payment','completed']"
                                        readonly="is_delivery_confirmed or is_design_user or is_production_user"
                                        widget="text"/>
                                 <!-- Trường địa chỉ thi công/lắp đặt - hiện khi chọn "Thi công - lắp đặt" -->
                                 <field name="installation_address" 
                                        string="Địa chỉ thi công/lắp đặt"
-                                       invisible="fulfillment_method != 'installation' or order_state_custom not in ['installation', 'payment','completed']"
+                                       invisible="fulfillment_method != 'installation' or order_state_custom not in ['production','installation', 'payment','completed']"
                                        readonly="is_installation_confirmed or is_design_user or is_production_user"
                                        widget="text"/>
                             </group>
@@ -152,7 +152,7 @@
                                 <field name="fulfillment_method"
                                        nolabel="1"
                                        widget="radio"
-                                       readonly="order_state_custom in ['delivery','installation','payment','completed'] 
+                                       readonly="order_state_custom == 'completed' 
                                        or is_delivery_confirmed or is_installation_confirmed
                                        or is_design_user"/>
                             </group>
@@ -502,7 +502,7 @@
                                     string="Tạo hóa đơn"
                                     type="object"
                                     class="btn-success"
-                                    groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"
+                                    groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager"
                                     invisible="order_state_custom != 'payment' or is_payment_confirmed or has_final_invoice"/>
 
                                 <!-- Nút Chuyển sang tiến trình tiếp theo: Đặt cọc -->

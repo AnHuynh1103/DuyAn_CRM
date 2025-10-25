@@ -565,8 +565,7 @@ class SaleOrder(models.Model):
     
     
     def action_back_custom_step(self):
-        """Quay lại xem tiến trình trước đó - CHỈ ĐỂ XEM, KHÔNG THAY ĐỔI TRẠNG THÁI XÁC NHẬN
-        gom 2 nhánh song song về production."""
+        """Quay lại tiến trình trước đó - reset cờ confirm khi về production để cho phép chỉnh sửa"""
         state_order = ['quotation', 'deposit', 'production', 'delivery', 'installation' , 'payment']
         allowed_groups = [self.env.ref('dac_erp.group_dac_erp_manager'), 
                           self.env.ref('base.group_system')]
@@ -576,17 +575,33 @@ class SaleOrder(models.Model):
                                 "Vui lòng liên hệ quản lý để được hỗ trợ!")
             if order.order_state_custom in state_order:
                 idx = state_order.index(order.order_state_custom)
-            # --- Collapse 2 nhánh song song về production ---
+            
+            # --- Collapse 2 nhánh song song về production và RESET CỜ ---
             if order.order_state_custom in ('installation', 'delivery'):
-                order.order_state_custom = 'production'
+                order.write({
+                    'order_state_custom': 'production',
+                    'is_delivery_confirmed': False,
+                    'is_installation_confirmed': False,
+                })
+                #_logger.info(f"[BACK] Order {order.name}: Reset is_delivery_confirmed & is_installation_confirmed")
                 continue
-            # --- Từ payment lùi về đúng nhánh đã đi ---
+            
+            # --- Từ payment lùi về đúng nhánh đã đi (dựa vào fulfillment_method) và RESET CỜ ---
             if order.order_state_custom == 'payment':
-                if order.started_installation and not order.started_delivery:
-                    order.order_state_custom = 'installation'
-                else:
-                    order.order_state_custom = 'delivery'
+                vals = {}
+                # Dựa vào fulfillment_method đã chọn, KHÔNG dựa vào flag started_*
+                if order.fulfillment_method == 'installation':
+                    vals['order_state_custom'] = 'installation'
+                    vals['is_installation_confirmed'] = False
+                    #_logger.info(f"[BACK] Order {order.name}: Payment -> Installation (fulfillment_method=installation)")
+                else:  # delivery hoặc mặc định
+                    vals['order_state_custom'] = 'delivery'
+                    vals['is_delivery_confirmed'] = False
+                    #_logger.info(f"[BACK] Order {order.name}: Payment -> Delivery (fulfillment_method={order.fulfillment_method})")
+                
+                order.write(vals)
                 continue
+            
             # --- Tuyến tính cho các bước còn lại ---
             if idx > 0:
                 order.order_state_custom = state_order[idx - 1]
@@ -644,14 +659,12 @@ class SaleOrder(models.Model):
                 if not order.delivery_address or not order.delivery_address.strip():
                     raise UserError("Vui lòng nhập địa chỉ giao hàng trước khi xác nhận!")
                 order.is_delivery_confirmed = True
-                # NEW (thêm 2 dòng này)
                 # Chạy lại kiểm tra hoàn tất: nếu chỉ có hóa đơn cọc và tổng cọc >= tổng đơn
-                # hàm này sẽ tự set completed + is_payment_confirmed
                 order.check_and_update_completion_status()
-
-                # ĐỪNG tự nhảy sang "Thu tiền" nếu đã completed ở trên
-                if order.order_state_custom != 'completed':          # NEW
-                    order.order_state_custom = state_order[idx + 1]  # (bước kế là 'payment' như cũ)
+                # Nếu chưa completed, nhảy trực tiếp sang payment (KHÔNG qua installation)
+                if order.order_state_custom != 'completed':
+                    order.order_state_custom = 'payment'
+                    _logger.info(f"[CONFIRM] Order {order.name}: Delivery confirmed -> Payment")
             elif order.order_state_custom == 'payment':
                 order.is_payment_confirmed = True
             
@@ -661,11 +674,14 @@ class SaleOrder(models.Model):
                     raise UserError("Vui lòng nhập địa chỉ thi công/lắp đặt trước khi xác nhận!")
                 order.is_installation_confirmed = True
                 order.check_and_update_completion_status()
+                # Nếu chưa completed, nhảy trực tiếp sang payment
                 if order.order_state_custom != 'completed':
                     order.order_state_custom = 'payment'
+                    _logger.info(f"[CONFIRM] Order {order.name}: Installation confirmed -> Payment")
             
-            # CHỈ tự động chuyển tiến trình cho một số trạng thái cụ thể, KHÔNG áp dụng cho 'deposit'
-            if order.order_state_custom in ['quotation', 'production', 'delivery', 'installation'] and idx < len(state_order) - 1:
+            # CHỈ tự động chuyển tiến trình cho quotation và production
+            # KHÔNG áp dụng cho delivery/installation (đã xử lý riêng ở trên)
+            if order.order_state_custom in ['quotation', 'production'] and idx < len(state_order) - 1:
                 order.order_state_custom = state_order[idx + 1]
         return True
 
