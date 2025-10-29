@@ -4,7 +4,7 @@
 
 /* Chiều cao list KPI (mặc định cho màn 1366x768) */
 :root {
-  --kpi-list-h: 450px; /* <--- hạ/nhấc con số này theo ý bạn chiều cao của 3 cột */
+  --kpi-list-h: 500px; /* Tăng từ 450px lên 500px để chứa ticket cao hơn khi có icon VIP */
 }
 
 /* Tự co giãn theo chiều cao màn hình */
@@ -410,22 +410,38 @@
   background: rgba(16, 185, 129, 0.03) !important;
 }
 
-.o_dac_dashboard .ticket.high-value:not(.vip-customer):not(.loyal-customer) .ticket-amount {
+.o_dac_dashboard
+  .ticket.high-value:not(.vip-customer):not(.loyal-customer)
+  .ticket-amount {
   color: #059669 !important; /* Xanh lá đậm */
   font-weight: 600 !important;
 }
 
 /* MARK: DAC-TICKET-H — đặt chiều cao cố định cho mọi ticket */
 :root {
-  --ticket-h: 96px; /* chỉnh chiều cao */
+  --ticket-h: 96px; /* chiều cao ticket thường */
+  --ticket-lg-h: 120px; /* chiều cao ticket lớn (Đang tư vấn) - tăng để chứa icon VIP */
 }
 
-/* Áp dụng cho cả 2 loại ticket */
-.o_dac_dashboard .ticket,
+/* Ticket thường (Đã báo giá, Đang sản xuất) - mặc định 96px */
+.o_dac_dashboard .ticket {
+  min-height: var(--ticket-h) !important;
+  max-height: var(--ticket-h) !important;
+  overflow: hidden;
+}
+
+/* Ticket lớn (Đang tư vấn) - mặc định 96px cho khách thường */
 .o_dac_dashboard .ticket--lg {
   min-height: var(--ticket-h) !important;
-  max-height: var(--ticket-h) !important; /* cố định, dư thì cắt */
-  overflow: hidden; /* tránh tràn nội dung */
+  max-height: var(--ticket-h) !important;
+  overflow: hidden;
+}
+
+/* 🆕 Tự động tăng chiều cao lên 120px KHI có VIP/Loyal class */
+.o_dac_dashboard .ticket--lg.vip-customer,
+.o_dac_dashboard .ticket--lg.loyal-customer {
+  min-height: var(--ticket-lg-h) !important;
+  max-height: var(--ticket-lg-h) !important;
 }
 
 .ticket__row {
