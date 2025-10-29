@@ -1480,6 +1480,11 @@ class PageFmConversation(models.Model):
         - Nếu có > 3 lỗi liên tiếp → tạm dừng 15 phút
         - Nếu timeout/token error → clear cache và retry
         - Rate limiting: delay giữa các request
+        
+        Tối ưu sync:
+        - Chỉ sync conversations có hoạt động trong 7 ngày gần đây
+        - HOẶC conversations chưa đọc / cần xử lý (bất kể thời gian)
+        - Skip conversations cũ không hoạt động để tiết kiệm tài nguyên
         """
         import time
         
@@ -1511,8 +1516,28 @@ class PageFmConversation(models.Model):
         
         _logger.info(f"Pancake Circuit Breaker Sync: sẽ xử lý tối đa {size} conversations")
 
-        # Lấy conversations cần sync
-        new_convs = self.search([('id', '>', last_id)], order="id asc", limit=size)
+        # 🆕 Tính ngày 7 ngày trước
+        seven_days_ago = datetime.now() - timedelta(days=7)
+        seven_days_str = seven_days_ago.strftime('%Y-%m-%d %H:%M:%S')
+        
+        # 🆕 Domain filter: Chỉ sync conversations ACTIVE trong 7 ngày hoặc cần xử lý
+        active_filter = [
+            '|',  # OR
+            '|',  # OR
+            ('updated_at_fm', '>=', seven_days_str),  # Cập nhật trong 7 ngày
+            ('is_unread_fm', '=', True),  # Hoặc chưa đọc
+            ('require_processing', '=', True),  # Hoặc cần xử lý
+        ]
+        
+        # Lấy conversations cần sync với filter
+        new_convs_domain = [('id', '>', last_id)] + active_filter
+        new_convs = self.search(new_convs_domain, order="id asc", limit=size)
+        
+        # Log số conversations bị skip
+        total_new = self.search_count([('id', '>', last_id)])
+        skipped = total_new - len(new_convs)
+        if skipped > 0:
+            _logger.info(f"⚡ Tối ưu: Skip {skipped} conversations cũ không hoạt động (>7 ngày, đã đọc, không cần xử lý)")
         
         # *** FIX: Nếu không có conversation mới, reset con trỏ về 0 ***
         if not new_convs and last_id > 0:
@@ -1520,18 +1545,19 @@ class PageFmConversation(models.Model):
             self._set_conv_pointer(0)
             last_id = 0
             last_processed_id = 0
-            # Lấy lại conversations từ đầu
-            new_convs = self.search([('id', '>', 0)], order="id asc", limit=size)
+            # Lấy lại conversations từ đầu với active filter
+            new_convs = self.search([('id', '>', 0)] + active_filter, order="id asc", limit=size)
         
         remainder = size - len(new_convs)
         extra_convs = self.browse()
         
         if remainder > 0:
+            # Extra conversations: Ưu tiên chưa đọc/cần xử lý trong 7 ngày
             extra_domain = [
                 ('id', '<=', last_id),
                 '|', ('require_processing', '=', True),
                     ('is_unread_fm', '=', True),
-            ]
+            ] + active_filter
             extra_convs = self.search(extra_domain, order="last_message_sync_fm asc", limit=remainder)
 
         convs = new_convs | extra_convs
@@ -1539,7 +1565,7 @@ class PageFmConversation(models.Model):
             _logger.info("Pancake Circuit Breaker Sync: không có hội thoại nào cần đồng bộ")
             return 0
 
-        _logger.info(f"Pancake Circuit Breaker Sync: bắt đầu sync {len(convs)} conversations")
+        _logger.info(f"Pancake Circuit Breaker Sync: bắt đầu sync {len(convs)} conversations (active trong 7 ngày hoặc cần xử lý)")
 
         for i, conv in enumerate(convs):
             try:
