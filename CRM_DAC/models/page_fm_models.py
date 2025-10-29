@@ -276,6 +276,19 @@ class PageFmPage(models.Model):
 
                     page_id_api = (conv_data.get('page_id') or '').strip()           # NEW
                     
+                    # 🆕 Lấy tags từ API (nếu có)
+                    # API trả về field 'tags' là array of objects: [None, {'id': 28, 'text': 'Khách lớn', ...}]
+                    api_tags = conv_data.get('tags', []) or []
+                    api_tag_ids = []
+                    if isinstance(api_tags, list):
+                        for tag_obj in api_tags:
+                            if isinstance(tag_obj, dict) and tag_obj.get('id'):
+                                api_tag_ids.append(tag_obj['id'])
+                    
+                    # DEBUG: Log để kiểm tra tags
+                    if api_tag_ids:
+                        _logger.info(f"🏷️ API returned tags for conv {conv_data.get('id')}: {api_tag_ids}")
+                    
                     processed_conv = {
                         'conversation_fm_id': conv_data.get('id'),
                         'page_fm_page_id': odoo_page_id,
@@ -286,6 +299,7 @@ class PageFmPage(models.Model):
                         'is_unread_fm': is_unread,
                         'platform_fm': platform,
                         'conv_page_fm_id': page_id_api,  # <-- NEW (rất quan trọng)
+                        'api_tag_ids': api_tag_ids,  # 🆕 Truyền tag_ids từ API
                     }
                     processed_conversations.append(processed_conv)
 
@@ -305,22 +319,81 @@ class PageFmPage(models.Model):
     def _create_or_update_conversations(self, conversations_data_list):
         self.ensure_one()
         ConversationEnv = self.env['page.fm.conversation']
+        TagEnv = self.env['page.fm.tag'].sudo()
         created_count = 0
         updated_count = 0
+        
         for conv_vals in conversations_data_list:
             conv_fm_id = conv_vals.get('conversation_fm_id')
-            if not conv_fm_id: continue
+            if not conv_fm_id: 
+                continue
+                
+            # 🆕 Lấy api_tag_ids trước khi xử lý
+            api_tag_ids = conv_vals.pop('api_tag_ids', [])
+            
+            # DEBUG: Log để kiểm tra
+            if api_tag_ids:
+                _logger.info(f"🔍 Processing conv {conv_fm_id} with api_tag_ids: {api_tag_ids}")
+            
             conv_vals['page_fm_page_id'] = self.id
-            existing_conv = ConversationEnv.search([('conversation_fm_id', '=', conv_fm_id), ('page_fm_page_id', '=', self.id)], limit=1)
+            existing_conv = ConversationEnv.search([
+                ('conversation_fm_id', '=', conv_fm_id), 
+                ('page_fm_page_id', '=', self.id)
+            ], limit=1)
+            
             try:
+                # 🆕 Map tag_ids từ Pancake sang Odoo tags
+                odoo_tag_ids = []
+                if api_tag_ids:
+                    _logger.info(f"🏷️ Mapping {len(api_tag_ids)} tag_ids for conv {conv_fm_id}")
+                    for tag_id_str in api_tag_ids:
+                        tag = TagEnv.search([
+                            ('tag_fm_id', '=', str(tag_id_str)),
+                            ('page_id', '=', self.id)
+                        ], limit=1)
+                        if tag:
+                            odoo_tag_ids.append(tag.id)
+                            _logger.info(f"✅ Mapped tag_id {tag_id_str} → {tag.name} (id: {tag.id})")
+                        else:
+                            _logger.warning(f"⚠️ Tag {tag_id_str} not found in Odoo for page {self.page_fm_id_str}")
+                
+                # Gán tags vào conversation (luôn gán, kể cả khi rỗng để xóa tags đã gỡ)
+                conv_vals['pancake_tag_ids'] = [(6, 0, odoo_tag_ids)]
+                if odoo_tag_ids:
+                    _logger.info(f"Will assign {len(odoo_tag_ids)} tags to conversation {conv_fm_id}")
+                else:
+                    _logger.info(f"Will clear tags for conversation {conv_fm_id}")
+                
                 if existing_conv:
                     existing_conv.write(conv_vals)
                     updated_count += 1
+                    
+                    # 🆕 Sync tags sang partner (luôn sync, kể cả khi rỗng)
+                    if existing_conv.partner_id:
+                        existing_conv.partner_id.sudo().write({
+                            'pancake_tag_ids': [(6, 0, odoo_tag_ids)]
+                        })
+                        if odoo_tag_ids:
+                            _logger.info(f"✅ Synced {len(odoo_tag_ids)} tags to partner {existing_conv.partner_id.name}")
+                        else:
+                            _logger.info(f"🗑️ Cleared tags for partner {existing_conv.partner_id.name}")
                 else:
-                    ConversationEnv.create(conv_vals)
+                    new_conv = ConversationEnv.create(conv_vals)
                     created_count += 1
+                    
+                    # 🆕 Sync tags sang partner (luôn sync, kể cả khi rỗng)
+                    if new_conv.partner_id:
+                        new_conv.partner_id.sudo().write({
+                            'pancake_tag_ids': [(6, 0, odoo_tag_ids)]
+                        })
+                        if odoo_tag_ids:
+                            _logger.info(f"✅ Synced {len(odoo_tag_ids)} tags to partner {new_conv.partner_id.name}")
+                        else:
+                            _logger.info(f"🗑️ Cleared tags for partner {new_conv.partner_id.name}")
+                        
             except Exception as e:
                 _logger.error(f"Error C/U conversation FM ID {conv_fm_id} for page {self.page_fm_id_str}: {e}", exc_info=True)
+                
         _logger.info(f"Conversations for page {self.page_fm_id_str}: {created_count} created, {updated_count} updated.")
         self.invalidate_recordset(['conversation_count'])
 

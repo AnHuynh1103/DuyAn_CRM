@@ -5,7 +5,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from odoo import SUPERUSER_ID
 from odoo import models, fields, api, _
-from odoo.exceptions import AccessError
+from odoo.exceptions import AccessError, UserError
 from datetime import datetime, timedelta
 from odoo.tools import DEFAULT_SERVER_DATETIME_FORMAT
 import time
@@ -296,66 +296,6 @@ class PageFmConversation(models.Model):
             _logger.error(f"🔍 DEBUG: Unexpected error: {e}", exc_info=True)
             return None, f"Lỗi kết nối: {str(e)}"
 
-    def action_test_pancake_tag_sync(self):
-        """Kiểm tra trạng thái tags - Hiển thị thông tin local vì API không hỗ trợ GET"""
-        self.ensure_one()
-        try:
-            # Lấy trạng thái local và manual tags
-            current_state = self.require_processing
-            expected_tag = "Đang tư vấn" if current_state else "Done"
-            manual_tags = [tag.name for tag in self.pancake_tag_ids] if self.pancake_tag_ids else []
-            
-            message_parts = []
-            
-            # Thông báo về hạn chế API
-            message_parts.append("ℹ️ **PANCAKE API**")
-            message_parts.append("❌ API không hỗ trợ GET tags của conversation cụ thể")
-            message_parts.append("📋 Endpoint conversations chỉ dùng tags để filter, không trả về tags")
-            message_parts.append("✅ Chỉ có thể sync tags TO Pancake (POST)")
-            
-            # Hiển thị thông tin local
-            message_parts.append("")
-            message_parts.append("📊 **THÔNG TIN LOCAL**")
-            message_parts.append(f"🔄 Trạng thái dự kiến: **{expected_tag}**")
-            message_parts.append(f"⚙️ require_processing: {current_state}")
-            
-            if manual_tags:
-                message_parts.append(f"✋ Tags manual: **{', '.join(manual_tags)}**")
-            else:
-                message_parts.append("✋ Tags manual: **Chưa chọn**")
-            
-            # Hiển thị lịch sử sync gần nhất
-            message_parts.append("")
-            message_parts.append("📝 **HƯỚNG DẪN**")
-            message_parts.append("• Sử dụng nút 'Sync Tags lên Pancake' để đồng bộ")
-            message_parts.append("• Việc sync sẽ gửi tags manual + tag theo trạng thái")
-            message_parts.append("• Không thể kiểm tra trạng thái tags thực tế trên Pancake")
-            
-            message = '\n'.join(message_parts)
-            
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'display_notification',
-                'params': {
-                    'title': '🔍 Kiểm Tra Tags',
-                    'message': message,
-                    'type': 'info',
-                    'sticky': True
-                }
-            }
-            
-        except Exception as e:
-            _logger.error(f"Lỗi kiểm tra tags: {e}", exc_info=True)
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'display_notification',
-                'params': {
-                    'title': '❌ Lỗi',
-                    'message': f'Lỗi kiểm tra: {str(e)}',
-                    'type': 'danger'
-                }
-            }
-
     def _get_tag_by_code(self, code):
         """Lấy tag từ page.fm.tag dựa trên odoo_tag_code"""
         self.ensure_one()
@@ -370,66 +310,6 @@ class PageFmConversation(models.Model):
         ], limit=1)
         
         return tag
-
-    def action_test_pancake_tag_sync_simple(self):
-        if not page:
-            return None
-        
-        tag = self.env['page.fm.tag'].search([
-            ('page_id', '=', page.id),
-            ('odoo_tag_code', '=', code),
-            ('active', '=', True)
-        ], limit=1)
-        
-        return tag
-
-    def action_test_pancake_tag_sync_simple(self):
-        """Phiên bản đơn giản của kiểm tra tags - không cần API Pancake"""
-        self.ensure_one()
-        try:
-            # Chỉ hiển thị thông tin local
-            current_state = self.require_processing
-            expected_tag = "Đang tư vấn" if current_state else "Done"
-            manual_tags = [tag.name for tag in self.pancake_tag_ids] if self.pancake_tag_ids else []
-            
-            message_parts = []
-            message_parts.append("📊 **THÔNG TIN LOCAL (Không kết nối Pancake):**")
-            message_parts.append(f"🔄 **Trạng thái dự kiến**: {expected_tag}")
-            message_parts.append(f"⚙️ **require_processing**: {current_state}")
-            
-            if manual_tags:
-                message_parts.append(f"✋ **Tags manual đã chọn**: {', '.join(manual_tags)}")
-            else:
-                message_parts.append("✋ **Tags manual**: Chưa chọn")
-            
-            # Kiểm tra conflict local
-            if manual_tags:
-                if current_state and "Done" in manual_tags:
-                    message_parts.append("⚠️ **Conflict**: Chọn 'Done' nhưng trạng thái là 'Cần xử lý'")
-                elif not current_state and "Đang tư vấn" in manual_tags:
-                    message_parts.append("⚠️ **Conflict**: Chọn 'Đang tư vấn' nhưng trạng thái là 'Đã xử lý'")
-            
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'display_notification',
-                'params': {
-                    'title': 'Kiểm Tra Tags (Local)',
-                    'message': "\n".join(message_parts),
-                    'type': 'info'
-                }
-            }
-            
-        except Exception as e:
-            _logger.error(f"Lỗi kiểm tra tags simple: {e}", exc_info=True)
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'display_notification',
-                'params': {
-                    'title': 'Lỗi Kiểm tra Tags',
-                    'message': f"❌ Lỗi: {str(e)}",
-                    'type': 'danger'
-                }
-            }
 
     def _sync_tags_to_pancake(self, require_processing):
         """Đồng bộ tags với Pancake dựa trên trạng thái require_processing (AUTO SYNC)
@@ -784,6 +664,18 @@ class PageFmConversation(models.Model):
             if should_process != rec.require_processing:
                 rec.require_processing = should_process
                 #_logger.info(f"Auto {'bật' if should_process else 'tắt'} require_processing cho conversation {rec.id} - Trạng thái: {rec.status_state}, unread: {bool(getattr(rec, 'is_unread_fm', False))}")
+    
+    def sync_tags_to_partner(self):
+        """🆕 Đồng bộ tags từ conversation sang partner"""
+        for record in self:
+            if record.partner_id and record.pancake_tag_ids:
+                try:
+                    record.partner_id.sudo().write({
+                        'pancake_tag_ids': [(6, 0, record.pancake_tag_ids.ids)]
+                    })
+                    _logger.info(f"✅ Synced {len(record.pancake_tag_ids)} tags to partner {record.partner_id.name}")
+                except Exception as e:
+                    _logger.error(f"Lỗi sync tags to partner: {e}", exc_info=True)
 
     # (tuỳ chọn) auto gợi ý trạng thái dựa vào unread/last message
     def apply_status_rule(self):
@@ -1367,6 +1259,19 @@ class PageFmConversation(models.Model):
                     record._find_or_create_partner()
             except Exception as e:
                 _logger.error(f"Lỗi khi tìm/tạo partner cho hội thoại {record.id}: {e}", exc_info=True)
+            
+            # 🆕 Đồng bộ tags từ conversation sang partner (luôn sync, kể cả khi rỗng)
+            try:
+                if record.partner_id:
+                    record.partner_id.sudo().write({
+                        'pancake_tag_ids': [(6, 0, record.pancake_tag_ids.ids)]
+                    })
+                    if record.pancake_tag_ids:
+                        _logger.info(f"Synced {len(record.pancake_tag_ids)} tags from conversation to partner {record.partner_id.name}")
+                    else:
+                        _logger.info(f"Cleared tags for partner {record.partner_id.name} (no tags in conversation)")
+            except Exception as e:
+                _logger.error(f"Lỗi khi sync tags sang partner: {e}", exc_info=True)
 
             # Áp dụng rule/refresh snippet
             try:
@@ -1689,6 +1594,23 @@ class PageFmConversation(models.Model):
                 self.env.cr.rollback()
                 time.sleep(3)  # Delay lâu hơn sau lỗi
 
+        # 🆕 Sync tags từ các pages liên quan (sau khi sync messages xong)
+        if processed > 0:
+            try:
+                # Lấy danh sách các pages UNIQUE có conversations vừa sync
+                unique_pages = convs.mapped('page_fm_page_id')
+                if unique_pages:
+                    _logger.info(f"🏷️ Syncing tags for {len(unique_pages)} unique pages after message sync...")
+                    for page in unique_pages:
+                        try:
+                            page.action_sync_specific_pages_conversations()
+                            _logger.info(f"Synced tags for page '{page.name}' (ID: {page.id})")
+                            time.sleep(2)  # Rate limiting giữa các page
+                        except Exception as e:
+                            _logger.error(f"Failed to sync tags for page '{page.name}': {e}")
+            except Exception as e:
+                _logger.error(f"Error during tag sync in cron: {e}")
+        
         final_message = (f"Circuit Breaker Sync completed: {processed}/{len(convs)} success, "
                         f"{error_count} errors, pointer: {last_id} → {last_processed_id}")
         
@@ -1921,7 +1843,7 @@ class PageFmConversation(models.Model):
                 
                 # Đảm bảo dữ liệu được lưu
                 self.env.cr.commit()
-                _logger.info(f"✅ Đồng bộ thành công tin nhắn cho conversation {record.conversation_fm_id}")
+                _logger.info(f"Đồng bộ thành công tin nhắn cho conversation {record.conversation_fm_id}")
                 
                 # QUAN TRỌNG: Trả về action mở lại FORM hiện tại thay vì reload dashboard
                 return {
@@ -1939,49 +1861,35 @@ class PageFmConversation(models.Model):
                     'type': 'ir.actions.client',
                     'tag': 'display_notification', 
                     'params': {
-                        'title': '❌ Lỗi đồng bộ',
+                        'title': 'Lỗi đồng bộ',
                         'message': f'Lỗi: {str(e)}',
                         'type': 'danger',
                         'sticky': True
                     }
                 }
 
-    def action_debug_conversation(self):
-        """Debug conversation - hiển thị thông tin hữu ích"""
+    def action_sync_tags_from_page(self):
+        """Sync tags từ Page API (vì không có API riêng cho conversation)"""
         self.ensure_one()
         
-        # Lấy thông tin debug
-        main_token = self.env['ir.config_parameter'].sudo().get_param('page_fm.access_token')
-        page_token = None
+        if not self.page_fm_page_id:
+            raise UserError("Conversation chưa liên kết với Page nào!")
         
+        # Gọi sync conversations từ page để cập nhật tags
         try:
-            if self.page_fm_page_id and main_token:
-                page_token = self.page_fm_page_id._generate_page_specific_access_token(main_token)
-        except Exception as e:
-            page_token = f"Error: {e}"
-        
-        message = f"""
-📋 Thông tin Debug:
-• Conversation ID: {self.conversation_fm_id}
-• Customer ID: {self.customer_fm_id}
-• Page ID: {self.page_fm_id_str_related}
-• Platform: {self.platform_fm}
-• Message Count: {self.message_count}
-• Last Sync: {self.last_message_sync_fm or 'Chưa sync'}
-• Main Token: {'✅ Có' if main_token else '❌ Thiếu'}
-• Page Token: {'✅ Có' if page_token and 'Error' not in str(page_token) else f'❌ {page_token}'}
-        """
-        
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'title': '🔍 Debug Info',
-                'message': message,
-                'type': 'info',
-                'sticky': True
+            self.page_fm_page_id.action_sync_specific_pages_conversations()
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Sync Tags',
+                    'message': f'Đã đồng bộ tags cho conversation từ Page "{self.page_fm_page_id.name}"',
+                    'type': 'success',
+                    'sticky': False,
+                }
             }
-        }
+        except Exception as e:
+            raise UserError(f"Lỗi khi sync tags: {e}")
 
     def action_sync_all_conversations_force(self):
         """Force sync ALL conversations without any filters"""
@@ -2061,13 +1969,3 @@ class PageFmConversation(models.Model):
                 'tag': 'reload',
             }
 
-
-    #Cho đồng bộ tag_id
-    tag_ids = fields.Many2many(
-        "page.fm.tag",
-        "page_fm_conversation_tag_rel",
-        "conversation_id", "tag_id",
-        string="Pancake Tags",
-        domain="[('page_id', '=', page_id)]",
-        help="Các thẻ Pancake áp dụng cho hội thoại này",
-    )

@@ -1,4 +1,7 @@
+import logging
 from odoo import models, fields, api, _
+
+_logger = logging.getLogger(__name__)
 
 class ResUsers(models.Model):
     _inherit = 'res.users'
@@ -25,6 +28,16 @@ class ResPartner(models.Model):
     )
     is_pancake_customer = fields.Boolean(
         string='Khách từ Pancake', compute='_compute_is_pancake_customer'
+    )
+    
+    # === PANCAKE TAGS ===
+    pancake_tag_ids = fields.Many2many(
+        'page.fm.tag',
+        'res_partner_pancake_tag_rel',
+        'partner_id',
+        'tag_id',
+        string="Thẻ từ Pancake",
+        help="Tags được đồng bộ từ conversation mới nhất trên Pancake"
     )
 
     def _compute_conversation_count(self):
@@ -98,6 +111,22 @@ class ResPartner(models.Model):
                 vals['participant_user_ids'] = [(6, 0, conv.participant_user_ids.ids)]
             if vals:
                 partner.write(vals)
+    
+    def sync_tags_from_conversations(self):
+        """Đồng bộ tags từ conversation mới nhất sang khách hàng."""
+        Conv = self.env['page.fm.conversation'].sudo()
+        for partner in self:
+            # Lấy conversation mới nhất có tags
+            conv = Conv.search(
+                [('partner_id', '=', partner.id), ('pancake_tag_ids', '!=', False)],
+                order='updated_at_fm desc, id desc', limit=1
+            )
+            if conv and conv.pancake_tag_ids:
+                partner.write({
+                    'pancake_tag_ids': [(6, 0, conv.pancake_tag_ids.ids)]
+                })
+                _logger.info(f"✅ Synced {len(conv.pancake_tag_ids)} tags from conversation to partner {partner.name}")
+
                 
     _sql_constraints = [
         ('pancake_id_company_uniq',

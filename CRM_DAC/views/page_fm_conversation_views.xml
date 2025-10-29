@@ -64,6 +64,11 @@
                             class="btn-success"
                             context="{'load_all': True}"
                             groups="dac_erp.group_dac_erp_manager"/>
+                    <button name="action_sync_tags_from_page"
+                            type="object"
+                            string="Đồng bộ Tags"
+                            class="btn-primary"
+                            groups="dac_erp.group_dac_erp_manager"/>
                     <button name="action_clear_token_cache"
                             type="object"
                             string="Xóa cache page"
@@ -75,11 +80,6 @@
                             class="btn-danger"
                             confirm="Bạn có chắc muốn sync TOÀN BỘ conversations không filter? Sẽ mất nhiều thời gian đấy!"
                             groups="dac_erp.group_dac_erp_manager"/>
-                    <button name="action_debug_conversation"
-                            type="object"
-                            string="Debug"
-                            class="btn-info"
-                            groups="base.group_system"/>
                 </header>
                 
                 <field name="partner_id" string="Khách Hàng" widget="many2one_avatar"/>
@@ -109,17 +109,11 @@
                             class="btn-success" 
                             context="{'load_all': True}"
                             groups="dac_erp.group_dac_erp_manager"/>
-                    <button name="action_test_pancake_tag_sync"
+                    <button name="action_sync_tags_from_page"
                             type="object"
-                            string="Kiểm tra Tags"
-                            class="btn-info"
-                            icon="fa-tags"
+                            string="Đồng bộ Tags"
+                            class="btn-primary"
                             groups="dac_erp.group_dac_erp_manager"/>
-                    <button name="action_debug_conversation"
-                            type="object"
-                            string="Debug"
-                            class="btn-info"
-                            groups="base.group_system"/>
                     <button name="action_clear_token_cache"
                             type="object"
                             string="Xóa cache page"

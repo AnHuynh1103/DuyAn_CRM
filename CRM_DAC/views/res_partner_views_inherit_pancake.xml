@@ -41,6 +41,9 @@
                         <field name="participant_user_ids" widget="many2many_tags"/>
                         <field name="pancake_id" readonly="1" placeholder="Pancake Customer ID"/>
                     </group>
+                    <group string="Thẻ từ Pancake" name="pancake_tags_group">
+                        <field name="pancake_tag_ids" widget="many2many_tags" options="{'color_field': 'color', 'no_create_edit': True}" placeholder="Tags được đồng bộ từ conversation"/>
+                    </group>
                 </xpath>
             </field>
         </record>

@@ -45,20 +45,13 @@
                                     help="Reset trạng thái thanh toán khi nhấn nhầm (chỉ Manager)"
                                     invisible="order_state_custom != 'completed'"
                                     groups="dac_erp.group_dac_erp_manager"/>
-                            <button name="action_debug_payment_status"
+                            <button name="action_push_gs_both"
                                     type="object"
                                     class="oe_stat_button"
-                                    icon="fa-search"
-                                    string="Debug Payment"
-                                    help="Kiểm tra trạng thái thanh toán hiện tại"
-                                    groups="base.group_system"/>
-                            <button name="action_debug_payment_calculations"
-                                    type="object"
-                                    class="oe_stat_button"
-                                    icon="fa-calculator"
-                                    string="Debug Calculations"
-                                    help="Debug chi tiết tính toán thanh toán và invoice relationships"
-                                    groups="base.group_system"/>
+                                    icon="fa-cloud-upload"
+                                    string="Push Google Sheet"
+                                    help="Đẩy cả 1-sheet &amp; 2-sheets (append-only, chống trùng)"
+                                    groups="dac_erp.group_dac_erp_manager"/>
                         </div>
                         <div class="oe_title">
                             <h1>
@@ -268,7 +261,7 @@
                                     <span>Tải xuống</span>
                                 </button>
                                 <!-- Trường deadline sản xuất - thiết kế lại: luôn nằm trên, điều kiện invisible gốc, giao diện hài hòa -->
-                                <div invisible="order_state_custom == 'quotation' and not is_deposit_confirmed"
+                                <div invisible="order_state_custom == 'quotation' and not is_deposit_confirmed or 1"
                                      class="dac-deadline-container">
                                     <i class="fa fa-calendar dac-deadline-icon"></i>
                                     <span class="o_form_label dac-deadline-label">Ngày dự kiến hoàn tất sản xuất</span>
@@ -276,11 +269,16 @@
                                            placeholder="VD: 01/09/2025"
                                            class="dac-deadline-field"/>
                                 </div>
+                                <field name="production_deadline"
+                                           placeholder="VD: 01/09/2025"
+                                           string="Ngày dự kiến hoàn tất sản xuất"
+                                           class="dac-deadline-container"
+                                           invisible="order_state_custom == 'quotation' and not is_deposit_confirmed"/>
                                 <!-- Trường hợp sản xuất bị trễ -->
                                 <field name="production_is_delayed"
                                        string="Có trễ không?"
                                        widget="boolean_toggle"
-                                       invisible="(order_state_custom in ['quotation','deposit']) and (not started_delivery)"
+                                       invisible="(order_state_custom in ['quotation','deposit']) and (not started_delivery) or 1"
                                        readonly="order_state_custom != 'production' or started_delivery or started_installation"/>
                                 <field name="production_delay_date"
                                        string="Ngày trễ"
@@ -359,8 +357,38 @@
                                         placeholder="VD: 26/10/2025"
                                         readonly="design_done"/>
 
+                                    <field name="design_link"
+                                        string="Link thiết kế"/>
+
+                                    <field name="design_done"
+                                        string="Đã hoàn thành"
+                                        readonly="1"/>
+                                    
                                     <!-- Gợi ý: giữ nguyên nút “Hoàn thành” ở khu Design (Sale KHÔNG có nút này) -->
                                     <!-- <span class="o_form_label">* Lưu ý: Chỉ Designer xác nhận 'Hoàn thành'.</span> -->
+                                </group>
+                            </page>
+                            <page string="Thông tin sản xuất"
+                                    groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager">
+
+                                <group>
+                                    <!-- Sale chỉ định ngày phân công & deadline trong giai đoạn Sản xuất -->
+                                    <field name="production_deadline"
+                                        string="Deadline"
+                                        placeholder="VD: 30/10/2025"
+                                        readonly="production_done"/>
+
+                                    <field name="production_image"
+                                        string="Hình ảnh sản xuất"
+                                        widget="image"
+                                        class="oe_avatar dac-production-image"/>
+
+                                    <field name="production_done"
+                                        string="Đã hoàn thành"
+                                        readonly="1"/>
+                                    
+                                    <!-- Gợi ý: giữ nguyên nút “Hoàn thành sản xuất” ở khu Production (Sale KHÔNG có nút này) -->
+                                    <!-- <span class="o_form_label">* Lưu ý: Chỉ Production xác nhận 'Hoàn thành sản xuất'.</span> -->
                                 </group>
                             </page>
                         </notebook>
