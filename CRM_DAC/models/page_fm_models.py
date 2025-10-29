@@ -374,9 +374,9 @@ class PageFmPage(models.Model):
                             'pancake_tag_ids': [(6, 0, odoo_tag_ids)]
                         })
                         if odoo_tag_ids:
-                            _logger.info(f"✅ Synced {len(odoo_tag_ids)} tags to partner {existing_conv.partner_id.name}")
+                            _logger.info(f"Synced {len(odoo_tag_ids)} tags to partner {existing_conv.partner_id.name}")
                         else:
-                            _logger.info(f"🗑️ Cleared tags for partner {existing_conv.partner_id.name}")
+                            _logger.info(f"Cleared tags for partner {existing_conv.partner_id.name}")
                 else:
                     new_conv = ConversationEnv.create(conv_vals)
                     created_count += 1
@@ -387,9 +387,9 @@ class PageFmPage(models.Model):
                             'pancake_tag_ids': [(6, 0, odoo_tag_ids)]
                         })
                         if odoo_tag_ids:
-                            _logger.info(f"✅ Synced {len(odoo_tag_ids)} tags to partner {new_conv.partner_id.name}")
+                            _logger.info(f"Synced {len(odoo_tag_ids)} tags to partner {new_conv.partner_id.name}")
                         else:
-                            _logger.info(f"🗑️ Cleared tags for partner {new_conv.partner_id.name}")
+                            _logger.info(f"Cleared tags for partner {new_conv.partner_id.name}")
                         
             except Exception as e:
                 _logger.error(f"Error C/U conversation FM ID {conv_fm_id} for page {self.page_fm_id_str}: {e}", exc_info=True)
