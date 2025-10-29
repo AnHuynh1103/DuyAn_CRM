@@ -14,7 +14,8 @@ access_page_fm_message_sale,access.page.fm.message.sale,model_page_fm_message,da
 access_kpi_sale_daily_sale,kpi.sale.daily.user,model_kpi_sale_daily,dac_erp.group_dac_erp_sale,1,0,0,0
 
 access_page_fm_tag_sale,access.page.fm.tag.sale,model_page_fm_tag,dac_erp.group_dac_erp_sale,1,0,0,0
-
+access_page_fm_tag_design,access.page.fm.tag.design,model_page_fm_tag,dac_erp.group_dac_erp_design,1,0,0,0
+access_page_fm_tag_production,access.page.fm.tag.production,model_page_fm_tag,dac_erp.group_dac_erp_production,1,0,0,0
 
 access_conversation_message_sync_wizard_manager,access.conversation.message.sync.wizard.manager,model_page_fm_conversation_message_sync_wizard,dac_erp.group_dac_erp_manager,1,1,1,1
 

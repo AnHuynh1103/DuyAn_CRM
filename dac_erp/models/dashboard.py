@@ -6,6 +6,30 @@ import pytz
 class SaleOrder(models.Model):
     _inherit = "sale.order"
 
+    def _get_partner_vip_class(self, partner):
+        """
+        Trả về CSS class đặc biệt cho partner dựa trên tags Pancake.
+        Hỗ trợ multiple classes nếu có cả 2 tags.
+        Returns: 'vip-customer', 'loyal-customer', 'vip-customer loyal-customer', hoặc ''
+        """
+        if not partner or not partner.pancake_tag_ids:
+            return ''
+        
+        tag_names = [tag.name.lower() for tag in partner.pancake_tag_ids]
+        
+        classes = []
+        
+        # Kiểm tra Khách lớn / VIP
+        if 'khách lớn' in tag_names or 'vip' in tag_names:
+            classes.append('vip-customer')
+        
+        # Kiểm tra Khách quen / Loyal
+        if 'khách quen' in tag_names or 'loyal' in tag_names:
+            classes.append('loyal-customer')
+        
+        # Trả về chuỗi classes (có thể là "vip-customer loyal-customer")
+        return ' '.join(classes)
+
     #Dashboard Design
     @api.model
     def dac_get_dashboard_design(self):
@@ -104,6 +128,10 @@ class SaleOrder(models.Model):
             late_days = (today - dl).days if (dl and today > dl) else 0
             days_left = (dl - today).days if (dl and today <= dl) else False
             done_dt = getattr(so, "design_done_date", False)
+            
+            # 🆕 Kiểm tra VIP class
+            vip_class = self._get_partner_vip_class(so.partner_id) if so.partner_id else ''
+            
             return {
                 "id": so.id,
                 # nếu chưa có số ĐH thì để False (để frontend hiển thị 'Chưa có số ĐH')
@@ -117,6 +145,7 @@ class SaleOrder(models.Model):
                 "late_days": late_days,
                 "is_priority": bool(getattr(so, "is_priority", False)),
                 "is_priority_today": bool(getattr(so, "is_priority_today", False)),
+                "vip_class": vip_class,  # 🆕 CSS class
             }
 
         designing_list = [_pack(so) for so in orders_designing]
@@ -214,6 +243,9 @@ class SaleOrder(models.Model):
                 # context_timestamp cần naive → Datetime field của Odoo là naive UTC, ok
                 dt_loc = fields.Datetime.context_timestamp(self, dt)
                 return dt_loc.strftime("%d/%m/%Y %H:%M")
+            
+            # 🆕 Kiểm tra VIP class
+            vip_class = self._get_partner_vip_class(so.partner_id) if so.partner_id else ''
 
             return {
                 "id": so.id,
@@ -229,6 +261,7 @@ class SaleOrder(models.Model):
                 "is_priority": bool(getattr(so, "is_priority", False)),
                 "is_priority_today": bool(getattr(so, "is_priority_today", False)),
                 "done_date_str": _fmt_dt(getattr(so, "production_done_date", False)) or _fmt_dt(getattr(so, "left_production_date", False)),
+                "vip_class": vip_class,  # 🆕 CSS class
             }
 
         data = {

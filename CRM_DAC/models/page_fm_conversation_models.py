@@ -1895,26 +1895,53 @@ class PageFmConversation(models.Model):
                 }
 
     def action_sync_tags_from_page(self):
-        """Sync tags từ Page API (vì không có API riêng cho conversation)"""
+        """Sync tags chỉ cho conversation này từ Page API"""
         self.ensure_one()
         
         if not self.page_fm_page_id:
             raise UserError("Conversation chưa liên kết với Page nào!")
         
-        # Gọi sync conversations từ page để cập nhật tags
+        if not self.conversation_fm_id:
+            raise UserError("Conversation không có ID từ Pancake!")
+        
+        # Fetch lại conversation này từ API để lấy tags mới nhất
         try:
-            self.page_fm_page_id.action_sync_specific_pages_conversations()
+            page = self.page_fm_page_id
+            main_access_token = self.env['ir.config_parameter'].sudo().get_param('page_fm.access_token')
+            
+            if not main_access_token:
+                raise UserError("Thiếu cấu hình main_access_token!")
+            
+            # Fetch ALL conversations từ page (không có cách khác vì API không hỗ trợ lấy 1 conversation)
+            _logger.info(f"🔍 Fetching conversations to find {self.conversation_fm_id}...")
+            conversations = page._fetch_conversations_for_page_record(main_access_token)
+            
+            # Tìm conversation này trong kết quả
+            conv_data = None
+            for conv in conversations:
+                if conv.get('conversation_fm_id') == self.conversation_fm_id:
+                    conv_data = conv
+                    break
+            
+            if not conv_data:
+                raise UserError(f"Không tìm thấy conversation {self.conversation_fm_id} trong API response của page.")
+            
+            # Chỉ update conversation này thôi (không update toàn bộ)
+            _logger.info(f"Found conversation, updating tags only...")
+            page._create_or_update_conversations([conv_data])
+            
             return {
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
                 'params': {
                     'title': 'Sync Tags',
-                    'message': f'Đã đồng bộ tags cho conversation từ Page "{self.page_fm_page_id.name}"',
+                    'message': f'Đã đồng bộ tags cho "{self.customer_name_fm}"',
                     'type': 'success',
                     'sticky': False,
                 }
             }
         except Exception as e:
+            _logger.error(f"Error syncing tags: {e}", exc_info=True)
             raise UserError(f"Lỗi khi sync tags: {e}")
 
     def action_sync_all_conversations_force(self):

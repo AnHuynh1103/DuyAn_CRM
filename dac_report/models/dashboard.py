@@ -15,6 +15,30 @@ STATUS_COLOR_MAP = {
 class SaleOrderDashboardService(models.Model):
     _inherit = "sale.order"
 
+    def _get_partner_vip_class(self, partner):
+        """
+        Trả về CSS class đặc biệt cho partner dựa trên tags Pancake.
+        Hỗ trợ multiple classes nếu có cả 2 tags.
+        Returns: 'vip-customer', 'loyal-customer', 'vip-customer loyal-customer', hoặc ''
+        """
+        if not partner or not partner.pancake_tag_ids:
+            return ''
+        
+        tag_names = [tag.name.lower() for tag in partner.pancake_tag_ids]
+        
+        classes = []
+        
+        # Kiểm tra Khách lớn / VIP
+        if 'khách lớn' in tag_names or 'vip' in tag_names:
+            classes.append('vip-customer')
+        
+        # Kiểm tra Khách quen / Loyal
+        if 'khách quen' in tag_names or 'loyal' in tag_names:
+            classes.append('loyal-customer')
+        
+        # Trả về chuỗi classes (có thể là "vip-customer loyal-customer")
+        return ' '.join(classes)
+
     def _dac_build_consulting_cards(self, limit=50):
         Conv = self.env['page.fm.conversation']  # bỏ sudo()
 
@@ -52,6 +76,9 @@ class SaleOrderDashboardService(models.Model):
             }
             label = status_labels.get(c.status_state, '')
             
+            # 🆕 Kiểm tra VIP class từ partner
+            vip_class = self._get_partner_vip_class(c.partner_id) if c.partner_id else ''
+            
             out.append({
                 'id': c.id,
                 'title': getattr(c, 'customer_name_clean', None) or c.display_name or c.name or '',
@@ -66,6 +93,7 @@ class SaleOrderDashboardService(models.Model):
                 'require_processing': bool(getattr(c, 'require_processing', False)),
                 'partner_name': c.partner_id.name if c.partner_id else '',
                 'customer_name_fm': c.customer_name_fm or '',
+                'vip_class': vip_class,  # 🆕 CSS class: 'vip-customer', 'loyal-customer', hoặc ''
             })
         return out
 
@@ -241,14 +269,40 @@ class SaleOrderDashboardService(models.Model):
         # ---- Lists ----
         consulting_list = self._dac_build_consulting_cards(limit=20)
         
-        quotes = self.search(q_dom, limit=30, order="date_order desc, id desc")
-        quotation_list = [{
-            "id": so.id,
-            "title": so.partner_id.display_name,
-            "amount": fmt(so.amount_total),
-            "date": (so.date_order or fields.Datetime.now()).date().isoformat(),
-            "has_unread": getattr(so, "message_needaction", False),
-        } for so in quotes]
+        # 🆕 Filter quotations chỉ trong 14 ngày gần nhất để tránh đơn cũ (tránh mất đơn khi chuyển tháng)
+        two_weeks_ago = fields.Datetime.now() - timedelta(days=14)
+        q_dom_filtered = q_dom + [("date_order", ">=", two_weeks_ago)]
+        
+        # Fetch quotations (không sort trong SQL vì amount_total không stored)
+        quotes = self.search(q_dom_filtered, order="date_order desc, id desc")
+        
+        # Tạo list với amount_raw để sort
+        quotation_data = []
+        for so in quotes:
+            vip_class = self._get_partner_vip_class(so.partner_id) if so.partner_id else ''
+            amount = so.amount_total or 0
+            
+            quotation_data.append({
+                "id": so.id,
+                "title": so.partner_id.display_name,
+                "amount": fmt(amount),
+                "amount_raw": amount,  # Để sort
+                "date": (so.date_order or fields.Datetime.now()).date().isoformat(),
+                "has_unread": getattr(so, "message_needaction", False),
+                "vip_class": vip_class,
+                "is_high_value": amount >= 5000000,  # 🆕 Đánh dấu đơn ≥5M
+            })
+        
+        # 🆕 Sort trong Python: Ưu tiên đơn ≥5M hoặc VIP, sau đó theo giá trị
+        def sort_key(item):
+            # Priority 1: Đơn ≥5M hoặc có VIP class (sort trước)
+            is_priority = item['is_high_value'] or bool(item['vip_class'])
+            # Priority 2: Giá trị (cao → thấp)
+            amount = item['amount_raw']
+            # Trả về tuple: (priority DESC, amount DESC)
+            return (not is_priority, -amount)
+        
+        quotation_list = sorted(quotation_data, key=sort_key)[:30]
 
         manuf_list = []
         if doms.get("manufacturing"):
@@ -261,6 +315,9 @@ class SaleOrderDashboardService(models.Model):
             )
             today_d = fields.Date.today()
             for so in orders:
+                # 🐞 FIX: Di chuyển vip_class vào TRONG vòng lặp
+                vip_class = self._get_partner_vip_class(so.partner_id) if so.partner_id else ''
+                
                 order_no = (so.order_number or False)  # Char hoặc False
                 dln = getattr(so, "production_deadline", False)
                 late_days = (today_d - dln).days if dln and dln < today_d else 0
@@ -274,6 +331,7 @@ class SaleOrderDashboardService(models.Model):
                     "has_order_no": bool(order_no),
                     "is_priority": bool(getattr(so, "is_priority", False)),
                     "is_priority_today": bool(getattr(so, "is_priority_today", False)),
+                    "vip_class": vip_class,  # 🆕 CSS class
                 })
 
         # ---- COMPLETED CUSTOMERS ----

@@ -58,6 +58,8 @@
             <xpath expr="//search" position="inside">
                 <filter name="pancake_only" string="Khách từ Pancake"
                         domain="[('conversation_ids','!=', False)]"/>
+                <!-- <filter name="pancake_tags" string="Tags từ Pancake"
+                        domain="[('pancake_tag_ids', '!=', False)]"/> -->
             </xpath>
             </field>
         </record>

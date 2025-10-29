@@ -95,8 +95,8 @@
                   <div class="list-scroll">
                     <t t-if="(state.data.lists.consulting||[]).length">
                       <t t-foreach="state.data.lists.consulting" t-as="it" t-key="it.id">
-                        <!-- chỉ add class trạng thái khi có -->
-                        <div t-attf-class="ticket ticket--lg #{ this.getStatusKey(it) ? 'ticket--state-' + this.getStatusKey(it) : '' }">
+                        <!-- chỉ add class trạng thái khi có + VIP class -->
+                        <div t-attf-class="ticket ticket--lg #{ this.getStatusKey(it) ? 'ticket--state-' + this.getStatusKey(it) : '' } #{ it.vip_class || '' }">
                           <div class="ticket__row">
                             <div class="ticket__main" t-on-click="(ev)=>this.openConversation(it, ev)">
                               <div class="ticket__title">
@@ -158,7 +158,7 @@
                   <div class="list-scroll">
                     <t t-if="(state.data.lists.quotation||[]).length">
                       <t t-foreach="state.data.lists.quotation" t-as="it" t-key="it.id">
-                        <div class="ticket cursor-pointer" t-on-click.stop.prevent="(ev)=>this.openForm('sale.order', it.id)">
+                        <div t-attf-class="ticket cursor-pointer #{ it.vip_class || '' } #{ it.is_high_value ? 'high-value' : '' }" t-on-click.stop.prevent="(ev)=>this.openForm('sale.order', it.id)">
                           <div class="d-flex justify-content-between">
                             <div class="ticket-title text-truncate"><t t-esc="it.title"/></div>
                             <div class="ticket-amount"><t t-esc="it.amount"/></div>
@@ -187,7 +187,7 @@
                   <div class="list-scroll">
                     <t t-if="(state.data.lists.manufacturing||[]).length">
                       <t t-foreach="state.data.lists.manufacturing" t-as="so" t-key="so.id">
-                        <div class="ticket" t-on-click.stop.prevent="(ev)=>this.openForm('sale.order', so.id)">
+                        <div t-attf-class="ticket #{ so.vip_class || '' } #{ so.late_days &gt; 0 ? 'ticket-late' : '' }" t-on-click.stop.prevent="(ev)=>this.openForm('sale.order', so.id)">
                           <div class="d-flex justify-content-between">
                             <div class="ticket-title text-truncate"><t t-esc="so.title"/></div>
                             <div class="ticket-sub text-end">

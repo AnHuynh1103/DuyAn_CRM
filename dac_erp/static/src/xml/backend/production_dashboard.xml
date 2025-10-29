@@ -95,7 +95,7 @@
                           <t t-foreach="myTasks" t-as="so" t-key="so.id">
                             <!-- FULL WIDTH trong 7 cột -->
                             <div class="col-12">
-                              <div t-attf-class="dac-card dac-ticket p-3 cursor-pointer #{ (so.is_priority or so.is_priority_today or so.late_days &gt; 0) ? 'ticket-urgent' : (so.days_left !== false and so.days_left &lt;= 2) ? 'ticket-warning' : 'ticket-inprod' }"
+                              <div t-attf-class="dac-card dac-ticket p-3 cursor-pointer #{ so.vip_class || '' } #{ (so.is_priority or so.is_priority_today or so.late_days &gt; 0) ? 'ticket-urgent' : (so.days_left !== false and so.days_left &lt;= 2) ? 'ticket-warning' : 'ticket-inprod' }"
                                   t-on-click.stop.prevent="() => this.openOrder(so)">
                                   <div class="d-flex justify-content-between">
                                     <div class="task-card-header">
