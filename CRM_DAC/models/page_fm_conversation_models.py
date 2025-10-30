@@ -1278,6 +1278,14 @@ class PageFmConversation(models.Model):
                         current_participants.add(staff.id)
                         record.write({'participant_user_ids': [(6, 0, list(current_participants))]})
                         _logger.info(f"➕ Auto-added staff {staff.name} to conversation participants (from message)")
+                        
+                        # 🆕 SYNC VÀO PARTNER luôn
+                        if record.partner_id:
+                            partner_participants = set(record.partner_id.participant_user_ids.ids)
+                            if staff.id not in partner_participants:
+                                partner_participants.add(staff.id)
+                                record.partner_id.write({'participant_user_ids': [(6, 0, list(partner_participants))]})
+                                _logger.info(f"➕ Auto-added staff {staff.name} to partner {record.partner_id.name} (from message)")
 
             record.write({'last_message_sync_fm': datetime.now()})
             record.invalidate_recordset(['message_count'])
@@ -1338,6 +1346,16 @@ class PageFmConversation(models.Model):
                             merged_ids = old_participant_ids.union(set(new_user_ids))
                             record.write({'participant_user_ids': [(6, 0, list(merged_ids))]})
                             _logger.info(f"✅ Synced assignees for conversation {record.conversation_fm_id}: {len(merged_ids)} users")
+                            
+                            # 🆕 SYNC VÀO PARTNER luôn
+                            if record.partner_id:
+                                partner_participants = set(record.partner_id.participant_user_ids.ids)
+                                partner_merged = partner_participants.union(set(new_user_ids))
+                                record.partner_id.write({
+                                    'participant_user_ids': [(6, 0, list(partner_merged))],
+                                    'responsible_user_id': owner_user_id  # Cập nhật người phụ trách hiện tại
+                                })
+                                _logger.info(f"✅ Synced assignees to partner {record.partner_id.name}: {len(partner_merged)} users")
                     else:
                         _logger.info(f"ℹ️ No assignees from API for conversation {record.conversation_fm_id}")
             except Exception as e:

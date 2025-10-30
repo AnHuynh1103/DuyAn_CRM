@@ -127,7 +127,10 @@ class ResPartner(models.Model):
     )
 
     def sync_staff_from_conversations(self):
-        """Đẩy owner/participants mới nhất từ hội thoại sang khách hàng."""
+        """Đẩy owner/participants mới nhất từ hội thoại sang khách hàng.
+        - responsible_user_id: Ghi đè (người phụ trách hiện tại)
+        - participant_user_ids: MERGE (nhóm phụ trách - chỉ thêm, không xóa)
+        """
         Conv = self.env['page.fm.conversation'].sudo()
         for partner in self:
             conv = Conv.search(
@@ -136,10 +139,21 @@ class ResPartner(models.Model):
             )
             vals = {}
             if conv:
+                # Người phụ trách hiện tại - ghi đè
                 vals['responsible_user_id'] = conv.owner_id.id or False
-                vals['participant_user_ids'] = [(6, 0, conv.participant_user_ids.ids)]
+                
+                # Nhóm phụ trách - MERGE (chỉ thêm, không xóa)
+                if conv.participant_user_ids:
+                    old_participants = set(partner.participant_user_ids.ids)
+                    new_participants = set(conv.participant_user_ids.ids)
+                    merged_participants = old_participants.union(new_participants)
+                    vals['participant_user_ids'] = [(6, 0, list(merged_participants))]
+                    
             if vals:
                 partner.write(vals)
+                if 'participant_user_ids' in vals:
+                    _logger.info(f"✅ Synced staff to partner {partner.name}: owner={conv.owner_id.name if conv and conv.owner_id else 'None'}, participants={len(merged_participants) if conv else 0}")
+    
     
     def sync_tags_from_conversations(self):
         """Đồng bộ tags từ conversation mới nhất sang khách hàng."""

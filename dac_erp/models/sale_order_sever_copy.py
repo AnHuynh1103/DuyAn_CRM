@@ -1369,10 +1369,24 @@ class SaleOrderInherit(models.Model):
                                 _logger.info(f"➕ Auto-added order creator {odoo_creator.name} to conversation {conv.conversation_fm_id} of customer {partner.name}")
                             else:
                                 _logger.info(f"ℹ️ Creator {odoo_creator.name} already in conversation {conv.conversation_fm_id}")
+                        
+                        # 🆕 SYNC VÀO PARTNER luôn
+                        partner_participants = set(partner.participant_user_ids.ids)
+                        if odoo_creator.id not in partner_participants:
+                            partner_participants.add(odoo_creator.id)
+                            partner.write({'participant_user_ids': [(6, 0, list(partner_participants))]})
+                            _logger.info(f"➕ Auto-added order creator {odoo_creator.name} to partner {partner.name} (Nhóm phụ trách)")
+                        else:
+                            _logger.info(f"ℹ️ Creator {odoo_creator.name} already in partner {partner.name} participants")
+                        
+                        # Cập nhật người phụ trách hiện tại nếu chưa có
+                        if not partner.responsible_user_id:
+                            partner.write({'responsible_user_id': odoo_creator.id})
+                            _logger.info(f"👤 Set partner {partner.name} responsible_user_id to {odoo_creator.name}")
                     else:
                         _logger.info(f"ℹ️ No conversation found for customer {partner.name} (pancake_id: {partner.pancake_id})")
                 except Exception as e:
-                    _logger.error(f"❌ Error assigning creator to conversation: {e}", exc_info=True)
+                    _logger.error(f"❌ Error assigning creator to conversation/partner: {e}", exc_info=True)
 
             self.env.cr.commit()
             return current_sale_order
