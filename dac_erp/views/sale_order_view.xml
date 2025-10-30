@@ -377,12 +377,25 @@
                                         string="Deadline"
                                         placeholder="VD: 30/10/2025"
                                         readonly="production_done"/>
-
+                                    
                                     <field name="production_image"
                                         string="Hình ảnh sản xuất"
                                         widget="image"
                                         class="oe_avatar dac-production-image"/>
 
+                                    <field name="production_is_delayed"
+                                        string="Có trễ không?"
+                                        widget="boolean_toggle"
+                                        />
+                                    <field name="production_delay_date"
+                                        string="Ngày trễ"
+                                        invisible="not production_is_delayed"/>
+                                    <field name="production_delay_reason"
+                                        string="Lý do trễ"
+                                        widget="text"
+                                        placeholder="Hãy điền nguyên nhân trễ…"
+                                        invisible="not production_is_delayed"/>
+                                    
                                     <field name="production_done"
                                         string="Đã hoàn thành"
                                         readonly="1"/>
