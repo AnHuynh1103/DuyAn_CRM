@@ -928,6 +928,28 @@ class PageFmConversation(models.Model):
 
         return all_messages
     
+    def _fetch_single_conversation(self, page_specific_access_token):
+        """Fetch single conversation detail from Pancake API (including assignees)"""
+        self.ensure_one()
+        
+        if not self.conversation_fm_id:
+            _logger.warning(f"Conversation {self.id} has no conversation_fm_id")
+            return None
+        
+        url = f"https://api.pancake.vn/v2/conversations/{self.conversation_fm_id}"
+        headers = {'Authorization': f'Bearer {page_specific_access_token}'}
+        
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                return data.get('data')
+            else:
+                _logger.warning(f"Failed to fetch conversation {self.conversation_fm_id}: {response.status_code}")
+                return None
+        except Exception as e:
+            _logger.error(f"Error fetching conversation {self.conversation_fm_id}: {e}")
+            return None
 
     
     def sync_all_conversations_scheduled(self):
@@ -1187,9 +1209,14 @@ class PageFmConversation(models.Model):
 
                 # Chỉ xử lý staff khi có admin_id (tin do nhân viên gửi)
                 if admin_id:
-                    # 1) Ưu tiên tìm theo pancake_id nếu field có tồn tại
+                    # 1) Tìm theo pancake_id (kiểm tra cả 3 field: pancake_id, pancake_uuid, pancake_number_id)
                     if 'pancake_id' in Users._fields:
-                        staff = Users.search([('pancake_id', '=', admin_id)], limit=1)
+                        staff = Users.search([
+                            '|', '|',
+                            ('pancake_id', '=', admin_id),
+                            ('pancake_uuid', '=', admin_id),
+                            ('pancake_number_id', '=', admin_id)
+                        ], limit=1)
 
                     # 2) Không có thì fallback theo tên, nhưng chỉ nhận nếu DUY NHẤT
                     if not staff and admin_name:
@@ -1243,9 +1270,78 @@ class PageFmConversation(models.Model):
                     'url_content': url_content,
                 }
                 Message.create(values)
+                
+                # 🆕 YÊU CẦU #2: Tự động gán staff vào participant_user_ids
+                if staff:
+                    current_participants = set(record.participant_user_ids.ids)
+                    if staff.id not in current_participants:
+                        current_participants.add(staff.id)
+                        record.write({'participant_user_ids': [(6, 0, list(current_participants))]})
+                        _logger.info(f"➕ Auto-added staff {staff.name} to conversation participants (from message)")
 
             record.write({'last_message_sync_fm': datetime.now()})
             record.invalidate_recordset(['message_count'])
+
+            # 🆕 SYNC ASSIGNEES từ conversation API
+            try:
+                conv_detail = record._fetch_single_conversation(page_specific_access_token)
+                if conv_detail:
+                    assignee_data = conv_detail.get('current_assign_users', [])
+                    if assignee_data:
+                        new_user_ids = []
+                        owner_user_id = False
+                        ResUsers = self.env['res.users'].sudo()
+                        
+                        for idx, assignee in enumerate(assignee_data):
+                            pancake_id = assignee.get('id')  # UUID
+                            email = assignee.get('email')
+                            name = assignee.get('name', 'Unknown')
+                            
+                            user = None
+                            
+                            # Tìm theo pancake_id (kiểm tra cả 3 field)
+                            if pancake_id:
+                                user = ResUsers.search([
+                                    '|', '|',
+                                    ('pancake_id', '=', pancake_id),
+                                    ('pancake_uuid', '=', pancake_id),
+                                    ('pancake_number_id', '=', pancake_id)
+                                ], limit=1)
+                                if user:
+                                    matched_field = 'pancake_id' if user.pancake_id == pancake_id else \
+                                                  'pancake_uuid' if user.pancake_uuid == pancake_id else \
+                                                  'pancake_number_id'
+                                    _logger.info(f"✅ Found assignee by {matched_field} {pancake_id[:8]}... → {user.name}")
+                            
+                            # Tìm theo email
+                            if not user and email:
+                                user = ResUsers.search([('login', '=', email)], limit=1)
+                                if not user:
+                                    user = ResUsers.search([('email', '=', email)], limit=1)
+                                if user:
+                                    _logger.info(f"✅ Found assignee by email {email} → {user.name}")
+                            
+                            if user:
+                                new_user_ids.append(user.id)
+                                if idx == 0 and not owner_user_id:
+                                    owner_user_id = user.id
+                            else:
+                                _logger.warning(f"⚠️ Assignee not found: {name} (pancake_id: {pancake_id[:8] if pancake_id else 'N/A'}, email: {email or 'N/A'})")
+                        
+                        # Gán owner
+                        if owner_user_id:
+                            record.write({'owner_id': owner_user_id})
+                        
+                        # Gán participants - MERGE với cũ
+                        if new_user_ids:
+                            old_participant_ids = set(record.participant_user_ids.ids)
+                            merged_ids = old_participant_ids.union(set(new_user_ids))
+                            record.write({'participant_user_ids': [(6, 0, list(merged_ids))]})
+                            _logger.info(f"✅ Synced assignees for conversation {record.conversation_fm_id}: {len(merged_ids)} users")
+                    else:
+                        _logger.info(f"ℹ️ No assignees from API for conversation {record.conversation_fm_id}")
+            except Exception as e:
+                _logger.error(f"❌ Error syncing assignees for conversation {record.id}: {e}", exc_info=True)
 
             # Tự động cập nhật require_processing sau khi sync tin nhắn
             try:
@@ -1279,11 +1375,12 @@ class PageFmConversation(models.Model):
             except Exception:
                 _logger.exception("Lỗi khi áp dụng rule/refresh snippet cho conversation %s", record.id)
                 
-            # >>> NEW: cập nhật owner & participants từ message
-            try:
-                record._recompute_staff_links()
-            except Exception:
-                _logger.exception("Lỗi khi gán staff cho conversation %s", record.id)
+            # DEPRECATED: Không cần gán staff từ message nữa
+            # Staff được gán tự động từ conversation API (chính xác hơn)
+            # try:
+            #     record._recompute_staff_links()
+            # except Exception:
+            #     _logger.exception("Lỗi khi gán staff cho conversation %s", record.id)
             
             # >>> NEW: đẩy thông tin phụ trách sang Partner (nếu đã có partner)
             if record.partner_id:
@@ -1702,48 +1799,52 @@ class PageFmConversation(models.Model):
     )
 
     def _recompute_staff_links(self):
-        """Gán owner/participants từ message NHƯNG chỉ khi đang TRỐNG.
-        Không xóa/đè giá trị đã gán tay.
         """
-        Message = self.env['page.fm.message'].sudo()
-        Users   = self.env['res.users'].sudo()
+        DEPRECATED: Không còn dùng nữa.
+        Staff được gán trực tiếp từ conversation API (current_assign_users),
+        chính xác hơn việc suy luận từ tin nhắn.
+        """
+        return
+        # Legacy code - giữ lại để tham khảo
+        # Message = self.env['page.fm.message'].sudo()
+        # Users   = self.env['res.users'].sudo()
 
-        for rec in self:
-            need_owner        = not rec.owner_id
-            need_participants = not rec.participant_user_ids
+        # for rec in self:
+        #     need_owner        = not rec.owner_id
+        #     need_participants = not rec.participant_user_ids
 
-            # nếu cả 2 đều đã có -> bỏ qua
-            if not (need_owner or need_participants):
-                continue
+        #     # nếu cả 2 đều đã có -> bỏ qua
+        #     if not (need_owner or need_participants):
+        #         continue
 
-            # lấy tin có staff mới nhất (để đề xuất owner)
-            last_staff_msg = False
-            if need_owner:
-                last_staff_msg = Message.search(
-                    [('conversation_id', '=', rec.id), ('staff', '!=', False)],
-                    order='inserted_at_fm desc, id desc', limit=1
-                )
+        #     # lấy tin có staff mới nhất (để đề xuất owner)
+        #     last_staff_msg = False
+        #     if need_owner:
+        #         last_staff_msg = Message.search(
+        #             [('conversation_id', '=', rec.id), ('staff', '!=', False)],
+        #             order='inserted_at_fm desc, id desc', limit=1
+        #         )
 
-            # lấy full danh sách staff đã từng nhắn (để làm participants)
-            candidates = Users.browse()
-            if need_participants:
-                rows = Message.read_group(
-                    [('conversation_id', '=', rec.id), ('staff', '!=', False)],
-                    ['staff'], ['staff']
-                )
-                if rows:
-                    # rows[i]['staff'] = [id, display_name]
-                    candidates = Users.browse([r['staff'][0] for r in rows if r.get('staff')])
+        #     # lấy full danh sách staff đã từng nhắn (để làm participants)
+        #     candidates = Users.browse()
+        #     if need_participants:
+        #         rows = Message.read_group(
+        #             [('conversation_id', '=', rec.id), ('staff', '!=', False)],
+        #             ['staff'], ['staff']
+        #         )
+        #         if rows:
+        #             # rows[i]['staff'] = [id, display_name]
+        #             candidates = Users.browse([r['staff'][0] for r in rows if r.get('staff')])
 
-            vals = {}
-            if need_owner and last_staff_msg and last_staff_msg.staff:
-                vals['owner_id'] = last_staff_msg.staff.id
+        #     vals = {}
+        #     if need_owner and last_staff_msg and last_staff_msg.staff:
+        #         vals['owner_id'] = last_staff_msg.staff.id
 
-            if need_participants and candidates:
-                vals['participant_user_ids'] = [(6, 0, candidates.ids)]
+        #     if need_participants and candidates:
+        #         vals['participant_user_ids'] = [(6, 0, candidates.ids)]
 
-            if vals:
-                rec.write(vals)
+        #     if vals:
+        #         rec.write(vals)
 
     def action_assign_to_me(self):
         for rec in self:
@@ -1800,6 +1901,259 @@ class PageFmConversation(models.Model):
                 rec.participant_user_ids |= rec.owner_id
 
     # === Methods for view buttons ===
+    
+    def action_debug_sync_assignees(self):
+        """
+        DEBUG: Force sync conversation và log chi tiết quá trình gán assigned users
+        """
+        self.ensure_one()
+        if not self.conversation_fm_id or not self.page_fm_page_id:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _('Error'),
+                    'message': _('Missing conversation or page info'),
+                    'type': 'danger'
+                }
+            }
+        
+        try:
+            # 🔍 BƯỚC 0: KIỂM TRA TẤT CẢ USER TRONG HỆ THỐNG
+            ResUsers = self.env['res.users'].sudo()
+            all_users = ResUsers.search([])
+            
+            _logger.info("=" * 80)
+            _logger.info("🔍 ANALYZING ALL USERS IN SYSTEM - PANCAKE ID FORMATS")
+            _logger.info("=" * 80)
+            
+            users_with_pancake_id = all_users.filtered(lambda u: u.pancake_id)
+            users_with_pancake_uuid = all_users.filtered(lambda u: u.pancake_uuid)
+            users_with_pancake_number_id = all_users.filtered(lambda u: u.pancake_number_id)
+            
+            _logger.info(f"\n📊 SUMMARY:")
+            _logger.info(f"   - Total users: {len(all_users)}")
+            _logger.info(f"   - Users with pancake_id: {len(users_with_pancake_id)}")
+            _logger.info(f"   - Users with pancake_uuid: {len(users_with_pancake_uuid)}")
+            _logger.info(f"   - Users with pancake_number_id: {len(users_with_pancake_number_id)}")
+            
+            _logger.info(f"\n📋 DETAILED USER LIST:")
+            for user in all_users:
+                if user.pancake_id or user.pancake_uuid or user.pancake_number_id:
+                    _logger.info(f"\n   User: {user.name} (ID: {user.id}, Login: {user.login})")
+                    if user.pancake_id:
+                        _logger.info(f"      ✅ pancake_id: {user.pancake_id}")
+                        _logger.info(f"         - Length: {len(user.pancake_id)}")
+                        _logger.info(f"         - Format: {'UUID' if '-' in user.pancake_id else 'NUMBER' if user.pancake_id.isdigit() else 'OTHER'}")
+                    if user.pancake_uuid:
+                        _logger.info(f"      ✅ pancake_uuid: {user.pancake_uuid}")
+                        _logger.info(f"         - Length: {len(user.pancake_uuid)}")
+                    if user.pancake_number_id:
+                        _logger.info(f"      ✅ pancake_number_id: {user.pancake_number_id}")
+                        _logger.info(f"         - Length: {len(user.pancake_number_id)}")
+                    if user.email:
+                        _logger.info(f"      📧 Email: {user.email}")
+            
+            _logger.info("\n" + "=" * 80)
+            
+            # 1. Lấy token
+            main_access_token = self.env['ir.config_parameter'].sudo().get_param('page_fm.access_token')
+            if not main_access_token:
+                raise Exception("Missing main access token")
+            
+            page = self.page_fm_page_id
+            page_token = page._generate_page_specific_access_token(main_access_token)
+            if not page_token:
+                raise Exception("Cannot generate page token")
+            
+            # 2. Fetch conversation từ API
+            import requests
+            api_url = f"https://pages.fm/api/public_api/v2/pages/{page.page_fm_id_str}/conversations"
+            params = {
+                'page_access_token': page_token,
+                'page_id': page.page_fm_id_str
+            }
+            
+            _logger.info("=" * 80)
+            _logger.info(f"🔍 DEBUG SYNC ASSIGNEES - Conversation: {self.name} (ID: {self.conversation_fm_id})")
+            _logger.info("=" * 80)
+            
+            response = requests.get(api_url, params=params, timeout=20)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Tìm conversation trong response
+            conv_data = None
+            for c in data.get('conversations', []):
+                if c.get('id') == self.conversation_fm_id:
+                    conv_data = c
+                    break
+            
+            if not conv_data:
+                raise Exception(f"Conversation {self.conversation_fm_id} not found in API response")
+            
+            # 3. Log toàn bộ conversation data
+            import json
+            _logger.info("📋 FULL CONVERSATION JSON:")
+            _logger.info(json.dumps(conv_data, indent=2, ensure_ascii=False))
+            
+            # 4. Extract assignee data
+            current_assign_users = conv_data.get('current_assign_users', []) or []
+            _logger.info(f"\n👥 CURRENT_ASSIGN_USERS: {current_assign_users}")
+            
+            assignee_data = []
+            if isinstance(current_assign_users, list):
+                for user_obj in current_assign_users:
+                    if isinstance(user_obj, dict):
+                        user_id = user_obj.get('id')
+                        email = user_obj.get('email')
+                        name = user_obj.get('name')
+                        if user_id or email:
+                            assignee_data.append({
+                                'id': user_id,
+                                'email': email,
+                                'name': name
+                            })
+            
+            _logger.info(f"\n📦 EXTRACTED ASSIGNEE_DATA: {assignee_data}")
+            
+            # 5. Map to Odoo users - KIỂM TRA CẢ 3 FIELD
+            mapped_users = []
+            
+            for idx, assignee in enumerate(assignee_data):
+                pancake_id = assignee.get('id')
+                email = assignee.get('email')
+                name = assignee.get('name', 'Unknown')
+                
+                _logger.info(f"\n🔎 Searching user #{idx+1}:")
+                _logger.info(f"   - Pancake ID from API: {pancake_id}")
+                _logger.info(f"   - ID Length: {len(pancake_id) if pancake_id else 'N/A'}")
+                _logger.info(f"   - ID Format: {'UUID' if pancake_id and '-' in pancake_id else 'NUMBER' if pancake_id and str(pancake_id).isdigit() else 'OTHER'}")
+                _logger.info(f"   - Email: {email}")
+                _logger.info(f"   - Name: {name}")
+                
+                user = None
+                
+                # Tìm theo pancake_id (KIỂM TRA CẢ 3 FIELD)
+                if pancake_id:
+                    _logger.info(f"\n   🔍 Searching by pancake_id in 3 fields...")
+                    
+                    # Test từng field riêng lẻ để log rõ ràng
+                    test1 = ResUsers.search([('pancake_id', '=', pancake_id)], limit=1)
+                    if test1:
+                        _logger.info(f"      ✅ MATCH in field 'pancake_id': {test1.name} (stored value: {test1.pancake_id})")
+                        user = test1
+                    else:
+                        _logger.info(f"      ❌ NO MATCH in field 'pancake_id'")
+                    
+                    if not user:
+                        test2 = ResUsers.search([('pancake_uuid', '=', pancake_id)], limit=1)
+                        if test2:
+                            _logger.info(f"      ✅ MATCH in field 'pancake_uuid': {test2.name} (stored value: {test2.pancake_uuid})")
+                            user = test2
+                        else:
+                            _logger.info(f"      ❌ NO MATCH in field 'pancake_uuid'")
+                    
+                    if not user:
+                        test3 = ResUsers.search([('pancake_number_id', '=', pancake_id)], limit=1)
+                        if test3:
+                            _logger.info(f"      ✅ MATCH in field 'pancake_number_id': {test3.name} (stored value: {test3.pancake_number_id})")
+                            user = test3
+                        else:
+                            _logger.info(f"      ❌ NO MATCH in field 'pancake_number_id'")
+                    
+                    if user:
+                        _logger.info(f"\n   ✅ FINAL MATCH: {user.name} (ID: {user.id})")
+                        _logger.info(f"      - User login: {user.login}")
+                        _logger.info(f"      - User email: {user.email}")
+                        _logger.info(f"      - pancake_id: {user.pancake_id}")
+                        _logger.info(f"      - pancake_uuid: {user.pancake_uuid}")
+                        _logger.info(f"      - pancake_number_id: {user.pancake_number_id}")
+                
+                # Tìm theo email
+                if not user and email:
+                    _logger.info(f"\n   🔍 Searching by email...")
+                    user = ResUsers.search([('login', '=', email)], limit=1)
+                    if not user:
+                        user = ResUsers.search([('email', '=', email)], limit=1)
+                    
+                    if user:
+                        _logger.info(f"   ✅ FOUND by email: {user.name} (ID: {user.id})")
+                        _logger.info(f"      - User login: {user.login}")
+                        _logger.info(f"      - pancake_id: {user.pancake_id}")
+                        _logger.info(f"      - pancake_uuid: {user.pancake_uuid}")
+                        _logger.info(f"      - pancake_number_id: {user.pancake_number_id}")
+                
+                if user:
+                    mapped_users.append({
+                        'user': user,
+                        'index': idx,
+                        'source_name': name,
+                        'source_email': email,
+                        'source_pancake_id': pancake_id
+                    })
+                else:
+                    _logger.warning(f"   ❌ NOT FOUND: {name} (email: {email}, pancake_id: {pancake_id})")
+            
+            # 6. Log kết quả mapping
+            _logger.info(f"\n📊 MAPPING SUMMARY:")
+            _logger.info(f"   - Total assignees from API: {len(assignee_data)}")
+            _logger.info(f"   - Successfully mapped: {len(mapped_users)}")
+            
+            if mapped_users:
+                owner = mapped_users[0]['user']
+                all_users = [m['user'] for m in mapped_users]
+                
+                _logger.info(f"\n👤 OWNER (first user): {owner.name} (ID: {owner.id})")
+                _logger.info(f"👥 PARTICIPANTS ({len(all_users)} users):")
+                for m in mapped_users:
+                    _logger.info(f"   - {m['user'].name} (ID: {m['user'].id}) from API: {m['source_name']}")
+                
+                # 7. Compare with current values
+                _logger.info(f"\n📋 CURRENT STATE:")
+                _logger.info(f"   - Current owner: {self.owner_id.name if self.owner_id else 'None'}")
+                _logger.info(f"   - Current participants: {[u.name for u in self.participant_user_ids]}")
+                
+                # 8. Update (MERGE mode)
+                old_participant_ids = set(self.participant_user_ids.ids)
+                new_user_ids = [u.id for u in all_users]
+                merged_ids = old_participant_ids.union(set(new_user_ids))
+                
+                self.write({
+                    'owner_id': owner.id,
+                    'participant_user_ids': [(6, 0, list(merged_ids))]
+                })
+                
+                _logger.info(f"\n✅ UPDATED STATE:")
+                _logger.info(f"   - New owner: {self.owner_id.name}")
+                _logger.info(f"   - New participants ({len(self.participant_user_ids)} users): {[u.name for u in self.participant_user_ids]}")
+                _logger.info(f"   - Added: {len(merged_ids) - len(old_participant_ids)} users")
+            
+            _logger.info("=" * 80)
+            
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _('Debug Complete'),
+                    'message': _('Check server logs for detailed assignee mapping info. Found %d users in system, %d assignees from API, %d mapped successfully.') % (len(all_users), len(assignee_data), len(mapped_users)),
+                    'type': 'success',
+                    'sticky': True
+                }
+            }
+            
+        except Exception as e:
+            _logger.error(f"❌ DEBUG SYNC ERROR: {e}", exc_info=True)
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _('Debug Error'),
+                    'message': str(e),
+                    'type': 'danger',
+                    'sticky': True
+                }
+            }
     
     def action_refresh_conversation(self):
         """Refresh conversation data from Pages.fm"""

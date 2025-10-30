@@ -949,75 +949,93 @@ class SaleOrderInherit(models.Model):
                 creator_name = creator_info.get('name')
                 creator_email = creator_info.get('email')
                 
-                # LẤY THÊM 2 ID MỚI TỪ JSON (không ảnh hưởng logic cũ)
-                creator_uuid = str(creator_info.get('id')) if creator_info.get('id') else None
-                creator_number_id = str(creator_info.get('fb_id')) if creator_info.get('fb_id') else None
+                # LẤY CẢ UUID VÀ NUMBER ID (nếu API cung cấp)
+                creator_uuid = str(creator_info.get('id')) if creator_info.get('id') else None  # UUID chính
+                creator_number_id = str(creator_info.get('fb_id')) if creator_info.get('fb_id') else None  # Number ID (nếu có)
                 
-                # ƯU TIÊN 1: Tìm theo pancake_id
+                # ƯU TIÊN 1: Tìm theo BẤT KỲ pancake ID nào (cả 3 field)
                 if creator_pancake_id:
-                    odoo_creator = ResUsers.sudo().search([('pancake_id', '=', creator_pancake_id)], limit=1)
+                    odoo_creator = ResUsers.sudo().search([
+                        '|', '|',
+                        ('pancake_id', '=', creator_pancake_id),
+                        ('pancake_uuid', '=', creator_pancake_id),
+                        ('pancake_number_id', '=', creator_pancake_id)
+                    ], limit=1)
+                    
                     if odoo_creator:
-                        _logger.info(f"✅ [WEBHOOK] Found creator by pancake_id: {creator_pancake_id} -> {odoo_creator.name}")
+                        matched_field = 'pancake_id' if odoo_creator.pancake_id == creator_pancake_id else \
+                                       'pancake_uuid' if odoo_creator.pancake_uuid == creator_pancake_id else \
+                                       'pancake_number_id'
+                        _logger.info(f"✅ [WEBHOOK] Found creator by {matched_field}: {creator_pancake_id} -> {odoo_creator.name}")
                         
-                        # ĐỒNG BỘ 2 FIELD MỚI (không sửa pancake_id)
+                        # ĐỒNG BỘ CÁC FIELD CÒN THIẾU
                         update_vals = {}
-                        if creator_uuid and not odoo_creator.pancake_uuid:
+                        if creator_uuid and not odoo_creator.pancake_uuid and odoo_creator.pancake_id != creator_uuid:
                             update_vals['pancake_uuid'] = creator_uuid
                         if creator_number_id and not odoo_creator.pancake_number_id:
                             update_vals['pancake_number_id'] = creator_number_id
+                        # Nếu tìm được bằng uuid/number_id nhưng chưa có pancake_id chính
+                        if creator_uuid and not odoo_creator.pancake_id:
+                            update_vals['pancake_id'] = creator_uuid
+                        
                         if update_vals:
                             odoo_creator.sudo().write(update_vals)
-                            _logger.info(f"📝 [WEBHOOK] Synced new fields: {list(update_vals.keys())}")
+                            _logger.info(f"📝 [WEBHOOK] Synced creator fields: {list(update_vals.keys())}")
                 
                 # ƯU TIÊN 2: Tìm theo email
                 if not odoo_creator and creator_email:
                     odoo_creator = ResUsers.sudo().search([('login', '=', creator_email)], limit=1)
-                    if odoo_creator and creator_pancake_id and not odoo_creator.pancake_id:
-                        odoo_creator.sudo().write({'pancake_id': creator_pancake_id})
+                    if not odoo_creator:
+                        odoo_creator = ResUsers.sudo().search([('email', '=', creator_email)], limit=1)
                     
-                    # ĐỒNG BỘ 2 FIELD MỚI
                     if odoo_creator:
+                        _logger.info(f"✅ [WEBHOOK] Found creator by email: {creator_email} -> {odoo_creator.name}")
+                        # Gán pancake_id nếu chưa có
                         update_vals = {}
+                        if creator_uuid and not odoo_creator.pancake_id:
+                            update_vals['pancake_id'] = creator_uuid
                         if creator_uuid and not odoo_creator.pancake_uuid:
                             update_vals['pancake_uuid'] = creator_uuid
                         if creator_number_id and not odoo_creator.pancake_number_id:
                             update_vals['pancake_number_id'] = creator_number_id
+                        
                         if update_vals:
                             odoo_creator.sudo().write(update_vals)
-                            _logger.info(f"📝 [WEBHOOK] Synced new fields: {list(update_vals.keys())}")
+                            _logger.info(f"📝 [WEBHOOK] Synced creator fields: {list(update_vals.keys())}")
                 
-                # ƯU TIÊN 3: Tìm theo tên
+                # ƯU TIÊN 3: Tìm theo tên (không khuyến khích - có thể trùng)
                 if not odoo_creator and creator_name:
                     odoo_creator = ResUsers.sudo().search([('name', '=ilike', creator_name), ('share', '=', False)], limit=1)
-                    if odoo_creator and creator_pancake_id and not odoo_creator.pancake_id:
-                        odoo_creator.sudo().write({'pancake_id': creator_pancake_id})
-                    
-                    # ĐỒNG BỘ 2 FIELD MỚI
                     if odoo_creator:
+                        _logger.warning(f"⚠️ [WEBHOOK] Found creator by NAME only: {creator_name} -> {odoo_creator.name} (unreliable)")
+                        # Gán pancake_id
                         update_vals = {}
+                        if creator_uuid and not odoo_creator.pancake_id:
+                            update_vals['pancake_id'] = creator_uuid
                         if creator_uuid and not odoo_creator.pancake_uuid:
                             update_vals['pancake_uuid'] = creator_uuid
                         if creator_number_id and not odoo_creator.pancake_number_id:
                             update_vals['pancake_number_id'] = creator_number_id
+                        
                         if update_vals:
                             odoo_creator.sudo().write(update_vals)
-                            _logger.info(f"📝 [WEBHOOK] Synced new fields: {list(update_vals.keys())}")
+                            _logger.info(f"📝 [WEBHOOK] Synced creator fields: {list(update_vals.keys())}")
                 
-                # TẠO USER MỚI nếu không tìm thấy - LƯU CẢ 2 FIELD MỚI
+                # TẠO USER MỚI nếu không tìm thấy - LƯU CẢ 3 FIELD
                 if not odoo_creator and creator_name and creator_email:
                     try:
                         odoo_creator = ResUsers.sudo().create({
                             'name': creator_name,
                             'login': creator_email,
                             'email': creator_email,
-                            'pancake_id': creator_pancake_id,
-                            'pancake_uuid': creator_uuid,  # Field mới
-                            'pancake_number_id': creator_number_id,  # Field mới
+                            'pancake_id': creator_uuid,  # UUID chính
+                            'pancake_uuid': creator_uuid,  # UUID (trùng)
+                            'pancake_number_id': creator_number_id,  # Number ID (nếu có)
                             'company_id': current_company_id,
                             'company_ids': [(4, current_company_id)],
                             'groups_id': [(4, self.env.ref('sales_team.group_sale_salesman').id)],
                         })
-                        _logger.info(f"✅ [WEBHOOK] Created new creator: {odoo_creator.name} (pancake_id: {creator_pancake_id})")
+                        _logger.info(f"✅ [WEBHOOK] Created new creator: {odoo_creator.name} (UUID: {creator_uuid}, Number: {creator_number_id})")
                     except Exception as e:
                         _logger.warning(f"⚠️ [WEBHOOK] Failed to create creator: {e}")
             
@@ -1046,79 +1064,91 @@ class SaleOrderInherit(models.Model):
             salesperson = False
             
             if isinstance(assigning_seller_info, dict):
-                p_seller_pancake_id = str(assigning_seller_info.get('id')) if assigning_seller_info.get('id') else None
-                p_assigning_seller_name = assigning_seller_info.get('name')
-                p_assigning_seller_email = assigning_seller_info.get('email')
+                # Extract seller IDs
+                seller_uuid = str(assigning_seller_info.get('id')) if assigning_seller_info.get('id') else None
+                seller_number_id = str(assigning_seller_info.get('fb_id')) if assigning_seller_info.get('fb_id') else None
+                seller_name = assigning_seller_info.get('name')
+                seller_email = assigning_seller_info.get('email')
                 
-                # LẤY THÊM 2 ID MỚI TỪ JSON
-                p_seller_uuid = str(assigning_seller_info.get('id')) if assigning_seller_info.get('id') else None
-                p_seller_number_id = str(assigning_seller_info.get('fb_id')) if assigning_seller_info.get('fb_id') else None
-                
-                # ƯU TIÊN 1: Tìm theo pancake_id
-                if p_seller_pancake_id:
-                    salesperson = ResUsers.sudo().search([('pancake_id', '=', p_seller_pancake_id)], limit=1)
+                # ƯU TIÊN 1: Tìm theo CẢ 3 FIELD (pancake_id | pancake_uuid | pancake_number_id)
+                seller_pancake_id = seller_uuid or seller_number_id  # Prefer UUID
+                if seller_pancake_id:
+                    salesperson = ResUsers.sudo().search([
+                        '|', '|',
+                        ('pancake_id', '=', seller_pancake_id),
+                        ('pancake_uuid', '=', seller_pancake_id),
+                        ('pancake_number_id', '=', seller_pancake_id)
+                    ], limit=1)
+                    
                     if salesperson:
-                        _logger.info(f"✅ [WEBHOOK] Found salesperson by pancake_id: {p_seller_pancake_id} -> {salesperson.name}")
+                        # Log which field matched
+                        matched_field = 'pancake_id' if salesperson.pancake_id == seller_pancake_id else \
+                                      'pancake_uuid' if salesperson.pancake_uuid == seller_pancake_id else \
+                                      'pancake_number_id' if salesperson.pancake_number_id == seller_pancake_id else 'unknown'
+                        _logger.info(f"✅ [WEBHOOK] Found salesperson by {matched_field}: {seller_pancake_id} -> {salesperson.name}")
                         
-                        # ĐỒNG BỘ 2 FIELD MỚI
+                        # Sync missing fields (only if empty)
                         update_vals = {}
-                        if p_seller_uuid and not salesperson.pancake_uuid:
-                            update_vals['pancake_uuid'] = p_seller_uuid
-                        if p_seller_number_id and not salesperson.pancake_number_id:
-                            update_vals['pancake_number_id'] = p_seller_number_id
+                        if seller_uuid and not salesperson.pancake_uuid:
+                            update_vals['pancake_uuid'] = seller_uuid
+                        if seller_number_id and not salesperson.pancake_number_id:
+                            update_vals['pancake_number_id'] = seller_number_id
+                        # Sync pancake_id to UUID if currently NUMBER
+                        if seller_uuid and salesperson.pancake_id and len(salesperson.pancake_id) < 30:
+                            update_vals['pancake_id'] = seller_uuid
                         if update_vals:
                             salesperson.sudo().write(update_vals)
-                            _logger.info(f"📝 [WEBHOOK] Synced seller fields: {list(update_vals.keys())}")
+                            _logger.info(f"📝 [WEBHOOK] Synced salesperson fields: {list(update_vals.keys())}")
                 
                 # ƯU TIÊN 2: Tìm theo email
-                if not salesperson and p_assigning_seller_email:
-                    salesperson = ResUsers.sudo().search([('login', '=', p_assigning_seller_email), ('share', '=', False)], limit=1)
-                    if salesperson and p_seller_pancake_id and not salesperson.pancake_id:
-                        salesperson.sudo().write({'pancake_id': p_seller_pancake_id})
-                    
-                    # ĐỒNG BỘ 2 FIELD MỚI
+                if not salesperson and seller_email:
+                    salesperson = ResUsers.sudo().search([('login', '=', seller_email), ('share', '=', False)], limit=1)
                     if salesperson:
+                        _logger.info(f"✅ [WEBHOOK] Found salesperson by email: {seller_email} -> {salesperson.name}")
+                        # Populate ALL 3 fields
                         update_vals = {}
-                        if p_seller_uuid and not salesperson.pancake_uuid:
-                            update_vals['pancake_uuid'] = p_seller_uuid
-                        if p_seller_number_id and not salesperson.pancake_number_id:
-                            update_vals['pancake_number_id'] = p_seller_number_id
+                        if seller_uuid and not salesperson.pancake_id:
+                            update_vals['pancake_id'] = seller_uuid
+                        if seller_uuid and not salesperson.pancake_uuid:
+                            update_vals['pancake_uuid'] = seller_uuid
+                        if seller_number_id and not salesperson.pancake_number_id:
+                            update_vals['pancake_number_id'] = seller_number_id
                         if update_vals:
                             salesperson.sudo().write(update_vals)
-                            _logger.info(f"📝 [WEBHOOK] Synced seller fields: {list(update_vals.keys())}")
+                            _logger.info(f"📝 [WEBHOOK] Populated salesperson Pancake IDs: {list(update_vals.keys())}")
                 
                 # ƯU TIÊN 3: Tìm theo tên
-                if not salesperson and p_assigning_seller_name:
-                    salesperson = ResUsers.sudo().search([('name', '=ilike', p_assigning_seller_name), ('share', '=', False)], limit=1)
-                    if salesperson and p_seller_pancake_id and not salesperson.pancake_id:
-                        salesperson.sudo().write({'pancake_id': p_seller_pancake_id})
-                    
-                    # ĐỒNG BỘ 2 FIELD MỚI
+                if not salesperson and seller_name:
+                    salesperson = ResUsers.sudo().search([('name', '=ilike', seller_name), ('share', '=', False)], limit=1)
                     if salesperson:
+                        _logger.info(f"✅ [WEBHOOK] Found salesperson by name: {seller_name}")
+                        # Populate ALL 3 fields
                         update_vals = {}
-                        if p_seller_uuid and not salesperson.pancake_uuid:
-                            update_vals['pancake_uuid'] = p_seller_uuid
-                        if p_seller_number_id and not salesperson.pancake_number_id:
-                            update_vals['pancake_number_id'] = p_seller_number_id
+                        if seller_uuid and not salesperson.pancake_id:
+                            update_vals['pancake_id'] = seller_uuid
+                        if seller_uuid and not salesperson.pancake_uuid:
+                            update_vals['pancake_uuid'] = seller_uuid
+                        if seller_number_id and not salesperson.pancake_number_id:
+                            update_vals['pancake_number_id'] = seller_number_id
                         if update_vals:
                             salesperson.sudo().write(update_vals)
-                            _logger.info(f"📝 [WEBHOOK] Synced seller fields: {list(update_vals.keys())}")
+                            _logger.info(f"📝 [WEBHOOK] Populated salesperson Pancake IDs: {list(update_vals.keys())}")
                 
-                # TẠO USER MỚI - LƯU CẢ 2 FIELD MỚI
-                if not salesperson and p_assigning_seller_name and p_assigning_seller_email:
+                # TẠO USER MỚI - LƯU CẢ 3 FIELD
+                if not salesperson and seller_name and seller_email:
                     try:
                         salesperson = ResUsers.sudo().create({
-                            'name': p_assigning_seller_name,
-                            'login': p_assigning_seller_email,
-                            'email': p_assigning_seller_email,
-                            'pancake_id': p_seller_pancake_id,
-                            'pancake_uuid': p_seller_uuid,  # Field mới
-                            'pancake_number_id': p_seller_number_id,  # Field mới
+                            'name': seller_name,
+                            'login': seller_email,
+                            'email': seller_email,
+                            'pancake_id': seller_uuid,  # UUID primary
+                            'pancake_uuid': seller_uuid,
+                            'pancake_number_id': seller_number_id,
                             'company_id': current_company_id,
                             'company_ids': [(4, current_company_id)],
                             'groups_id': [(4, self.env.ref('sales_team.group_sale_salesman').id)],
                         })
-                        _logger.info(f"✅ [WEBHOOK] Created new salesperson: {salesperson.name} (pancake_id: {p_seller_pancake_id})")
+                        _logger.info(f"✅ [WEBHOOK] Created new salesperson: {salesperson.name} (UUID: {seller_uuid}, Number: {seller_number_id})")
                     except Exception as e:
                         _logger.warning(f"⚠️ [WEBHOOK] Failed to create salesperson: {e}")
             
@@ -1321,6 +1351,28 @@ class SaleOrderInherit(models.Model):
                 current_sale_order.action_confirm()
             elif odoo_state == 'cancel' and current_sale_order.state not in ['cancel', 'done']:
                 current_sale_order.action_cancel()
+
+            # 🆕 YÊU CẦU #3: Gán creator vào conversation của khách hàng
+            if odoo_creator and partner:
+                try:
+                    # Tìm conversation của khách hàng này
+                    conversations = self.env['page.fm.conversation'].sudo().search([
+                        ('partner_id', '=', partner.id)
+                    ])
+                    
+                    if conversations:
+                        for conv in conversations:
+                            current_participants = set(conv.participant_user_ids.ids)
+                            if odoo_creator.id not in current_participants:
+                                current_participants.add(odoo_creator.id)
+                                conv.write({'participant_user_ids': [(6, 0, list(current_participants))]})
+                                _logger.info(f"➕ Auto-added order creator {odoo_creator.name} to conversation {conv.conversation_fm_id} of customer {partner.name}")
+                            else:
+                                _logger.info(f"ℹ️ Creator {odoo_creator.name} already in conversation {conv.conversation_fm_id}")
+                    else:
+                        _logger.info(f"ℹ️ No conversation found for customer {partner.name} (pancake_id: {partner.pancake_id})")
+                except Exception as e:
+                    _logger.error(f"❌ Error assigning creator to conversation: {e}", exc_info=True)
 
             self.env.cr.commit()
             return current_sale_order

@@ -15,6 +15,35 @@ class ResUsers(models.Model):
                                 help="UUID từ creator.id - Định dạng: bd901904-38fd-4e4d-a839-1adc1e651f54")
     pancake_number_id = fields.Char(string="Pancake number ID (Số)", index=True, copy=False,
                                  help="id số - Định dạng: 741331342729875")
+    
+    @api.model
+    def find_by_pancake_id(self, pancake_id_value):
+        """
+        Tìm user theo Pancake ID - kiểm tra cả 3 field:
+        - pancake_id
+        - pancake_uuid  
+        - pancake_number_id
+        
+        Returns: res.users recordset (empty hoặc 1 record)
+        """
+        if not pancake_id_value:
+            return self.browse()
+        
+        user = self.sudo().search([
+            '|', '|',
+            ('pancake_id', '=', pancake_id_value),
+            ('pancake_uuid', '=', pancake_id_value),
+            ('pancake_number_id', '=', pancake_id_value)
+        ], limit=1)
+        
+        if user:
+            # Log để biết tìm được từ field nào
+            matched_field = 'pancake_id' if user.pancake_id == pancake_id_value else \
+                           'pancake_uuid' if user.pancake_uuid == pancake_id_value else \
+                           'pancake_number_id'
+            _logger.debug(f"Found user {user.name} by {matched_field}={pancake_id_value[:8]}...")
+        
+        return user
 
 class ResPartner(models.Model):
     _inherit = 'res.partner'

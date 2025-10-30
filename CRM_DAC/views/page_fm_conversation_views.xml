@@ -103,6 +103,12 @@
         <field name="arch" type="xml">
             <form string="Conversation">
                 <header>
+                    <button name="action_debug_sync_assignees" 
+                            type="object" 
+                            string="🔍 DEBUG: Sync &amp; Log Assignees" 
+                            class="btn-danger" 
+                            groups="dac_erp.group_dac_erp_manager"
+                            help="Force sync conversation và log chi tiết quá trình gán người phụ trách"/>
                     <button name="action_sync_messages_button" 
                             type="object" 
                             string="Đồng bộ tin nhắn" 

@@ -118,42 +118,8 @@ class PageFmMessage(models.Model):
 
     @api.model
     def create(self, vals):
-        # TỰ ĐỘNG GÁN STAFF dựa trên staff_id_fm
-        if vals.get('staff_id_fm') and not vals.get('staff'):
-            staff_pancake_id = str(vals['staff_id_fm'])
-            staff_user = self.env['res.users'].sudo().search([
-                ('pancake_id', '=', staff_pancake_id)
-            ], limit=1)
-            
-            if staff_user:
-                vals['staff'] = staff_user.id
-                _logger.info(f"✅ Auto-assigned staff from pancake_id: {staff_user.name}")
-            else:
-                # Nếu không tìm thấy, tạo user mới từ staff_name_fm
-                if vals.get('staff_name_fm'):
-                    try:
-                        # Lấy company từ conversation hoặc mặc định
-                        conv_id = vals.get('conversation_id')
-                        if conv_id:
-                            conv = self.env['page.fm.conversation'].sudo().browse(conv_id)
-                            company_id = conv.page_fm_page_id.company_id.id if conv and conv.page_fm_page_id and conv.page_fm_page_id.company_id else self.env.company.id
-                        else:
-                            company_id = self.env.company.id
-                        
-                        # Tạo login từ staff_id_fm (vì không có email từ tin nhắn)
-                        login = f"staff_{staff_pancake_id[:8]}"
-                        staff_user = self.env['res.users'].sudo().create({
-                            'name': vals['staff_name_fm'],
-                            'login': login,
-                            'pancake_id': staff_pancake_id,
-                            'company_id': company_id,
-                            'company_ids': [(4, company_id)],
-                            'groups_id': [(4, self.env.ref('sales_team.group_sale_salesman').id)],
-                        })
-                        vals['staff'] = staff_user.id
-                        _logger.info(f"✅ Created new staff from message: {staff_user.name} (pancake_id: {staff_pancake_id}, company: {company_id})")
-                    except Exception as e:
-                        _logger.warning(f"⚠️ Failed to create staff from message: {e}")
+        # GỠ BỎ: Không còn gán staff từ message sync nữa
+        # Staff sẽ được gán từ conversation API (chính xác hơn)
         
         rec = super().create(vals)
         try:

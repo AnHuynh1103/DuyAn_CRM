@@ -249,6 +249,7 @@ class PageFmPage(models.Model):
                     if not isinstance(conv_data, dict) or not conv_data.get('id'):
                         _logger.warning(f"Skipping invalid data: {conv_data}")
                         continue
+                    
 
                     platform = 'Không rõ'
                     from_id = conv_data.get('from', {}).get('id', '').lower()
@@ -289,6 +290,22 @@ class PageFmPage(models.Model):
                             if isinstance(tag_obj, dict) and tag_obj.get('id'):
                                 api_tag_ids.append(tag_obj['id'])
                     
+                    # 🆕 Lấy assigned users từ API
+                    current_assign_users = conv_data.get('current_assign_users', []) or []
+                    assignee_data = []  # List of {'id': UUID, 'email': ..., 'name': ...}
+                    if isinstance(current_assign_users, list):
+                        for user_obj in current_assign_users:
+                            if isinstance(user_obj, dict):
+                                user_id = user_obj.get('id')  # UUID từ Pancake
+                                email = user_obj.get('email')
+                                name = user_obj.get('name')
+                                if user_id or email:  # Cần ít nhất 1 trong 2
+                                    assignee_data.append({
+                                        'id': user_id,
+                                        'email': email,
+                                        'name': name
+                                    })
+                    
                     processed_conv = {
                         'conversation_fm_id': conv_data.get('id'),
                         'page_fm_page_id': odoo_page_id,
@@ -298,8 +315,9 @@ class PageFmPage(models.Model):
                         'updated_at_fm': updated_at_fmt,
                         'is_unread_fm': is_unread,
                         'platform_fm': platform,
-                        'conv_page_fm_id': page_id_api,  # <-- NEW (rất quan trọng)
-                        'api_tag_ids': api_tag_ids,  # 🆕 Truyền tag_ids từ API
+                        'conv_page_fm_id': page_id_api,
+                        'api_tag_ids': api_tag_ids,
+                        'assignee_data': assignee_data,  # 🆕 Full data: id, email, name
                     }
                     processed_conversations.append(processed_conv)
 
@@ -327,13 +345,17 @@ class PageFmPage(models.Model):
             conv_fm_id = conv_vals.get('conversation_fm_id')
             if not conv_fm_id: 
                 continue
-                
-            # 🆕 Lấy api_tag_ids trước khi xử lý
+            
+            # 🆕 Lấy api_tag_ids và assignee_data trước khi xử lý
             api_tag_ids = conv_vals.pop('api_tag_ids', [])
+            assignee_data = conv_vals.pop('assignee_data', [])
             
             # DEBUG: Log để kiểm tra
             if api_tag_ids:
                 _logger.info(f"🔍 Processing conv {conv_fm_id} with api_tag_ids: {api_tag_ids}")
+            if assignee_data:
+                names = [a.get('name') for a in assignee_data if a.get('name')]
+                _logger.info(f"👥 Processing conv {conv_fm_id} with {len(assignee_data)} assignees: {names}")
             
             conv_vals['page_fm_page_id'] = self.id
             existing_conv = ConversationEnv.search([
@@ -360,6 +382,70 @@ class PageFmPage(models.Model):
                 # Gán tags vào conversation (luôn gán, kể cả khi rỗng để xóa tags đã gỡ)
                 conv_vals['pancake_tag_ids'] = [(6, 0, odoo_tag_ids)]
                 
+                # 🆕 Map assigned users từ Pancake sang Odoo users
+                # CHIẾN LƯỢC: Tìm theo pancake_id (UUID) trước, sau đó email
+                # KHÔNG XÓA người cũ, CHỈ THÊM vào
+                new_user_ids = []
+                owner_user_id = False
+                
+                if assignee_data:
+                    ResUsers = self.env['res.users'].sudo()
+                    _logger.info(f"👥 Mapping {len(assignee_data)} assignees for conv {conv_fm_id}")
+                    
+                    for idx, assignee in enumerate(assignee_data):
+                        pancake_id = assignee.get('id')  # UUID
+                        email = assignee.get('email')
+                        name = assignee.get('name', 'Unknown')
+                        
+                        user = None
+                        
+                        # 1. Tìm theo pancake_id (kiểm tra cả 3 field: pancake_id, pancake_uuid, pancake_number_id)
+                        if pancake_id:
+                            # Tìm trong bất kỳ field nào (OR condition)
+                            user = ResUsers.search([
+                                '|', '|',
+                                ('pancake_id', '=', pancake_id),
+                                ('pancake_uuid', '=', pancake_id),
+                                ('pancake_number_id', '=', pancake_id)
+                            ], limit=1)
+                            if user:
+                                # Log để biết tìm được từ field nào
+                                matched_field = 'pancake_id' if user.pancake_id == pancake_id else \
+                                               'pancake_uuid' if user.pancake_uuid == pancake_id else \
+                                               'pancake_number_id'
+                                _logger.info(f"✅ Found user by {matched_field} {pancake_id[:8]}... → {user.name}")
+                        
+                        # 2. Nếu không có, tìm theo email (login hoặc email field)
+                        if not user and email:
+                            user = ResUsers.search([('login', '=', email)], limit=1)
+                            if not user:
+                                user = ResUsers.search([('email', '=', email)], limit=1)
+                            if user:
+                                _logger.info(f"✅ Found user by email {email} → {user.name}")
+                        
+                        if user:
+                            new_user_ids.append(user.id)
+                            # Owner = người đầu tiên trong list
+                            if idx == 0 and not owner_user_id:
+                                owner_user_id = user.id
+                        else:
+                            _logger.warning(f"⚠️ Assignee not found: {name} (pancake_id: {pancake_id[:8] if pancake_id else 'N/A'}, email: {email or 'N/A'})")
+                
+                # Gán owner (chỉ khi có từ API)
+                if owner_user_id:
+                    conv_vals['owner_id'] = owner_user_id
+                
+                # Gán participants - QUAN TRỌNG: KHÔNG xóa người cũ
+                if new_user_ids:
+                    if existing_conv:
+                        # Lấy danh sách cũ và MERGE với mới (không trùng)
+                        old_participant_ids = set(existing_conv.participant_user_ids.ids)
+                        merged_ids = old_participant_ids.union(set(new_user_ids))
+                        conv_vals['participant_user_ids'] = [(6, 0, list(merged_ids))]
+                    else:
+                        # Conversation mới - chỉ gán người mới
+                        conv_vals['participant_user_ids'] = [(6, 0, new_user_ids)]
+                
                 if existing_conv:
                     # Chỉ log khi có thay đổi tags
                     old_tag_ids = set(existing_conv.pancake_tag_ids.ids)
@@ -370,6 +456,21 @@ class PageFmPage(models.Model):
                             _logger.info(f"🏷️ Update tags for conversation {conv_fm_id}: {len(old_tag_ids)} → {len(new_tag_ids)} tags")
                         else:
                             _logger.info(f"🗑️ Clear tags for conversation {conv_fm_id} (had {len(old_tag_ids)} tags)")
+                    
+                    # Log khi có thay đổi assigned users
+                    old_owner_id = existing_conv.owner_id.id if existing_conv.owner_id else False
+                    old_participant_ids = set(existing_conv.participant_user_ids.ids)
+                    new_participant_ids = set(conv_vals.get('participant_user_ids', [(6, 0, [])])[0][2])
+                    
+                    if old_owner_id != owner_user_id and owner_user_id:
+                        old_name = existing_conv.owner_id.name if existing_conv.owner_id else "None"
+                        new_name = self.env['res.users'].sudo().browse(owner_user_id).name
+                        _logger.info(f"👤 Update owner for conv {conv_fm_id}: {old_name} → {new_name}")
+                    
+                    if old_participant_ids != new_participant_ids and new_user_ids:
+                        added_ids = new_participant_ids - old_participant_ids
+                        if added_ids:
+                            _logger.info(f"👥 Added {len(added_ids)} participants to conv {conv_fm_id}: total {len(old_participant_ids)} → {len(new_participant_ids)} users")
                     
                     existing_conv.write(conv_vals)
                     updated_count += 1
