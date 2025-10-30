@@ -1305,6 +1305,77 @@ class SaleOrderInherit(models.Model):
             
             customer_notes_list = [note.get('message', '') for note in customer_info.get('notes', [])]
             
+            # 🆕 AUTO-ASSIGN Design & Production từ Tags
+            user_id_design = False
+            user_id_production = False
+            
+            tags_data = order_data.get('tags', [])
+            if tags_data:
+                _logger.info(f"📋 [WEBHOOK] Processing {len(tags_data)} tags for order {p_order_id}")
+                
+                # Mapping tên → User name trong Odoo
+                # CHỈ Ái và Quân có thể làm cả thiết kế VÀ sản xuất
+                name_to_user_mapping = {
+                    'ái': 'Thuy Ai Dang',
+                    'phong': 'Phong',
+                    'quân': 'Quân',
+                    'dao': 'Dao',
+                    'duy an': 'Duy An (Bông)',
+                    'bông': 'Duy An (Bông)',
+                }
+                
+                for tag in tags_data:
+                    tag_name_original = (tag.get('name') or '').strip()
+                    tag_name_lower = tag_name_original.lower()
+                    
+                    if not tag_name_original:
+                        continue
+                    
+                    # QUAN TRỌNG: Chỉ xử lý tag CÓ NGOẶC (có role rõ ràng)
+                    if '(' not in tag_name_original:
+                        _logger.info(f"ℹ️ [WEBHOOK] Skipping tag without role: '{tag_name_original}' (legacy format)")
+                        continue
+                    
+                    # Kiểm tra role rõ ràng trong tag
+                    is_design = 'thiết kế' in tag_name_lower or 'thiet ke' in tag_name_lower
+                    is_production = 'sản xuất' in tag_name_lower or 'san xuat' in tag_name_lower
+                    
+                    if not (is_design or is_production):
+                        _logger.warning(f"⚠️ [WEBHOOK] Tag '{tag_name_original}' has parentheses but no valid role")
+                        continue
+                    
+                    # Extract tên người (phần trước dấu ngoặc)
+                    person_name = tag_name_original.split('(')[0].strip().lower()
+                    
+                    # Tìm user match
+                    matched_user_name = None
+                    for key, user_name in name_to_user_mapping.items():
+                        if key in person_name:
+                            matched_user_name = user_name
+                            break
+                    
+                    if not matched_user_name:
+                        _logger.warning(f"⚠️ [WEBHOOK] Cannot map tag '{tag_name_original}' to any user")
+                        continue
+                    
+                    # Search user trong Odoo
+                    user = ResUsers.sudo().search([('name', '=ilike', matched_user_name)], limit=1)
+                    
+                    if not user:
+                        _logger.warning(f"⚠️ [WEBHOOK] User '{matched_user_name}' not found in Odoo for tag '{tag_name_original}'")
+                        continue
+                    
+                    # Gán vào field tương ứng theo role
+                    if is_design and not user_id_design:
+                        user_id_design = user.id
+                        _logger.info(f"✅ [WEBHOOK] Assigned design to: {user.name} (from tag: '{tag_name_original}')")
+                    
+                    if is_production and not user_id_production:
+                        user_id_production = user.id
+                        _logger.info(f"✅ [WEBHOOK] Assigned production to: {user.name} (from tag: '{tag_name_original}')")
+
+
+            
             order_vals = {
                 'pancake_order_id': p_order_id,
                 'partner_id': partner.id,
@@ -1326,6 +1397,12 @@ class SaleOrderInherit(models.Model):
                 'last_sync_date': fields.Datetime.now(),
                 'pancake_raw_data': str(order_data),
             }
+            
+            # Thêm design & production user nếu có
+            if user_id_design:
+                order_vals['user_id_design'] = user_id_design
+            if user_id_production:
+                order_vals['user_id_production'] = user_id_production
 
             # --- 8. Create or Update Sale Order ---
             existing_order = SaleOrder.search([('pancake_order_id', '=', p_order_id), ('company_id', '=', current_company_id)], limit=1)

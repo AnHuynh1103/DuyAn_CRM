@@ -1430,7 +1430,9 @@ class PageFmConversation(models.Model):
         user = self.env.user
         allow_toggle = self.env.context.get('allow_toggle_require_processing')  # cho phép toggle checklist
 
-        if (user.has_group('dac_erp.group_dac_erp_sale')
+        # CRITICAL: Chỉ check permission khi user tồn tại (tránh lỗi khi gọi từ webhook/cron)
+        if (user and user.id 
+            and user.has_group('dac_erp.group_dac_erp_sale')
             and not user.has_group('dac_erp.group_dac_erp_manager')
             and not allow_toggle):
             allowed = {'status_state', 'is_unread_fm'}
