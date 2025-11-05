@@ -645,7 +645,7 @@ Settings → Technical → Scheduled Actions
 ## 📞 Support
 
 **Tác giả**: Huỳnh Quốc An  
-**Email**: [contact email]  
+**Email**: anhuynh.110301@gmail.com  
 **Phiên bản**: 1.0  
 **Cập nhật**: October 2025  
 **Công ty**: Duy An Company

@@ -7,6 +7,7 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
+
 class BeeoneHome(Home):
     """
     Controller để chặn debug mode cho non-admin users
@@ -22,6 +23,11 @@ class BeeoneHome(Home):
             if request.session.uid:
                 user = request.env.user
                 
+                # 🔒 Check user exists (fix singleton error)
+                if not user or not user.id:
+                    _logger.warning("[DEBUG_GUARD] User recordset is empty, skipping check")
+                    return super().web_client(s_action=s_action, subpath=subpath, **kw)
+                
                 # Chỉ áp dụng cho non-admin users
                 if not user.has_group('base.group_system'):
                     req = request.httprequest
@@ -33,23 +39,32 @@ class BeeoneHome(Home):
                         if param_name in args:
                             args.pop(param_name, None)
                             has_debug_param = True
-                            _logger.info(f"======= Debug param '{param_name}' blocked for user: {user.name}")
+                            _logger.info(f"[DEBUG_GUARD] Debug param '{param_name}' blocked for user: {user.name}")
                     
                     # Nếu có debug param, redirect về URL sạch
                     if has_debug_param:
                         clean_query = url_encode(args) if args else ""
                         # Rebuild URL với subpath nếu có
                         if subpath:
-                            clean_url = f"/odoo/{subpath}" + (("?" + clean_query) if clean_query else "")
+                            clean_url = f"/odoo/{subpath}"
                         else:
-                            clean_url = req.path + (("?" + clean_query) if clean_query else "")
+                            clean_url = req.path
                         
+                        # Thêm query string nếu có
+                        if clean_query:
+                            clean_url += f"?{clean_query}"
+                        
+                        # Giữ nguyên hash nếu có
+                        if req.url and '#' in req.url:
+                            hash_part = req.url.split('#', 1)[1]
+                            clean_url += f"#{hash_part}"
+                        
+                        _logger.info(f"[DEBUG_GUARD] Redirecting non-admin user {user.name} from debug URL to: {clean_url}")
                         resp = request.redirect(clean_url, 303)
                         
                         # Xóa tất cả debug cookies
                         for cookie_name in ('debug', 'odoo-debug', 'debugMode'):
                             resp.delete_cookie(cookie_name, path='/')
-                            _logger.info(f"====== Debug cookie '{cookie_name}' deleted for user: {user.name}")
                         
                         return resp
 
@@ -57,7 +72,7 @@ class BeeoneHome(Home):
             return super().web_client(s_action=s_action, subpath=subpath, **kw)
             
         except Exception as e:
-            _logger.error(f"======= Error in debug_guard controller: {str(e)}")
+            _logger.error(f"[DEBUG_GUARD] Error in debug_guard controller: {str(e)}")
             # Fallback to parent if error
             return super().web_client(s_action=s_action, subpath=subpath, **kw)
-            return super().web_client(s_action=s_action, **kw)
+

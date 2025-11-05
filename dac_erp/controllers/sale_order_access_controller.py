@@ -23,7 +23,13 @@ class SaleOrderAccessController(http.Controller):
     """
     
     def _get_debug_param(self, kwargs):
-        """Helper method để lấy debug parameter từ URL"""
+        """Helper method để lấy debug parameter từ URL - CHỈ cho ADMIN"""
+        user = request.env.user
+        
+        # 🔒 CHỈ admin mới được dùng debug mode
+        if not user.has_group('base.group_system'):
+            return ''
+        
         debug = kwargs.get('debug', '') or request.httprequest.args.get('debug', '')
         return f'?debug={debug}' if debug else ''
     

@@ -226,6 +226,290 @@ class DataExportController(http.Controller):
                 status=500
             )
 
+    @http.route('/dac_erp/api/export/conversation_info', type='http', auth='public', csrf=False, methods=['GET', 'POST'])
+    def export_conversation_info(self, 
+                                 limit=None, 
+                                 offset=0,
+                                 page_id=None,
+                                 status=None,
+                                 require_processing=None,
+                                 has_unread=None,
+                                 owner_id=None,
+                                 participant_id=None,
+                                 date_from=None,
+                                 date_to=None,
+                                 **kwargs):
+        """
+        API endpoint để get conversations với thông tin đầy đủ:
+        - Người phụ trách chính (owner)
+        - Nhóm người tham gia (participants)
+        - Trạng thái conversation
+        - Tin nhắn cuối
+        - Tags
+        
+        Parameters:
+        - limit: Số lượng conversation (mặc định 100)
+        - offset: Bỏ qua bao nhiêu records
+        - page_id: ID của page (Odoo ID)
+        - status: Trạng thái (new, recontact, waiting, done)
+        - require_processing: '1'/'0' - Có yêu cầu xử lý không
+        - has_unread: '1'/'0' - Có tin nhắn chưa đọc không
+        - owner_id: ID người phụ trách CHÍNH (Odoo user ID) - CHỈ lấy conversations mà user này là owner
+        - participant_id: ID người THAM GIA (Odoo user ID) - Lấy conversations mà user này là owner HOẶC participant
+        - date_from: Lọc từ ngày (YYYY-MM-DD)
+        - date_to: Lọc đến ngày (YYYY-MM-DD)
+        """
+        try:
+            data = self._get_conversation_info(
+                limit=limit,
+                offset=offset,
+                page_id=page_id,
+                status=status,
+                require_processing=require_processing,
+                has_unread=has_unread,
+                owner_id=owner_id,
+                participant_id=participant_id,
+                date_from=date_from,
+                date_to=date_to,
+                **kwargs
+            )
+            return http.Response(
+                json.dumps(data, ensure_ascii=False, default=str),
+                content_type='application/json',
+                status=200
+            )
+        except Exception as e:
+            _logger.error(f"Error in export_conversation_info: {str(e)}", exc_info=True)
+            return http.Response(
+                json.dumps({'error': f"Lỗi khi export conversations: {str(e)}"}),
+                content_type='application/json',
+                status=500
+            )
+
+    def _get_conversation_info(self,
+                               limit=None,
+                               offset=0,
+                               page_id=None,
+                               status=None,
+                               require_processing=None,
+                               has_unread=None,
+                               owner_id=None,
+                               participant_id=None,
+                               date_from=None,
+                               date_to=None,
+                               **kwargs):
+        """
+        Get conversations với thông tin đầy đủ về participants và status
+        
+        Filter logic:
+        - owner_id: CHỈ lấy conversations mà user này là OWNER (người phụ trách chính)
+        - participant_id: Lấy conversations mà user này là OWNER HOẶC PARTICIPANT (người tham gia)
+        """
+        
+        # Build domain
+        domain = []
+        
+        if page_id:
+            try:
+                pid = int(page_id)
+                domain.append(('page_fm_page_id', '=', pid))
+            except:
+                pass
+        
+        if status:
+            statuses = [s.strip() for s in str(status).split(',') if s.strip()]
+            if statuses:
+                domain.append(('status_state', 'in', statuses))
+        
+        if require_processing is not None and str(require_processing) != '':
+            domain.append(('require_processing', '=', str(require_processing).lower() in ('1', 'true', 't', 'yes')))
+        
+        if has_unread is not None and str(has_unread) != '':
+            domain.append(('is_unread_fm', '=', str(has_unread).lower() in ('1', 'true', 't', 'yes')))
+        
+        # Filter theo OWNER (người phụ trách chính) - CHỈ conversations mà user này là owner
+        if owner_id:
+            try:
+                oid = int(owner_id)
+                domain.append(('owner_id', '=', oid))
+                _logger.info(f"🔍 Filter by OWNER: owner_id={oid}")
+            except:
+                pass
+        
+        # Filter theo PARTICIPANT (người tham gia) - Bao gồm cả owner và participants
+        # Chỉ áp dụng nếu KHÔNG có owner_id filter (tránh conflict)
+        if participant_id and not owner_id:
+            try:
+                pid = int(participant_id)
+                # Tìm conversations mà user này là owner HOẶC participant
+                domain.append('|')
+                domain.append(('owner_id', '=', pid))
+                domain.append(('participant_user_ids', 'in', [pid]))
+                _logger.info(f"🔍 Filter by PARTICIPANT: user_id={pid} (owner OR participant)")
+            except:
+                pass
+        
+        if date_from:
+            domain.append(('updated_at_fm', '>=', date_from))
+        if date_to:
+            domain.append(('updated_at_fm', '<=', date_to))
+        
+        # Search conversations
+        limit = int(limit) if limit else 100
+        offset = int(offset) if offset else 0
+        
+        Conv = request.env['page.fm.conversation'].sudo()
+        conversations = Conv.search(domain, limit=limit, offset=offset, order='updated_at_fm desc')
+        
+        conv_data = []
+        for conv in conversations:
+            # Owner (người phụ trách chính)
+            user_id = None
+            if conv.owner_id:
+                user_id = {
+                    'id': conv.owner_id.id,
+                    'name': conv.owner_id.name,
+                    'email': conv.owner_id.email,
+                    'pancake_id': getattr(conv.owner_id, 'pancake_id', None),
+                    'pancake_uuid': getattr(conv.owner_id, 'pancake_uuid', None),
+                }
+            
+            # Participants (nhóm người tham gia)
+            participants = []
+            if conv.participant_user_ids:
+                for user in conv.participant_user_ids:
+                    participants.append({
+                        'id': user.id,
+                        'name': user.name,
+                        'email': user.email,
+                        'pancake_id': getattr(user, 'pancake_id', None),
+                        'pancake_uuid': getattr(user, 'pancake_uuid', None),
+                    })
+            
+            # Partner (khách hàng)
+            customer = None
+            if conv.partner_id:
+                customer = {
+                    'id': conv.partner_id.id,
+                    'name': conv.partner_id.name,
+                    'phone': conv.partner_id.phone or conv.partner_id.mobile,
+                    'email': conv.partner_id.email,
+                }
+            
+            # Tags
+            tags = []
+            pancake_tags = getattr(conv, 'pancake_tag_ids', None) or getattr(conv, 'tag_ids', None)
+            if pancake_tags:
+                for tag in pancake_tags:
+                    tags.append({
+                        'id': tag.id,
+                        'name': tag.name,
+                        'fm_id': getattr(tag, 'tag_fm_id', None),
+                        'color': getattr(tag, 'fm_color_hex', None),
+                    })
+            
+            # Platform info
+            platform = getattr(conv, 'platform_fm', None)
+            
+            # Build external URL
+            external_url = None
+            try:
+                page_id_str = getattr(conv, 'conv_page_fm_id', None) or (
+                    getattr(conv.page_fm_page_id, 'page_fm_id_str', None) 
+                    if hasattr(conv, 'page_fm_page_id') else None
+                )
+                conv_fm_id = getattr(conv, 'conversation_fm_id', None)
+                if page_id_str and conv_fm_id and hasattr(conv, '_build_external_url_for_platform'):
+                    external_url = conv._build_external_url_for_platform(page_id_str, conv_fm_id)
+            except Exception:
+                pass
+            
+            # Last message info
+            last_message = {
+                'snippet': getattr(conv, 'last_message_snippet', None),
+                'snippet_clean': getattr(conv, 'last_message_snippet_clean', None),
+                'id': getattr(conv, 'last_message_id', None),
+            }
+            
+            # Status info
+            status_info = {
+                'state': conv.status_state,
+                'label': conv.status_label if hasattr(conv, 'status_label') else None,
+                'require_processing': bool(conv.require_processing),
+                'is_unread': bool(conv.is_unread_fm),
+                'last_processing_change_at': conv.last_processing_change_at.isoformat() if getattr(conv, 'last_processing_change_at', None) else None,
+            }
+            
+            # Notes
+            notes = {
+                'suggestion_note': getattr(conv, 'suggestion_note', None),
+                'suggestion_note_clean': getattr(conv, 'suggestion_note_clean', None),
+                'last_suggestion_at': conv.last_suggestion_at.isoformat() if getattr(conv, 'last_suggestion_at', None) else None,
+            }
+            
+            # Page info
+            page_info = None
+            if conv.page_fm_page_id:
+                page_info = {
+                    'id': conv.page_fm_page_id.id,
+                    'name': getattr(conv.page_fm_page_id, 'page_name', None),
+                    'page_fm_id': getattr(conv.page_fm_page_id, 'page_fm_id_str', None),
+                }
+            
+            conv_data.append({
+                # Basic info
+                'id': conv.id,
+                'conversation_fm_id': getattr(conv, 'conversation_fm_id', None),
+                'customer_fm_id': getattr(conv, 'customer_fm_id', None),
+                'name': conv.name,
+                'customer_name_fm': getattr(conv, 'customer_name_fm', None),
+                'customer_name_clean': getattr(conv, 'customer_name_clean', None),
+                'phone': conv.phone,
+                'platform': platform,
+                
+                # Timestamps
+                'updated_at_fm': conv.updated_at_fm.isoformat() if conv.updated_at_fm else None,
+                'create_date': conv.create_date.isoformat() if conv.create_date else None,
+                'last_message_sync_fm': conv.last_message_sync_fm.isoformat() if getattr(conv, 'last_message_sync_fm', None) else None,
+                
+                # Owner & Participants (user_id = người phụ trách chính)
+                'user_id': user_id,
+                'participants': participants,
+                'participants_count': len(participants),
+                
+                # Customer
+                'customer': customer,
+                
+                # Status
+                'status': status_info,
+                
+                # Messages
+                'last_message': last_message,
+                'message_count': getattr(conv, 'message_count', 0),
+                
+                # Tags
+                'tags': tags,
+                'tags_count': len(tags),
+                
+                # Notes
+                'notes': notes,
+                
+                # Page
+                'page': page_info,
+                
+                # External URL
+                'external_url': external_url,
+            })
+        
+        return {
+            'success': True,
+            'count': len(conv_data),
+            'limit': limit,
+            'offset': offset,
+            'total': Conv.search_count(domain),
+            'items': conv_data,
+        }
+
     def _get_sales_data(
         self,
         limit=None,
