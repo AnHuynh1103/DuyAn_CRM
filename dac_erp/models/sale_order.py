@@ -59,7 +59,7 @@ class SaleOrder(models.Model):
         string='Nhóm sản xuất',
         domain=[],                          # cho chọn TẤT CẢ users
         tracking=True,
-        help='Những người tham gia sản xuất, KHÔNG bao gồm người phụ trách sản xuất.',
+        help='Những người tham gia sản xuất, Có thể bao gồm người phụ trách sản xuất.',
     )
     
     # Trường so sánh với file số đơn excel

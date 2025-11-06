@@ -93,13 +93,13 @@
                                 <field name="delivery_address" 
                                        string="Địa chỉ giao hàng"
                                        invisible="fulfillment_method != 'delivery' or order_state_custom not in ['production','delivery', 'payment','completed']"
-                                       readonly="is_delivery_confirmed or is_design_user or is_production_user"
+                                       readonly="is_delivery_confirmed or is_design_user"
                                        widget="text"/>
                                 <!-- Trường địa chỉ thi công/lắp đặt - hiện khi chọn "Thi công - lắp đặt" -->
                                 <field name="installation_address" 
                                        string="Địa chỉ thi công/lắp đặt"
                                        invisible="fulfillment_method != 'installation' or order_state_custom not in ['production','installation', 'payment','completed']"
-                                       readonly="is_installation_confirmed or is_design_user or is_production_user"
+                                       readonly="is_installation_confirmed or is_design_user"
                                        widget="text"/>
                             </group>
                             <group name="staff_assignment">
@@ -145,7 +145,7 @@
                                 <field name="fulfillment_method"
                                        nolabel="1"
                                        widget="radio"
-                                       readonly="order_state_custom == 'completed' 
+                                       readonly="order_state_custom in ['completed', 'cancelled','delivery','installation','payment'] 
                                        or is_delivery_confirmed or is_installation_confirmed
                                        or is_design_user"/>
                             </group>
@@ -408,6 +408,8 @@
                         <!-- <div style="text-align: left; margin-top: 24px;">
                             <field name="note" placeholder="Ghi chú" nolabel="1"/>
                         </div> -->
+                        
+                        <!-- Phần tóm tắt tiền - CHỈ cho Sale và Manager -->
                         <div class="dac-summary-container" 
                              groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager">
                             <field name="currency_id" invisible="1"/>
@@ -454,7 +456,10 @@
                             </div>
                             <field name="is_order_completed" invisible="1"/>
                             <field name="remaining_amount_display" invisible="1"/>
-                            <div class="dac-action-buttons">
+                        </div>
+                        
+                        <!-- Phần buttons - CHO TẤT CẢ USERS -->
+                        <div class="dac-action-buttons">
                                 <!-- Nút Hủy đơn hàng - chỉ hiện ở trạng thái báo giá và đã lưu và chưa có hóa đơn cọc -->
                                 <button name="action_cancel_order"
                                     string="Hủy đơn hàng"
@@ -470,7 +475,7 @@
                                     type="object"  
                                     class="btn-primary"
                                     invisible="is_order_completed or order_state_custom == 'cancel'"
-                                    groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager"/>
+                                    />
 
                                 <!-- Nút Quay lại tiến trình trước: Dùng chung cho mọi tiến trình (trừ báo giá) -->
                                 <button name="action_back_custom_step"
@@ -507,7 +512,7 @@
                                         string="Tiến hành thi công"
                                         type="object" 
                                         class="btn-primary"
-                                        groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"
+                                        groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,dac_erp.group_dac_erp_production"
                                         invisible="order_state_custom != 'production' or not is_production_confirmed or fulfillment_method != 'installation'"/>
 
 
@@ -516,7 +521,7 @@
                                     string="Tiến hành giao hàng"
                                     type="object"
                                     class="btn-primary"
-                                    groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"
+                                    groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,dac_erp.group_dac_erp_production"
                                     invisible="order_state_custom != 'production' or not is_production_confirmed or fulfillment_method != 'delivery'"/>
 
                                 <!-- Nút Xác nhận cho các tiến trình khác (chỉ delivery) -->
@@ -564,7 +569,6 @@
                                     groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager,base.group_system"/>
                                 <!-- Nút Chuyển sang tiến trình tiếp theo: Ẩn ở bước cuối cùng -->
                                 <!-- Không cần nút cho bước 'payment' vì không có bước tiếp theo -->
-                            </div>
                         </div>
                     </sheet>
                     
