@@ -598,7 +598,9 @@ class SaleOrderDashboardService(models.Model):
         # Không lọc theo khoảng thời gian - hiển thị TẤT CẢ đơn đang trễ hạn
         delayed_dom = [
             ("company_id", "=", company.id),
-            ("order_state_custom", "=", ("production")),
+            ("order_state_custom", "=", "production"),
+            ("production_deadline", "!=", False),  # Phải có deadline
+            ("production_deadline", "<", today),    # Deadline đã qua (< hôm nay)
         ]
         delayed_production = self._rg_count(self, delayed_dom, "id")
 
@@ -633,21 +635,23 @@ class SaleOrderDashboardService(models.Model):
         # ===== ALERTS (Cảnh báo) - LỌC THEO THỜI GIAN =====
         alerts = []
         
-        # Cảnh báo 1: Đơn trễ hạn sản xuất (trong khoảng thời gian chọn)
+        # Cảnh báo 1: Đơn trễ hạn sản xuất (deadline < hôm nay)
         if delayed_production > 0:
             delayed_orders = self.search(delayed_dom, limit=20, order='production_deadline asc')
             for order in delayed_orders:
-                vip_class = self._get_partner_vip_class(order.partner_id) if order.partner_id else ''
-                alerts.append({
-                    'id': f'delayed_{order.id}',
-                    'order_id': order.id,
-                    'order_number': order.order_number or False,  # Số đơn hàng hoặc False
-                    'order_name': order.name,
-                    'customer_name': order.partner_id.display_name,
-                    'label': 'Trễ hạn SX',
-                    'priority': 'danger',
-                    'vip_class': vip_class,  # VIP class cho styling
-                })
+                # Double-check: chỉ thêm nếu thực sự có deadline và đã quá hạn
+                if order.production_deadline and order.production_deadline < today:
+                    vip_class = self._get_partner_vip_class(order.partner_id) if order.partner_id else ''
+                    alerts.append({
+                        'id': f'delayed_{order.id}',
+                        'order_id': order.id,
+                        'order_number': order.order_number or False,  # Số đơn hàng hoặc False
+                        'order_name': order.name,
+                        'customer_name': order.partner_id.display_name,
+                        'label': 'Trễ hạn SX',
+                        'priority': 'danger',
+                        'vip_class': vip_class,  # VIP class cho styling
+                    })
         
         # Cảnh báo 2: Đơn ở trạng thái payment (cần thu tiền) - THEO THỜI GIAN
         payment_dom = [
