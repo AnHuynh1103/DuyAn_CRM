@@ -159,10 +159,25 @@ services:
         aliases:
           - db-staging
 
+# ===================== n8n bot ===========================
+  n8n-bot:
+    image: n8nio/n8n:1.116.2
+    container_name: n8n-bot
+    env_file:
+      - ./config/env/n8n-bot.env
+    volumes:
+      - n8n_bot_data:/home/node/.n8n
+    depends_on:
+      - postgres-staging
+    restart: unless-stopped
+    networks:
+      - odoo-network
+
 volumes:
   odoo_data:
   postgres_data:
   n8n_data:
+  n8n_bot_data:
   odoo_staging_data:
   postgres_staging_data:
 
