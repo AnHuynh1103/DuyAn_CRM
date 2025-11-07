@@ -2096,7 +2096,14 @@ class SaleOrder(models.Model):
 
     @api.depends('partner_id')
     def _compute_partner_vip_class(self):
-        """Tính toán VIP class từ partner tags (nếu có)"""
+        """
+        Tính toán VIP class từ partner tags (nếu có)
+        Trả về:
+        - 'vip' nếu chỉ có tag Khách lớn → decoration-warning (VÀNG)
+        - 'loyal' nếu chỉ có tag Khách quen → decoration-info (XANH DƯƠNG)
+        - 'premium' nếu có cả 2 tags → decoration-danger (ĐỎ)
+        - '' nếu không có tag nào
+        """
         for rec in self:
             # Kiểm tra partner tồn tại
             if not rec.partner_id:
@@ -2115,17 +2122,20 @@ class SaleOrder(models.Model):
                 continue
             
             tag_names = [tag.name.lower() for tag in pancake_tags]
-            classes = []
             
-            # Kiểm tra Khách lớn / VIP
-            if 'khách lớn' in tag_names or 'vip' in tag_names:
-                classes.append('vip-customer')
+            # Kiểm tra tag
+            is_vip = 'khách lớn' in tag_names or 'vip' in tag_names
+            is_loyal = 'khách quen' in tag_names or 'loyal' in tag_names
             
-            # Kiểm tra Khách quen / Loyal
-            if 'khách quen' in tag_names or 'loyal' in tag_names:
-                classes.append('loyal-customer')
-            
-            rec.partner_vip_class = ' '.join(classes)
+            # Quyết định class
+            if is_vip and is_loyal:
+                rec.partner_vip_class = 'premium'  # Cả 2 → ĐỎ
+            elif is_vip:
+                rec.partner_vip_class = 'vip'      # Chỉ VIP → VÀNG
+            elif is_loyal:
+                rec.partner_vip_class = 'loyal'    # Chỉ Loyal → XANH
+            else:
+                rec.partner_vip_class = ''
 
 
     def _compute_user_flags(self):

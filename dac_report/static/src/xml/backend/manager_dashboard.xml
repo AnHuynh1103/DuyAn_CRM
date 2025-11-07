@@ -171,10 +171,7 @@
 
                                 <!-- Quy Trình Đầu Phễu -->
                                 <div class="pipeline-group">
-                                    <div class="pipeline-group-title">
-                                        <i class="fa-solid fa-filter"/>
-                                        Quy Trình Đầu Phễu
-                                    </div>
+                                    <div class="pipeline-group-title">Quy Trình Đầu Phễu</div>
                                     <div class="pipeline-stages">
                                         <!-- Báo giá -->
                                         <div class="stage-card stage-quotation" t-on-click="() => this.openOrdersByState('quotation')">
@@ -194,10 +191,7 @@
 
                                 <!-- Quy Trình Thực Thi -->
                                 <div class="pipeline-group">
-                                    <div class="pipeline-group-title">
-                                        <i class="fa-solid fa-diagram-project"/>
-                                        Quy Trình Thực Thi (Song song)
-                                    </div>
+                                    <div class="pipeline-group-title">Quy Trình Thực Thi</div>
                                     <div class="execution-group">
                                         <!-- Sản xuất -->
                                         <div class="stage-card stage-production" t-on-click="() => this.openOrdersByState('production')">
@@ -227,10 +221,7 @@
 
                                 <!-- Quy Trình Hoàn Tất -->
                                 <div class="pipeline-group">
-                                    <div class="pipeline-group-title">
-                                        <i class="fa-solid fa-circle-check"/>
-                                        Quy Trình Hoàn Tất
-                                    </div>
+                                    <div class="pipeline-group-title">Quy Trình Hoàn Tất</div>
                                     <div class="pipeline-stages">
                                         <!-- Thu tiền -->
                                         <div class="stage-card stage-payment" t-on-click="() => this.openOrdersByState('payment')">
