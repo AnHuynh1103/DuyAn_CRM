@@ -7,7 +7,8 @@
             <field name="priority">3</field>
             <field name="groups_id" eval="[(4, ref('dac_erp.group_dac_erp_design')), (4, ref('dac_erp.group_dac_erp_production')), (4, ref('base.group_system'))]"/>
             <field name="arch" type="xml">
-                <list string="Báo giá" default_order="date desc" delete="false" create="false" edit="true">
+                <list string="Báo giá" default_order="date desc" delete="false" create="false" edit="true" decoration-bf="partner_vip_class">
+                    <field name="partner_vip_class" invisible="1" optional="hide"/>
                     <field name="latest_quotation_info" string="Báo giá mới nhất" readonly="1" optional="hide"/>
                     <field name="name" optional="hide"/>
                     <field name="company_id" invisible="1" optional="hide"/>
@@ -16,7 +17,7 @@
                     <field name="create_date" string="Ngày tạo đơn (hệ thống)" optional="hide"/>
                     <field name="order_number" string="Số phiếu ĐH"/>
                     <field name="date" string="Ngày đơn hàng"/>
-                    <field name="partner_id" />
+                    <field name="partner_id" widget="many2one" class="partner-vip-field" options="{'no_open': True}"/>
                     <field name="user_id" widget="many2one_avatar_user" string="Sale phụ trách"/>
                     <field name="user_id_design" widget="many2one_avatar_user" string="Người thiết kế"/>
                     <field name="user_id_production" widget="many2one_avatar_user" string="Người sản xuất"/>

@@ -24,11 +24,20 @@ class SaleOrderDashboardService(models.Model):
         Hỗ trợ multiple classes nếu có cả 2 tags.
         Returns: 'vip-customer', 'loyal-customer', 'vip-customer loyal-customer', hoặc ''
         """
-        if not partner or not partner.pancake_tag_ids:
+        # Kiểm tra partner tồn tại
+        if not partner:
             return ''
         
-        tag_names = [tag.name.lower() for tag in partner.pancake_tag_ids]
+        # Kiểm tra field pancake_tag_ids có tồn tại không
+        if not hasattr(partner, 'pancake_tag_ids'):
+            return ''
         
+        # Kiểm tra có tags không
+        pancake_tags = partner.pancake_tag_ids
+        if not pancake_tags:
+            return ''
+        
+        tag_names = [tag.name.lower() for tag in pancake_tags]
         classes = []
         
         # Kiểm tra Khách lớn / VIP
@@ -628,6 +637,7 @@ class SaleOrderDashboardService(models.Model):
         if delayed_production > 0:
             delayed_orders = self.search(delayed_dom, limit=20, order='production_deadline asc')
             for order in delayed_orders:
+                vip_class = self._get_partner_vip_class(order.partner_id) if order.partner_id else ''
                 alerts.append({
                     'id': f'delayed_{order.id}',
                     'order_id': order.id,
@@ -636,6 +646,7 @@ class SaleOrderDashboardService(models.Model):
                     'customer_name': order.partner_id.display_name,
                     'label': 'Trễ hạn SX',
                     'priority': 'danger',
+                    'vip_class': vip_class,  # VIP class cho styling
                 })
         
         # Cảnh báo 2: Đơn ở trạng thái payment (cần thu tiền) - THEO THỜI GIAN
@@ -647,6 +658,7 @@ class SaleOrderDashboardService(models.Model):
         ]
         payment_orders = self.search(payment_dom, limit=20, order='date asc')
         for order in payment_orders:
+            vip_class = self._get_partner_vip_class(order.partner_id) if order.partner_id else ''
             alerts.append({
                 'id': f'payment_{order.id}',
                 'order_id': order.id,
@@ -655,6 +667,7 @@ class SaleOrderDashboardService(models.Model):
                 'customer_name': order.partner_id.display_name,
                 'label': 'Cần thu tiền',
                 'priority': 'warning',
+                'vip_class': vip_class,  # VIP class cho styling
             })
         
         # Cảnh báo 3: Báo giá lâu chưa chuyển tiếp - THEO THỜI GIAN
@@ -676,12 +689,16 @@ class SaleOrderDashboardService(models.Model):
         ]
         old_quotes = self.search(old_quotes_dom, limit=20, order='date asc')
         for order in old_quotes:
+            vip_class = self._get_partner_vip_class(order.partner_id) if order.partner_id else ''
             alerts.append({
                 'id': f'old_quote_{order.id}',
                 'order_id': order.id,
                 'order_number': order.order_number or False,  # Số đơn hàng hoặc False
                 'order_name': order.name,
                 'customer_name': order.partner_id.display_name,
+                'label': 'Báo giá lâu',
+                'priority': 'info',
+                'vip_class': vip_class,  # VIP class cho styling
                 'label': 'Báo giá lâu',
                 'priority': 'info',
             })

@@ -68,16 +68,22 @@
                         <!-- TẦNG 1: Thông tin khách hàng và cơ bản -->
                         <group name="customer_info">
                             <group name="partner_details">
+                                <field name="partner_vip_class" invisible="1"/>
+                                
+                                <!-- Partner field cho Design/Production - readonly -->
                                 <field name="partner_id"
                                        groups="dac_erp.group_dac_erp_design,dac_erp.group_dac_erp_production"
                                        options="{'no_open': True, 'no_create_edit': True}"
                                        context="{'show_address': 1, 'show_vat': True}"
-                                       readonly="1"/>
+                                       readonly="1"
+                                       class="partner-vip-field"/>
 
+                                <!-- Partner field cho Sale/Manager - editable -->
                                 <field name="partner_id"
                                        groups="dac_erp.group_dac_erp_sale,dac_erp.group_dac_erp_manager"
                                        options="{'no_create_edit': True}"
-                                       context="{'show_address': 1, 'show_vat': True}"/>
+                                       context="{'show_address': 1, 'show_vat': True}"
+                                       class="partner-vip-field"/>
 
                                 
                                 <!-- Số đơn trên excel -->
@@ -662,7 +668,8 @@
             <field name="priority">2</field>
             <field name="groups_id" eval="[(6, 0, [ref('dac_erp.group_dac_erp_sale')])]"/>
             <field name="arch" type="xml">
-                <list string="Báo giá" default_order="date desc" delete="false" create="true" edit="true">
+                <list string="Báo giá" default_order="date desc" delete="false" create="true" edit="true" decoration-bf="partner_vip_class">
+                    <field name="partner_vip_class" invisible="1" optional="hide"/>
                     <field name="latest_quotation_info" string="Báo giá mới nhất" readonly="1" optional="hide"/>
                     <field name="name" optional="hide"/>
                     <field name="company_id" invisible="1" optional="hide"/>
@@ -671,7 +678,7 @@
                     <field name="create_date" string="Ngày tạo đơn (hệ thống)" optional="hide"/>
                     <field name="order_number" string="Số đặt hàng"/>
                     <field name="date" string="Ngày đơn hàng"/>
-                    <field name="partner_id" />
+                    <field name="partner_id" widget="many2one" class="partner-vip-field"/>
                     <field name="user_id" widget="many2one_avatar_user" string="Sale phụ trách"/>
                     <field name="user_id_design" widget="many2one_avatar_user" string="Người thiết kế"/>
                     <field name="user_id_production" widget="many2one_avatar_user" string="Người sản xuất"/>
@@ -691,7 +698,8 @@
             <field name="priority">1</field>
             <field name="groups_id" eval="[(6, 0, [ref('dac_erp.group_dac_erp_manager')])]"/>
             <field name="arch" type="xml">
-                <list string="Báo giá" default_order="date desc" delete="true" create="true" edit="true">
+                <list string="Báo giá" default_order="date desc" delete="true" create="true" edit="true" decoration-bf="partner_vip_class">
+                    <field name="partner_vip_class" invisible="1" optional="hide"/>
                     <field name="latest_quotation_info" string="Báo giá mới nhất" readonly="1" optional="hide"/>
                     <field name="name" optional="hide"/>
                     <field name="company_id" invisible="1" optional="hide"/>
@@ -700,7 +708,7 @@
                     <field name="create_date" string="Ngày tạo đơn (hệ thống)" optional="hide"/>
                     <field name="order_number" string="Số đặt hàng"/>
                     <field name="date" string="Ngày đơn hàng"/>
-                    <field name="partner_id"/>
+                    <field name="partner_id" widget="many2one" class="partner-vip-field"/>
                     <field name="user_id" widget="many2one_avatar_user" string="Sale phụ trách"/>
                     <field name="user_id_design" widget="many2one_avatar_user" string="Người thiết kế"/>
                     <field name="user_id_production" widget="many2one_avatar_user" string="Người sản xuất"/>

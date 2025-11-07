@@ -1,0 +1,252 @@
+/* ========== VIP CUSTOMER STYLING FOR SALE ORDER LIST & FORM ========== */
+
+/* ===== LIST VIEW VIP STYLING ===== */
+
+/* VIP Customer row - Khách lớn */
+.o_list_view tr[class*="vip-customer"]:not([class*="loyal-customer"]) {
+  background: linear-gradient(
+    90deg,
+    rgba(245, 158, 11, 0.06) 0%,
+    rgba(251, 191, 36, 0.03) 100%
+  ) !important;
+  border-left: 3px solid #f59e0b !important;
+}
+
+.o_list_view tr[class*="vip-customer"]:not([class*="loyal-customer"]):hover {
+  background: linear-gradient(
+    90deg,
+    rgba(245, 158, 11, 0.1) 0%,
+    rgba(251, 191, 36, 0.06) 100%
+  ) !important;
+}
+
+.o_list_view
+  tr[class*="vip-customer"]:not([class*="loyal-customer"])
+  .partner-vip-field::before {
+  content: "👑 ";
+  font-size: 14px;
+}
+
+/* Loyal Customer row - Khách quen */
+.o_list_view tr[class*="loyal-customer"]:not([class*="vip-customer"]) {
+  background: linear-gradient(
+    90deg,
+    rgba(59, 130, 246, 0.05) 0%,
+    rgba(96, 165, 250, 0.03) 100%
+  ) !important;
+  border-left: 3px solid #3b82f6 !important;
+}
+
+.o_list_view tr[class*="loyal-customer"]:not([class*="vip-customer"]):hover {
+  background: linear-gradient(
+    90deg,
+    rgba(59, 130, 246, 0.08) 0%,
+    rgba(96, 165, 250, 0.05) 100%
+  ) !important;
+}
+
+.o_list_view
+  tr[class*="loyal-customer"]:not([class*="vip-customer"])
+  .partner-vip-field::before {
+  content: "⭐ ";
+  font-size: 14px;
+}
+
+/* VIP + Loyal Customer row - Cả hai */
+.o_list_view tr[class*="vip-customer"][class*="loyal-customer"] {
+  background: linear-gradient(
+    90deg,
+    rgba(245, 158, 11, 0.06) 0%,
+    rgba(59, 130, 246, 0.06) 100%
+  ) !important;
+  border-left: 3px solid transparent !important;
+  border-image: linear-gradient(180deg, #f59e0b 0%, #3b82f6 100%) 1 !important;
+}
+
+.o_list_view tr[class*="vip-customer"][class*="loyal-customer"]:hover {
+  background: linear-gradient(
+    90deg,
+    rgba(245, 158, 11, 0.1) 0%,
+    rgba(59, 130, 246, 0.1) 100%
+  ) !important;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.1),
+    0 2px 8px rgba(59, 130, 246, 0.1);
+}
+
+.o_list_view
+  tr[class*="vip-customer"][class*="loyal-customer"]
+  .partner-vip-field::before {
+  content: "👑⭐ ";
+  font-size: 14px;
+}
+
+/* ===== FORM VIEW VIP STYLING ===== */
+
+/* Partner field VIP styling - Simple approach for form view */
+.o_form_view .o_field_widget.partner-vip-field {
+  font-weight: 500;
+}
+
+/* VIP icon sẽ được thêm vào label "Khách hàng" thông qua JavaScript hoặc backend */
+/* Vì form view không hỗ trợ t-if/t-elif, chúng ta dùng CSS ::before với data attribute */
+
+/* Nếu muốn highlight form view, dùng decoration trên toàn form */
+.o_form_view.o_form_editable,
+.o_form_view.o_form_readonly {
+  /* Base styling - sẽ được override bởi JavaScript nếu cần */
+}
+
+/* VIP Customer - Highlight toàn form (optional) */
+/* Có thể bật lại sau khi có widget custom */
+
+/* Partner VIP Container - Legacy styles (kept for compatibility) */
+.partner-vip-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+/* VIP Customer - Khách lớn */
+.partner-vip-container.vip-customer:not(.loyal-customer) {
+  background: linear-gradient(
+    90deg,
+    rgba(245, 158, 11, 0.1) 0%,
+    rgba(251, 191, 36, 0.05) 100%
+  );
+  border-left: 4px solid #f59e0b;
+}
+
+.partner-vip-container.vip-customer:not(.loyal-customer) .vip-icon {
+  color: #d97706;
+  font-size: 18px;
+  animation: vip-pulse 2s ease-in-out infinite;
+}
+
+/* Loyal Customer - Khách quen */
+.partner-vip-container.loyal-customer:not(.vip-customer) {
+  background: linear-gradient(
+    90deg,
+    rgba(59, 130, 246, 0.08) 0%,
+    rgba(96, 165, 250, 0.04) 100%
+  );
+  border-left: 4px solid #3b82f6;
+}
+
+.partner-vip-container.loyal-customer:not(.vip-customer) .vip-icon {
+  color: #2563eb;
+  font-size: 18px;
+  animation: loyal-pulse 2s ease-in-out infinite;
+}
+
+/* VIP + Loyal Customer - Cả hai */
+.partner-vip-container.vip-customer.loyal-customer {
+  background: linear-gradient(
+    90deg,
+    rgba(245, 158, 11, 0.1) 0%,
+    rgba(59, 130, 246, 0.1) 100%
+  );
+  border-left: 4px solid transparent;
+  border-image: linear-gradient(180deg, #f59e0b 0%, #3b82f6 100%) 1;
+  box-shadow: 0 2px 10px rgba(245, 158, 11, 0.15),
+    0 2px 10px rgba(59, 130, 246, 0.15);
+}
+
+.partner-vip-container.vip-customer.loyal-customer .vip-icon {
+  background: linear-gradient(90deg, #d97706 0%, #2563eb 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-size: 18px;
+  animation: premium-pulse 2s ease-in-out infinite;
+}
+
+/* Partner VIP Label */
+.partner-vip-label {
+  font-weight: 600;
+  color: #374151;
+}
+
+/* Partner VIP Field */
+.partner-vip-field {
+  flex: 1;
+  font-weight: 500;
+}
+
+/* VIP Icon animations */
+@keyframes vip-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.1);
+  }
+}
+
+@keyframes loyal-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: rotate(15deg) scale(1.1);
+  }
+}
+
+@keyframes premium-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  25% {
+    transform: scale(1.1) rotate(5deg);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.05);
+  }
+  75% {
+    transform: scale(1.1) rotate(-5deg);
+  }
+}
+
+/* Hover effects */
+.partner-vip-container:hover {
+  transform: translateY(-1px);
+}
+
+.partner-vip-container.vip-customer:not(.loyal-customer):hover {
+  background: linear-gradient(
+    90deg,
+    rgba(245, 158, 11, 0.15) 0%,
+    rgba(251, 191, 36, 0.08) 100%
+  );
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.2);
+}
+
+.partner-vip-container.loyal-customer:not(.vip-customer):hover {
+  background: linear-gradient(
+    90deg,
+    rgba(59, 130, 246, 0.12) 0%,
+    rgba(96, 165, 250, 0.06) 100%
+  );
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.2);
+}
+
+.partner-vip-container.vip-customer.loyal-customer:hover {
+  background: linear-gradient(
+    90deg,
+    rgba(245, 158, 11, 0.15) 0%,
+    rgba(59, 130, 246, 0.15) 100%
+  );
+  box-shadow: 0 3px 12px rgba(245, 158, 11, 0.2),
+    0 3px 12px rgba(59, 130, 246, 0.2);
+}

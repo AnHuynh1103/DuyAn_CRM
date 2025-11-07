@@ -288,14 +288,16 @@
                                     <table t-if="state.data.alerts.length > 0" class="table table-borderless table-hover align-middle mb-0">
                                         <tbody>
                                             <t t-foreach="state.data.alerts" t-as="alert" t-key="alert.id">
-                                                <tr t-on-click="() => this.openOrder(alert.order_id)" style="cursor: pointer;">
+                                                <tr t-on-click="() => this.openOrder(alert.order_id)" 
+                                                    style="cursor: pointer;"
+                                                    t-att-class="alert.vip_class ? 'alert-row ' + alert.vip_class : 'alert-row'">
                                                     <td>
                                                         <span t-att-class="'badge bg-' + alert.priority">
                                                             <t t-esc="alert.label"/>
                                                         </span>
                                                     </td>
                                                     <td>
-                                                        <div class="fw-bold">
+                                                        <div class="fw-bold alert-order-number">
                                                             <t t-if="alert.order_number">
                                                                 <t t-esc="alert.order_number"/>
                                                             </t>
@@ -303,7 +305,9 @@
                                                                 Chưa có số ĐH
                                                             </t>
                                                         </div>
-                                                        <small class="text-muted"><t t-esc="alert.customer_name"/></small>
+                                                        <small class="text-muted alert-customer-name">
+                                                            <t t-esc="alert.customer_name"/>
+                                                        </small>
                                                     </td>
                                                     <td class="text-end">
                                                         <i class="fa fa-chevron-right text-muted"/>

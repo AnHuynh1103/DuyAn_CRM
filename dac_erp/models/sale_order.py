@@ -2085,6 +2085,47 @@ class SaleOrder(models.Model):
     is_design_user = fields.Boolean(compute="_compute_user_flags", store=False)
     is_production_user = fields.Boolean(compute="_compute_user_flags", store=False)
     is_sale_user = fields.Boolean(compute="_compute_user_flags", store=False)
+    
+    # ===== VIP Customer Class for styling =====
+    partner_vip_class = fields.Char(
+        string='VIP Class',
+        compute='_compute_partner_vip_class',
+        store=False,
+        help='CSS class cho khách hàng VIP/Loyal'
+    )
+
+    @api.depends('partner_id')
+    def _compute_partner_vip_class(self):
+        """Tính toán VIP class từ partner tags (nếu có)"""
+        for rec in self:
+            # Kiểm tra partner tồn tại
+            if not rec.partner_id:
+                rec.partner_vip_class = ''
+                continue
+            
+            # Kiểm tra field pancake_tag_ids có tồn tại không
+            if not hasattr(rec.partner_id, 'pancake_tag_ids'):
+                rec.partner_vip_class = ''
+                continue
+            
+            # Kiểm tra có tags không
+            pancake_tags = rec.partner_id.pancake_tag_ids
+            if not pancake_tags:
+                rec.partner_vip_class = ''
+                continue
+            
+            tag_names = [tag.name.lower() for tag in pancake_tags]
+            classes = []
+            
+            # Kiểm tra Khách lớn / VIP
+            if 'khách lớn' in tag_names or 'vip' in tag_names:
+                classes.append('vip-customer')
+            
+            # Kiểm tra Khách quen / Loyal
+            if 'khách quen' in tag_names or 'loyal' in tag_names:
+                classes.append('loyal-customer')
+            
+            rec.partner_vip_class = ' '.join(classes)
 
 
     def _compute_user_flags(self):
