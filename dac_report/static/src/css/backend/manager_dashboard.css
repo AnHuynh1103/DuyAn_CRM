@@ -272,6 +272,7 @@
 .dac-manager-dashboard .action-center .badge {
   font-size: 0.75rem;
   padding: 0.35rem 0.65rem;
+  color: #ffffff !important; /* Màu chữ trắng cho tất cả badges */
 }
 
 /* Custom scrollbar cho Action Center */

@@ -295,7 +295,14 @@
                                                         </span>
                                                     </td>
                                                     <td>
-                                                        <div class="fw-bold"><t t-esc="alert.order_name"/></div>
+                                                        <div class="fw-bold">
+                                                            <t t-if="alert.order_number">
+                                                                <t t-esc="alert.order_number"/>
+                                                            </t>
+                                                            <t t-else="">
+                                                                Chưa có số ĐH
+                                                            </t>
+                                                        </div>
                                                         <small class="text-muted"><t t-esc="alert.customer_name"/></small>
                                                     </td>
                                                     <td class="text-end">

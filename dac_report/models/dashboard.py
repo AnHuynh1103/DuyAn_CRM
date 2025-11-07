@@ -586,12 +586,10 @@ class SaleOrderDashboardService(models.Model):
         active_orders = self._rg_count(self, active_dom, "id")
 
         # 6. Đơn Trễ Hạn SX - DÙNG CHO ALERT (bỏ khỏi KPI cards)
+        # Không lọc theo khoảng thời gian - hiển thị TẤT CẢ đơn đang trễ hạn
         delayed_dom = [
             ("company_id", "=", company.id),
-            ("production_is_delayed", "=", True),
-            ("date", ">=", date_from),
-            ("date", "<=", date_to),
-            ("order_state_custom", "in", ("production", "installation", "delivery")),
+            ("order_state_custom", "=", ("production")),
         ]
         delayed_production = self._rg_count(self, delayed_dom, "id")
 
@@ -633,6 +631,7 @@ class SaleOrderDashboardService(models.Model):
                 alerts.append({
                     'id': f'delayed_{order.id}',
                     'order_id': order.id,
+                    'order_number': order.order_number or False,  # Số đơn hàng hoặc False
                     'order_name': order.name,
                     'customer_name': order.partner_id.display_name,
                     'label': 'Trễ hạn SX',
@@ -651,6 +650,7 @@ class SaleOrderDashboardService(models.Model):
             alerts.append({
                 'id': f'payment_{order.id}',
                 'order_id': order.id,
+                'order_number': order.order_number or False,  # Số đơn hàng hoặc False
                 'order_name': order.name,
                 'customer_name': order.partner_id.display_name,
                 'label': 'Cần thu tiền',
@@ -679,6 +679,7 @@ class SaleOrderDashboardService(models.Model):
             alerts.append({
                 'id': f'old_quote_{order.id}',
                 'order_id': order.id,
+                'order_number': order.order_number or False,  # Số đơn hàng hoặc False
                 'order_name': order.name,
                 'customer_name': order.partner_id.display_name,
                 'label': 'Báo giá lâu',
