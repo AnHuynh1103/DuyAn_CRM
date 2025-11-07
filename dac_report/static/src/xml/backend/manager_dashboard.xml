@@ -282,7 +282,7 @@
                                     </li>
                                 </ul>
                             </div>
-                            <div class="card-body p-2" style="overflow-y: auto;">
+                            <div class="card-body p-2">
                                 <!-- Alerts Tab -->
                                 <div t-if="state.activeTab === 'alerts'">
                                     <table t-if="state.data.alerts.length > 0" class="table table-borderless table-hover align-middle mb-0">

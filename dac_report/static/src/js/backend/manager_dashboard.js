@@ -412,17 +412,12 @@ export class ManagerDashboard extends Component {
       ["date", "<=", dateTo],
     ];
 
+    // Tạo text hiển thị khoảng thời gian
+    const periodText = this.getPeriodTextForTitle();
+
     this.action.doAction({
       type: "ir.actions.act_window",
-      name: `Đơn hàng - ${this.getStateName(state)} (${
-        this.state.dateFilter === "month"
-          ? "Tháng này"
-          : this.state.dateFilter === "quarter"
-          ? "Quý này"
-          : this.state.dateFilter === "year"
-          ? "Năm nay"
-          : "Tùy chỉnh"
-      })`,
+      name: `Đơn hàng - ${this.getStateName(state)} (${periodText})`,
       res_model: "sale.order",
       views: [
         [false, "list"],
@@ -431,6 +426,32 @@ export class ManagerDashboard extends Component {
       domain: domain,
       target: "current",
     });
+  }
+
+  /**
+   * Get period text for action title
+   */
+  getPeriodTextForTitle() {
+    if (this.state.filterMode === 'custom') {
+      if (this.state.customDateFrom && this.state.customDateTo) {
+        const from = new Date(this.state.customDateFrom);
+        const to = new Date(this.state.customDateTo);
+        return `${from.getDate()}/${from.getMonth()+1}/${from.getFullYear()} - ${to.getDate()}/${to.getMonth()+1}/${to.getFullYear()}`;
+      }
+      return 'Tùy chỉnh';
+    }
+    
+    if (this.state.filterMode === 'year') {
+      return `Năm ${this.state.selectedYear}`;
+    }
+    
+    if (this.state.filterMode === 'month') {
+      const monthNames = ['Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6',
+                          'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12'];
+      return `${monthNames[this.state.selectedMonth - 1]} / ${this.state.selectedYear}`;
+    }
+    
+    return 'Tháng này';
   }
 
   /**

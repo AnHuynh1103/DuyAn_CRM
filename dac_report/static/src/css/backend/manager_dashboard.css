@@ -228,16 +228,25 @@
   );
 }
 
-/* Action Center */
+/* Action Center - Match Height with Pipeline Overview */
 .dac-manager-dashboard .action-center {
   display: flex;
   flex-direction: column;
+  min-height: 900px; /* Chiều cao tối thiểu để match Pipeline */
+  max-height: 900px; /* Chiều cao tối đa - giống Pipeline Overview */
   height: 100%;
+}
+
+.dac-manager-dashboard .action-center .card-header {
+  flex-shrink: 0; /* Header không co lại */
+  padding: 1rem 1.25rem;
 }
 
 .dac-manager-dashboard .action-center .card-body {
   flex: 1;
   min-height: 0;
+  overflow-y: auto; /* Bật scroll cho phần body */
+  padding: 0.5rem;
 }
 
 .dac-manager-dashboard .action-center .nav-tabs .nav-link {
@@ -263,6 +272,27 @@
 .dac-manager-dashboard .action-center .badge {
   font-size: 0.75rem;
   padding: 0.35rem 0.65rem;
+}
+
+/* Custom scrollbar cho Action Center */
+.dac-manager-dashboard .action-center .card-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.dac-manager-dashboard .action-center .card-body::-webkit-scrollbar-track {
+  background: #f8f9fa;
+  border-radius: 3px;
+}
+
+.dac-manager-dashboard .action-center .card-body::-webkit-scrollbar-thumb {
+  background: #dee2e6;
+  border-radius: 3px;
+}
+
+.dac-manager-dashboard
+  .action-center
+  .card-body::-webkit-scrollbar-thumb:hover {
+  background: #adb5bd;
 }
 
 /* Performance All-in-One Section */
