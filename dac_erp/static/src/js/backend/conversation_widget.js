@@ -19,9 +19,9 @@ function initConversationWidget() {
   setupDragAndDrop();
   setupResponsiveHandling();
   loadWidgetPosition();
-  console.log(
-    "Conversation Widget fully initialized with drag & bubble features"
-  );
+  // console.log(
+  //   "Conversation Widget fully initialized with drag & bubble features"
+  // );
 }
 
 // Setup toggle functionality (existing)

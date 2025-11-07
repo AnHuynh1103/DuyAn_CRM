@@ -109,7 +109,7 @@ class KpiSaleDaily(models.Model):
         If calculation_date is None, it defaults to the previous day.
         """
         target_date = calculation_date or (fields.Date.context_today(self) - timedelta(days=1))
-        _logger.info(f"Starting daily KPI calculation for {target_date}")
+        #_logger.info(f"Starting daily KPI calculation for {target_date}")
 
         Message = self.env['page.fm.message']
         local_tz = pytz.timezone(self.env.user.tz or 'Asia/Ho_Chi_Minh')
@@ -128,7 +128,7 @@ class KpiSaleDaily(models.Model):
         
         staff_names = messages_on_date.mapped('staff_name_fm')
         if not staff_names:
-            _logger.info(f"No staff messages found for {target_date}. Skipping KPI calculation.")
+            #_logger.info(f"No staff messages found for {target_date}. Skipping KPI calculation.")
             return
 
         users = self.env['res.users'].search([('name', 'in', list(set(staff_names)))])

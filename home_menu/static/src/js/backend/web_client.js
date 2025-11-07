@@ -22,7 +22,7 @@ patch(WebClient.prototype, {
       const filteredArray = this.menuService
         .getApps()
         .filter(
-          (item) => item.xmlid === "dac_report.dac_sale_dashboard_menu_root"
+          (item) => item.xmlid === "dac_report.dac_manager_dashboard_menu_root"
         );
       root = filteredArray[0];
       firstApp = root?.appID;

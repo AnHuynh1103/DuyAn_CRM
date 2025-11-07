@@ -112,6 +112,24 @@
         </record>
 
 
+        <!-- Menu con cho ADMIN - Manager Dashboard -->
+        <record id="dac_sale_order_menu_manager_admin" model="ir.ui.menu">
+            <field name="name">Dashboard - Manager</field>
+            <field name="action" ref="dac_report.dac_manager_dashboard_action"/>
+            <field name="parent_id" ref="dac_design_production_admin_menu"/>
+            <field name="sequence">3</field>
+            <field name="groups_id" eval="[(4, ref('base.group_system'))]"/>
+        </record>
+
+        <!-- Menu con cho ADMIN - Sale Dashboard -->
+        <record id="dac_sale_order_menu_sale_admin" model="ir.ui.menu">
+            <field name="name">Dashboard - Sale</field>
+            <field name="action" ref="dac_report.dac_sale_dashboard_action"/>
+            <field name="parent_id" ref="dac_design_production_admin_menu"/>
+            <field name="sequence">5</field>
+            <field name="groups_id" eval="[(4, ref('base.group_system'))]"/>
+        </record>
+
         <!-- Menu con cho ADMIN - Design Dashboard -->
         <record id="dac_sale_order_menu_design_admin" model="ir.ui.menu">
             <field name="name">Dashboard - Thiết kế</field>

@@ -27,7 +27,7 @@ patch(NavBar.prototype, {
       if (await user.hasGroup("base.group_system")) return;
       if (await user.hasGroup("dac_erp.group_dac_erp_manager")) {
         const rootMenuItem = menuItems.find(
-          (item) => item.xmlid === "dac_report.dac_sale_dashboard_menu_root"
+          (item) => item.xmlid === "dac_report.dac_manager_dashboard_menu_root"
         );
         console.log("Manager menu found:", rootMenuItem);
         this.state.isMenuBlocked = true;

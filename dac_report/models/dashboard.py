@@ -3,6 +3,9 @@ from odoo.tools.misc import formatLang
 from odoo.exceptions import AccessError
 import calendar
 from datetime import datetime, timedelta
+import logging
+
+_logger = logging.getLogger(__name__)
 
 STATUS_COLOR_MAP = {
     'new': 'danger',      # đỏ
@@ -486,3 +489,312 @@ class SaleOrderDashboardService(models.Model):
             "sums": sums,  # Tổng tiền cho các bảng dưới
             "user_name": user_name, # Tên người dùng hiện tại
         }
+
+    @api.model
+    def dac_get_manager_dashboard(self, date_from=False, date_to=False, company_id=False):
+        """
+        Dashboard riêng cho Manager với dữ liệu tổng quan toàn bộ hệ thống.
+        Bao gồm: KPI, Pipeline, Alerts, Performance Tracking
+        """
+        # Kiểm tra quyền Manager
+        user = self.env.user
+        if not (user.has_group('dac_erp.group_dac_erp_manager') or user.has_group('base.group_system')):
+            raise AccessError(_("Bạn không có quyền truy cập Dashboard Quản Lý"))
+        
+        company = self.env["res.company"].browse(company_id) if company_id else self.env.company
+        currency = company.currency_id
+        today = fields.Date.context_today(self)
+        
+        # Parse date strings nếu cần
+        if date_from and isinstance(date_from, str):
+            try:
+                date_from = fields.Date.from_string(date_from)
+            except:
+                date_from = False
+        
+        if date_to and isinstance(date_to, str):
+            try:
+                date_to = fields.Date.from_string(date_to)
+            except:
+                date_to = False
+        
+        if not date_from:
+            date_from = today.replace(day=1)
+        if not date_to:
+            date_to = today
+
+        #_logger.info(f"📅 Manager Dashboard Filter: {date_from} → {date_to} (field: 'date')")
+
+        fmt = lambda a: formatLang(self.env, a, currency_obj=currency)
+        doms = self._dashboard_domains()
+        has_custom = "order_state_custom" in self._fields
+
+        # ===== KPI CARDS =====
+        # 1. Tổng Doanh Thu (CHỈ ĐƠN ĐÃ HOÀN THÀNH) - THEO THỜI GIAN CHỌN
+        revenue_dom = [
+            ("company_id", "=", company.id),
+            ("date", ">=", date_from),
+            ("date", "<=", date_to),
+            ("order_state_custom", "=", "completed"),  # CHỈ đơn hoàn thành
+        ]
+        total_revenue = self._safe_sum_amount_total(revenue_dom)
+
+        # 2. Doanh Thu Dự Kiến (từ SẢN XUẤT trở đi nhưng chưa thanh toán cuối) - THEO THỜI GIAN CHỌN
+        # Bao gồm: production, installation, delivery, payment (chưa hoàn thành)
+        expected_revenue_dom = [
+            ("company_id", "=", company.id),
+            ("date", ">=", date_from),
+            ("date", "<=", date_to),
+            ("order_state_custom", "in", ("production", "installation", "delivery", "payment")),
+        ]
+        expected_revenue = self._safe_sum_amount_total(expected_revenue_dom)
+
+        # 3. Công Nợ (đơn ở trạng thái PAYMENT - chưa có hóa đơn cuối hoặc hóa đơn cuối chưa thanh toán)
+        # Không tính hóa đơn cọc
+        payment_orders = self.search([
+            ("company_id", "=", company.id),
+            ("date", ">=", date_from),
+            ("date", "<=", date_to),
+            ("order_state_custom", "=", "payment"),
+        ])
+        
+        total_debt = 0
+        for order in payment_orders:
+            # Kiểm tra hóa đơn thanh toán cuối (không phải hóa đơn cọc)
+            final_invoices = order.invoice_ids.filtered(lambda inv: not inv.dac_deposit_invoice)
+            
+            # Nếu chưa có hóa đơn cuối HOẶC hóa đơn cuối chưa thanh toán -> tính vào công nợ
+            if not final_invoices or any(inv.payment_state != 'paid' for inv in final_invoices):
+                total_debt += order.amount_total
+
+        # 4. Doanh Số Báo Giá (tổng đơn báo giá) - THEO THỜI GIAN CHỌN
+        quotation_revenue_dom = [
+            ("company_id", "=", company.id),
+            ("date", ">=", date_from),
+            ("date", "<=", date_to),
+            ("order_state_custom", "in", ("quotation",)),  # chỉ Báo giá
+        ]
+        quotation_revenue = self._safe_sum_amount_total(quotation_revenue_dom)
+
+        # 5. Đơn Đang Hoạt Động (chưa hoàn thành) - THEO THỜI GIAN CHỌN
+        active_dom = [
+            ("company_id", "=", company.id),
+            ("date", ">=", date_from),
+            ("date", "<=", date_to),
+            ("order_state_custom", "not in", ("completed", "cancel")),
+        ]
+        active_orders = self._rg_count(self, active_dom, "id")
+
+        # 6. Đơn Trễ Hạn SX - DÙNG CHO ALERT (bỏ khỏi KPI cards)
+        delayed_dom = [
+            ("company_id", "=", company.id),
+            ("production_is_delayed", "=", True),
+            ("date", ">=", date_from),
+            ("date", "<=", date_to),
+            ("order_state_custom", "in", ("production", "installation", "delivery")),
+        ]
+        delayed_production = self._rg_count(self, delayed_dom, "id")
+
+        # ===== PIPELINE DATA =====
+        pipeline_states = {
+            'quotation': {'count': 0, 'amount': 0},
+            'deposit': {'count': 0, 'amount': 0},
+            'production': {'count': 0, 'amount': 0},
+            'installation': {'count': 0, 'amount': 0},
+            'delivery': {'count': 0, 'amount': 0},
+            'payment': {'count': 0, 'amount': 0},
+            'completed': {'count': 0, 'amount': 0},
+        }
+
+        if has_custom:
+            for state in pipeline_states.keys():
+                state_dom = [
+                    ("company_id", "=", company.id),
+                    ("order_state_custom", "=", state),
+                ]
+                # Lọc theo date range cho tất cả trừ completed
+                if state != 'completed':
+                    state_dom += [("date", ">=", date_from), ("date", "<=", date_to)]
+                else:
+                    # Completed: lọc theo ngày hoàn thành (nếu có field)
+                    state_dom += [("date", ">=", date_from), ("date", "<=", date_to)]
+                
+                orders = self.search(state_dom)
+                pipeline_states[state]['count'] = len(orders)
+                pipeline_states[state]['amount'] = sum(orders.mapped('amount_total'))
+
+        # ===== ALERTS (Cảnh báo) - LỌC THEO THỜI GIAN =====
+        alerts = []
+        
+        # Cảnh báo 1: Đơn trễ hạn sản xuất (trong khoảng thời gian chọn)
+        if delayed_production > 0:
+            delayed_orders = self.search(delayed_dom, limit=20, order='production_deadline asc')
+            for order in delayed_orders:
+                alerts.append({
+                    'id': f'delayed_{order.id}',
+                    'order_id': order.id,
+                    'order_name': order.name,
+                    'customer_name': order.partner_id.display_name,
+                    'label': 'Trễ hạn SX',
+                    'priority': 'danger',
+                })
+        
+        # Cảnh báo 2: Đơn ở trạng thái payment (cần thu tiền) - THEO THỜI GIAN
+        payment_dom = [
+            ("company_id", "=", company.id),
+            ("order_state_custom", "=", "payment"),
+            ("date", ">=", date_from),
+            ("date", "<=", date_to),
+        ]
+        payment_orders = self.search(payment_dom, limit=20, order='date asc')
+        for order in payment_orders:
+            alerts.append({
+                'id': f'payment_{order.id}',
+                'order_id': order.id,
+                'order_name': order.name,
+                'customer_name': order.partner_id.display_name,
+                'label': 'Cần thu tiền',
+                'priority': 'warning',
+            })
+        
+        # Cảnh báo 3: Báo giá lâu chưa chuyển tiếp - THEO THỜI GIAN
+        # Lấy báo giá trong khoảng thời gian chọn và đã tồn tại >7 ngày
+        seven_days_ago = fields.Datetime.now() - timedelta(days=7)
+        
+        # Đảm bảo so sánh cùng kiểu datetime
+        if isinstance(date_to, datetime):
+            cutoff_date = min(date_to, seven_days_ago)
+        else:
+            # date_to là date, chuyển seven_days_ago thành date để so sánh
+            cutoff_date = min(datetime.combine(date_to, datetime.min.time()), seven_days_ago)
+        
+        old_quotes_dom = [
+            ("company_id", "=", company.id),
+            ("order_state_custom", "=", "quotation"),
+            ("date", ">=", date_from),  # Trong khoảng thời gian
+            ("date", "<=", cutoff_date),  # Và đã lâu hơn 7 ngày
+        ]
+        old_quotes = self.search(old_quotes_dom, limit=20, order='date asc')
+        for order in old_quotes:
+            alerts.append({
+                'id': f'old_quote_{order.id}',
+                'order_id': order.id,
+                'order_name': order.name,
+                'customer_name': order.partner_id.display_name,
+                'label': 'Báo giá lâu',
+                'priority': 'info',
+            })
+
+        # ===== PERFORMANCE TRACKING =====
+        # Sales Performance
+        sales_users = self.env['res.users'].search([
+            ('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_sale').id])
+        ])
+        sales_performance = []
+        for user in sales_users:
+            user_dom = revenue_dom + [('user_id', '=', user.id)]
+            user_orders = self.search(user_dom)
+            user_revenue = sum(user_orders.mapped('amount_total'))
+            
+            if user_revenue > 0:  # Chỉ hiển thị user có doanh thu
+                sales_performance.append({
+                    'id': user.id,
+                    'name': user.name,
+                    'revenue': user_revenue,
+                    'orders_count': len(user_orders),
+                    'progress': min(100, int((user_revenue / total_revenue * 100) if total_revenue else 0)),
+                })
+        
+        # Sort by revenue
+        sales_performance = sorted(sales_performance, key=lambda x: x['revenue'], reverse=True)[:5]
+
+        # Design Performance
+        design_users = self.env['res.users'].search([
+            ('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_design').id])
+        ])
+        design_performance = []
+        for user in design_users:
+            user_dom = [
+                ("company_id", "=", company.id),
+                ("user_id_design", "=", user.id),
+                ("date_order", ">=", date_from),
+                ("date_order", "<=", date_to),
+            ]
+            total_orders = self.search(user_dom)
+            completed_orders = total_orders.filtered(lambda o: o.design_done)
+            
+            if len(total_orders) > 0:
+                design_performance.append({
+                    'id': user.id,
+                    'name': user.name,
+                    'total': len(total_orders),
+                    'completed': len(completed_orders),
+                    'progress': int((len(completed_orders) / len(total_orders) * 100) if len(total_orders) else 0),
+                })
+        
+        design_performance = sorted(design_performance, key=lambda x: x['progress'], reverse=True)[:5]
+
+        # Production Performance
+        production_users = self.env['res.users'].search([
+            ('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_production').id])
+        ])
+        production_performance = []
+        for user in production_users:
+            user_dom = [
+                ("company_id", "=", company.id),
+                ("user_id_production", "=", user.id),
+                ("date_order", ">=", date_from),
+                ("date_order", "<=", date_to),
+            ]
+            total_orders = self.search(user_dom)
+            completed_orders = total_orders.filtered(lambda o: o.production_done)
+            
+            if len(total_orders) > 0:
+                production_performance.append({
+                    'id': user.id,
+                    'name': user.name,
+                    'total': len(total_orders),
+                    'completed': len(completed_orders),
+                    'progress': int((len(completed_orders) / len(total_orders) * 100) if len(total_orders) else 0),
+                })
+        
+        production_performance = sorted(production_performance, key=lambda x: x['progress'], reverse=True)[:5]
+
+        # ===== RETURN DATA =====
+        return {
+            # KPI Cards - CẤU TRÚC MỚI
+            'total_revenue': total_revenue,           # Tổng doanh thu (đã hoàn thành)
+            'expected_revenue': expected_revenue,     # Doanh thu dự kiến (SX → trước thu tiền)
+            'total_debt': total_debt,                 # Công nợ (cần thu tiền)
+            'quotation_revenue': quotation_revenue,   # Doanh số báo giá
+            'active_orders': active_orders,           # Đơn đang hoạt động
+            'delayed_production': delayed_production, # Đơn trễ hạn (dùng cho alert)
+            'revenue_growth': 0,  # TODO: Tính so với kỳ trước
+            'profit_growth': 0,   # TODO: Tính so với kỳ trước
+            'orders_growth': 0,   # TODO: Tính so với kỳ trước
+            
+            # Pipeline
+            'quotation_count': pipeline_states['quotation']['count'],
+            'quotation_amount': pipeline_states['quotation']['amount'],
+            'deposit_count': pipeline_states['deposit']['count'],
+            'deposit_amount': pipeline_states['deposit']['amount'],
+            'production_count': pipeline_states['production']['count'],
+            'production_amount': pipeline_states['production']['amount'],
+            'installation_count': pipeline_states['installation']['count'],
+            'installation_amount': pipeline_states['installation']['amount'],
+            'delivery_count': pipeline_states['delivery']['count'],
+            'delivery_amount': pipeline_states['delivery']['amount'],
+            'payment_count': pipeline_states['payment']['count'],
+            'payment_amount': pipeline_states['payment']['amount'],
+            'completed_count': pipeline_states['completed']['count'],
+            'completed_amount': pipeline_states['completed']['amount'],
+            
+            # Action Center
+            'alerts': alerts,
+            
+            # Performance Tracking
+            'sales_performance': sales_performance,
+            'design_performance': design_performance,
+            'production_performance': production_performance,
+        }
+
