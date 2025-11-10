@@ -49,12 +49,53 @@
         sequence="40"
         groups="dac_erp.group_dac_erp_manager"/>
 
+    <!-- Các dashboard -->
+    <menuitem id="menu_dac_manage"
+        name="Quản lý"
+        parent="dac_manager_dashboard_menu_root"
+        sequence="60"
+        groups="dac_erp.group_dac_erp_manager"/>
+
+    <menuitem id="menu_dashboards_manage"
+        name="Các dashboard"
+        parent="menu_dac_manage"
+        sequence="10"
+        groups="dac_erp.group_dac_erp_manager"/>
+    
     <!-- Menu cho Manager - Báo cáo doanh thu -->
     <menuitem id="menu_dac_sales_goal"
-        name="Mục tiêu doanh thu"
-        parent="dac_manager_dashboard_menu_root"
-        action="action_dac_sales_goal"
+        name="Cấu hình KPI Sale"
+        parent="menu_dac_manage"
         sequence="50"
+        groups="dac_erp.group_dac_erp_manager"/>
+
+    <menuitem id="menu_dac_sales_goal_kpi"
+        name="Mục tiêu doanh thu"
+        parent="menu_dac_sales_goal"
+        action="action_dac_sales_goal"
+        sequence="55"
+        groups="dac_erp.group_dac_erp_manager"/>
+    
+
+    <menuitem id="menu_dashboards_manage_sale"
+        name="Dashboard - Sale"
+        parent="menu_dashboards_manage"
+        action="dac_sale_dashboard_action"
+        sequence="10"
+        groups="dac_erp.group_dac_erp_manager"/>
+
+    <menuitem id="menu_dashboards_manage_design"
+        name="Dashboard - Thiết kế"
+        parent="menu_dashboards_manage"
+        action="dac_erp.dac_design_dashboard_action"
+        sequence="11"
+        groups="dac_erp.group_dac_erp_manager"/>
+
+    <menuitem id="menu_dashboards_manage_production"
+        name="Dashboard - Sản xuất"
+        parent="menu_dashboards_manage"
+        action="dac_erp.dac_production_dashboard_action"
+        sequence="12"
         groups="dac_erp.group_dac_erp_manager"/>
 
     <!-- ========== MENU CON CỦA DASHBOARD SALE ========== -->
