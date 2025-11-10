@@ -276,7 +276,7 @@ class PageFmConversation(models.Model):
             page_id = self.conv_page_fm_id or self.page_fm_page_id.page_fm_id_str
             conversation_id = self.conversation_fm_id
             
-            _logger.info(f"🔍 DEBUG: Conversation ID: {conversation_id}, Page ID: {page_id}")
+            #_logger.info(f"🔍 DEBUG: Conversation ID: {conversation_id}, Page ID: {page_id}")
             
             # THỰC TẾ: Pancake API không hỗ trợ GET tags của conversation cụ thể
             # API conversations chỉ dùng parameter "tags" để FILTER conversations theo tags
@@ -286,8 +286,8 @@ class PageFmConversation(models.Model):
             # 1. Khi sync tags (POST thành công)
             # 2. Hoặc thông qua webhook (nếu có)
             
-            _logger.info("🔍 DEBUG: Pancake API không hỗ trợ GET tags của conversation cụ thể")
-            _logger.info("🔍 DEBUG: Endpoint conversations chỉ dùng tags parameter để filter, không trả về tags")
+            #_logger.info("🔍 DEBUG: Pancake API không hỗ trợ GET tags của conversation cụ thể")
+            #_logger.info("🔍 DEBUG: Endpoint conversations chỉ dùng tags parameter để filter, không trả về tags")
             
             # Trả về thông tin dựa trên sync gần nhất
             return None, "API không hỗ trợ GET tags của conversation cụ thể"
@@ -322,7 +322,7 @@ class PageFmConversation(models.Model):
         """
         self.ensure_one()
         
-        _logger.info(f"🔄 AUTO SYNC: require_processing={require_processing} cho conversation {self.conversation_fm_id}")
+        #_logger.info(f"🔄 AUTO SYNC: require_processing={require_processing} cho conversation {self.conversation_fm_id}")
         
         # Lấy access token
         main_access_token = self.env['ir.config_parameter'].sudo().get_param('page_fm.access_token')
@@ -407,10 +407,10 @@ class PageFmConversation(models.Model):
                         params=params,
                         timeout=10
                     )
-                    if remove_response.status_code in (200, 201):
-                        _logger.info(f"✓ AUTO SYNC: Đã gỡ tag '{remove_tag_name}' (ID: {remove_tag_id}) cho conversation {conversation_id}")
-                    else:
-                        _logger.warning(f"AUTO SYNC: Không thể gỡ tag cũ: {remove_response.status_code} - {remove_response.text}")
+                    # if remove_response.status_code in (200, 201):
+                    #     _logger.info(f"✓ AUTO SYNC: Đã gỡ tag '{remove_tag_name}' (ID: {remove_tag_id}) cho conversation {conversation_id}")
+                    # else:
+                    #     _logger.warning(f"AUTO SYNC: Không thể gỡ tag cũ: {remove_response.status_code} - {remove_response.text}")
                 except Exception as e:
                     _logger.warning(f"AUTO SYNC: Lỗi khi gỡ tag cũ: {e}")
 
@@ -563,16 +563,16 @@ class PageFmConversation(models.Model):
                         if response.status_code in (200, 201):
                             success_count += 1
                             actions_performed.append(f"✓ Thêm tag '{tag.name}'")
-                            _logger.info(f"✓ Đã sync tag '{tag.name}' (ID: {tag_id}) cho conversation {conversation_id}")
+                            #_logger.info(f"✓ Đã sync tag '{tag.name}' (ID: {tag_id}) cho conversation {conversation_id}")
                         else:
                             error_count += 1
                             actions_performed.append(f"✗ Lỗi tag '{tag.name}'")
-                            _logger.warning(f"Lỗi sync tag '{tag.name}': {response.status_code} - {response.text}")
+                            #_logger.warning(f"Lỗi sync tag '{tag.name}': {response.status_code} - {response.text}")
                             
                     except Exception as e:
                         error_count += 1
                         actions_performed.append(f"✗ Lỗi tag '{tag.name}'")
-                        _logger.error(f"Lỗi sync tag '{tag.name}': {e}")
+                        #_logger.error(f"Lỗi sync tag '{tag.name}': {e}")
 
             # Tạo thông báo kết quả
             if success_count > 0:
@@ -673,7 +673,7 @@ class PageFmConversation(models.Model):
                     record.partner_id.sudo().write({
                         'pancake_tag_ids': [(6, 0, record.pancake_tag_ids.ids)]
                     })
-                    _logger.info(f"✅ Synced {len(record.pancake_tag_ids)} tags to partner {record.partner_id.name}")
+                    #_logger.info(f"✅ Synced {len(record.pancake_tag_ids)} tags to partner {record.partner_id.name}")
                 except Exception as e:
                     _logger.error(f"Lỗi sync tags to partner: {e}", exc_info=True)
 
@@ -1277,7 +1277,7 @@ class PageFmConversation(models.Model):
                     if staff.id not in current_participants:
                         current_participants.add(staff.id)
                         record.write({'participant_user_ids': [(6, 0, list(current_participants))]})
-                        _logger.info(f"➕ Auto-added staff {staff.name} to conversation participants (from message)")
+                        #_logger.info(f"➕ Auto-added staff {staff.name} to conversation participants (from message)")
                         
                         # 🆕 SYNC VÀO PARTNER luôn
                         if record.partner_id:
@@ -1285,7 +1285,7 @@ class PageFmConversation(models.Model):
                             if staff.id not in partner_participants:
                                 partner_participants.add(staff.id)
                                 record.partner_id.write({'participant_user_ids': [(6, 0, list(partner_participants))]})
-                                _logger.info(f"➕ Auto-added staff {staff.name} to partner {record.partner_id.name} (from message)")
+                                #_logger.info(f"➕ Auto-added staff {staff.name} to partner {record.partner_id.name} (from message)")
 
             record.write({'last_message_sync_fm': datetime.now()})
             record.invalidate_recordset(['message_count'])
@@ -1319,7 +1319,7 @@ class PageFmConversation(models.Model):
                                     matched_field = 'pancake_id' if user.pancake_id == pancake_id else \
                                                   'pancake_uuid' if user.pancake_uuid == pancake_id else \
                                                   'pancake_number_id'
-                                    _logger.info(f"✅ Found assignee by {matched_field} {pancake_id[:8]}... → {user.name}")
+                                    #_logger.info(f"✅ Found assignee by {matched_field} {pancake_id[:8]}... → {user.name}")
                             
                             # Tìm theo email
                             if not user and email:
@@ -1345,7 +1345,7 @@ class PageFmConversation(models.Model):
                             old_participant_ids = set(record.participant_user_ids.ids)
                             merged_ids = old_participant_ids.union(set(new_user_ids))
                             record.write({'participant_user_ids': [(6, 0, list(merged_ids))]})
-                            _logger.info(f"✅ Synced assignees for conversation {record.conversation_fm_id}: {len(merged_ids)} users")
+                            #_logger.info(f"✅ Synced assignees for conversation {record.conversation_fm_id}: {len(merged_ids)} users")
                             
                             # 🆕 SYNC VÀO PARTNER luôn
                             if record.partner_id:
@@ -1355,7 +1355,7 @@ class PageFmConversation(models.Model):
                                     'participant_user_ids': [(6, 0, list(partner_merged))],
                                     'responsible_user_id': owner_user_id  # Cập nhật người phụ trách hiện tại
                                 })
-                                _logger.info(f"✅ Synced assignees to partner {record.partner_id.name}: {len(partner_merged)} users")
+                                #_logger.info(f"✅ Synced assignees to partner {record.partner_id.name}: {len(partner_merged)} users")
                     else:
                         _logger.info(f"ℹ️ No assignees from API for conversation {record.conversation_fm_id}")
             except Exception as e:
@@ -1679,7 +1679,7 @@ class PageFmConversation(models.Model):
 
         convs = new_convs | extra_convs
         if not convs:
-            _logger.info("Pancake Circuit Breaker Sync: không có hội thoại nào cần đồng bộ")
+            #_logger.info("Pancake Circuit Breaker Sync: không có hội thoại nào cần đồng bộ")
             return 0
 
         _logger.info(f"Pancake Circuit Breaker Sync: bắt đầu sync {len(convs)} conversations (active trong 7 ngày hoặc cần xử lý)")
@@ -2014,12 +2014,12 @@ class PageFmConversation(models.Model):
             
             # 3. Log toàn bộ conversation data
             import json
-            _logger.info("📋 FULL CONVERSATION JSON:")
-            _logger.info(json.dumps(conv_data, indent=2, ensure_ascii=False))
+            #_logger.info("📋 FULL CONVERSATION JSON:")
+            #_logger.info(json.dumps(conv_data, indent=2, ensure_ascii=False))
             
             # 4. Extract assignee data
             current_assign_users = conv_data.get('current_assign_users', []) or []
-            _logger.info(f"\n👥 CURRENT_ASSIGN_USERS: {current_assign_users}")
+            #_logger.info(f"\n👥 CURRENT_ASSIGN_USERS: {current_assign_users}")
             
             assignee_data = []
             if isinstance(current_assign_users, list):
@@ -2116,23 +2116,23 @@ class PageFmConversation(models.Model):
                     _logger.warning(f"   ❌ NOT FOUND: {name} (email: {email}, pancake_id: {pancake_id})")
             
             # 6. Log kết quả mapping
-            _logger.info(f"\n📊 MAPPING SUMMARY:")
-            _logger.info(f"   - Total assignees from API: {len(assignee_data)}")
-            _logger.info(f"   - Successfully mapped: {len(mapped_users)}")
+            #_logger.info(f"\n📊 MAPPING SUMMARY:")
+            #_logger.info(f"   - Total assignees from API: {len(assignee_data)}")
+            #_logger.info(f"   - Successfully mapped: {len(mapped_users)}")
             
             if mapped_users:
                 owner = mapped_users[0]['user']
                 all_users = [m['user'] for m in mapped_users]
                 
-                _logger.info(f"\n👤 OWNER (first user): {owner.name} (ID: {owner.id})")
-                _logger.info(f"👥 PARTICIPANTS ({len(all_users)} users):")
-                for m in mapped_users:
-                    _logger.info(f"   - {m['user'].name} (ID: {m['user'].id}) from API: {m['source_name']}")
+                #_logger.info(f"\n👤 OWNER (first user): {owner.name} (ID: {owner.id})")
+                #_logger.info(f"👥 PARTICIPANTS ({len(all_users)} users):")
+                #for m in mapped_users:
+                #    _logger.info(f"   - {m['user'].name} (ID: {m['user'].id}) from API: {m['source_name']}")
                 
                 # 7. Compare with current values
-                _logger.info(f"\n📋 CURRENT STATE:")
-                _logger.info(f"   - Current owner: {self.owner_id.name if self.owner_id else 'None'}")
-                _logger.info(f"   - Current participants: {[u.name for u in self.participant_user_ids]}")
+                #_logger.info(f"\n📋 CURRENT STATE:")
+                #_logger.info(f"   - Current owner: {self.owner_id.name if self.owner_id else 'None'}")
+                #_logger.info(f"   - Current participants: {[u.name for u in self.participant_user_ids]}")
                 
                 # 8. Update (MERGE mode)
                 old_participant_ids = set(self.participant_user_ids.ids)
@@ -2144,12 +2144,12 @@ class PageFmConversation(models.Model):
                     'participant_user_ids': [(6, 0, list(merged_ids))]
                 })
                 
-                _logger.info(f"\n✅ UPDATED STATE:")
-                _logger.info(f"   - New owner: {self.owner_id.name}")
-                _logger.info(f"   - New participants ({len(self.participant_user_ids)} users): {[u.name for u in self.participant_user_ids]}")
-                _logger.info(f"   - Added: {len(merged_ids) - len(old_participant_ids)} users")
+                #_logger.info(f"\n✅ UPDATED STATE:")
+                #_logger.info(f"   - New owner: {self.owner_id.name}")
+                #_logger.info(f"   - New participants ({len(self.participant_user_ids)} users): {[u.name for u in self.participant_user_ids]}")
+                #_logger.info(f"   - Added: {len(merged_ids) - len(old_participant_ids)} users")
             
-            _logger.info("=" * 80)
+            #_logger.info("=" * 80)
             
             return {
                 'type': 'ir.actions.client',
@@ -2163,7 +2163,7 @@ class PageFmConversation(models.Model):
             }
             
         except Exception as e:
-            _logger.error(f"❌ DEBUG SYNC ERROR: {e}", exc_info=True)
+            #_logger.error(f"❌ DEBUG SYNC ERROR: {e}", exc_info=True)
             return {
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',

@@ -351,11 +351,11 @@ class PageFmPage(models.Model):
             assignee_data = conv_vals.pop('assignee_data', [])
             
             # DEBUG: Log để kiểm tra
-            if api_tag_ids:
-                _logger.info(f"🔍 Processing conv {conv_fm_id} with api_tag_ids: {api_tag_ids}")
-            if assignee_data:
-                names = [a.get('name') for a in assignee_data if a.get('name')]
-                _logger.info(f"👥 Processing conv {conv_fm_id} with {len(assignee_data)} assignees: {names}")
+            # if api_tag_ids:
+            #     _logger.info(f"🔍 Processing conv {conv_fm_id} with api_tag_ids: {api_tag_ids}")
+            # if assignee_data:
+            #     names = [a.get('name') for a in assignee_data if a.get('name')]
+            #     _logger.info(f"👥 Processing conv {conv_fm_id} with {len(assignee_data)} assignees: {names}")
             
             conv_vals['page_fm_page_id'] = self.id
             existing_conv = ConversationEnv.search([
@@ -390,7 +390,7 @@ class PageFmPage(models.Model):
                 
                 if assignee_data:
                     ResUsers = self.env['res.users'].sudo()
-                    _logger.info(f"👥 Mapping {len(assignee_data)} assignees for conv {conv_fm_id}")
+                    #_logger.info(f"👥 Mapping {len(assignee_data)} assignees for conv {conv_fm_id}")
                     
                     for idx, assignee in enumerate(assignee_data):
                         pancake_id = assignee.get('id')  # UUID
@@ -465,12 +465,12 @@ class PageFmPage(models.Model):
                     if old_owner_id != owner_user_id and owner_user_id:
                         old_name = existing_conv.owner_id.name if existing_conv.owner_id else "None"
                         new_name = self.env['res.users'].sudo().browse(owner_user_id).name
-                        _logger.info(f"👤 Update owner for conv {conv_fm_id}: {old_name} → {new_name}")
+                        #_logger.info(f"👤 Update owner for conv {conv_fm_id}: {old_name} → {new_name}")
                     
                     if old_participant_ids != new_participant_ids and new_user_ids:
                         added_ids = new_participant_ids - old_participant_ids
-                        if added_ids:
-                            _logger.info(f"👥 Added {len(added_ids)} participants to conv {conv_fm_id}: total {len(old_participant_ids)} → {len(new_participant_ids)} users")
+                        # if added_ids:
+                        #     _logger.info(f"👥 Added {len(added_ids)} participants to conv {conv_fm_id}: total {len(old_participant_ids)} → {len(new_participant_ids)} users")
                     
                     existing_conv.write(conv_vals)
                     updated_count += 1
@@ -482,29 +482,29 @@ class PageFmPage(models.Model):
                             existing_conv.partner_id.sudo().write({
                                 'pancake_tag_ids': [(6, 0, odoo_tag_ids)]
                             })
-                            if odoo_tag_ids:
-                                _logger.info(f"✅ Synced tags to partner {existing_conv.partner_id.name}: {len(old_partner_tags)} → {len(new_tag_ids)}")
-                            else:
-                                _logger.info(f"🧹 Cleared tags for partner {existing_conv.partner_id.name}")
+                            # if odoo_tag_ids:
+                            #     _logger.info(f"✅ Synced tags to partner {existing_conv.partner_id.name}: {len(old_partner_tags)} → {len(new_tag_ids)}")
+                            # else:
+                            #     _logger.info(f"🧹 Cleared tags for partner {existing_conv.partner_id.name}")
                 else:
                     new_conv = ConversationEnv.create(conv_vals)
                     created_count += 1
                     
                     # Log khi tạo mới conversation có tags
-                    if odoo_tag_ids:
-                        _logger.info(f"🆕 Created conversation {conv_fm_id} with {len(odoo_tag_ids)} tags")
+                    # if odoo_tag_ids:
+                    #     _logger.info(f"🆕 Created conversation {conv_fm_id} with {len(odoo_tag_ids)} tags")
                     
                     # 🆕 Sync tags sang partner (luôn sync, kể cả khi rỗng)
                     if new_conv.partner_id and odoo_tag_ids:
                         new_conv.partner_id.sudo().write({
                             'pancake_tag_ids': [(6, 0, odoo_tag_ids)]
                         })
-                        _logger.info(f"✅ Synced {len(odoo_tag_ids)} tags to new partner {new_conv.partner_id.name}")
+                        #_logger.info(f"✅ Synced {len(odoo_tag_ids)} tags to new partner {new_conv.partner_id.name}")
                         
             except Exception as e:
                 _logger.error(f"Error C/U conversation FM ID {conv_fm_id} for page {self.page_fm_id_str}: {e}", exc_info=True)
                 
-        _logger.info(f"Conversations for page {self.page_fm_id_str}: {created_count} created, {updated_count} updated.")
+        #_logger.info(f"Conversations for page {self.page_fm_id_str}: {created_count} created, {updated_count} updated.")
         self.invalidate_recordset(['conversation_count'])
 
     @api.model
@@ -512,7 +512,7 @@ class PageFmPage(models.Model):
         # Lấy id page từ API
         page_fm_id = str(page_data_from_api.get('id') or '').strip()
         if not page_fm_id:
-            _logger.warning("API page data missing 'id'. Skipping.")
+            #_logger.warning("API page data missing 'id'. Skipping.")
             return None
 
         page_name = page_data_from_api.get('name') or f"Page {page_fm_id}"
@@ -545,7 +545,7 @@ class PageFmPage(models.Model):
         vals['page_fm_id_str'] = page_fm_id
         try:
             rec = self.create(vals)
-            _logger.info("Page created: %s (OdooID:%s, FMID:%s)", page_name, rec.id, page_fm_id)
+            #_logger.info("Page created: %s (OdooID:%s, FMID:%s)", page_name, rec.id, page_fm_id)
             return rec
         except Exception as e:
             # Nếu 2 worker/môi trường cùng lúc tạo → đụng unique => rollback & lấy lại record
@@ -563,7 +563,7 @@ class PageFmPage(models.Model):
                         to_write['active'] = is_api_activated
                     if to_write:
                         rec.write(to_write)
-                    _logger.debug("Page processed after unique hit: %s (OdooID:%s, FMID:%s)", page_name, rec.id, page_fm_id)
+                    #_logger.debug("Page processed after unique hit: %s (OdooID:%s, FMID:%s)", page_name, rec.id, page_fm_id)
                     return rec
             # Không phải lỗi unique → ném tiếp cho dễ debug
             raise
@@ -571,11 +571,11 @@ class PageFmPage(models.Model):
     @api.model
     def process_api_pages_data(self, pages_api_response_json):
         if not isinstance(pages_api_response_json, dict):
-            _logger.error("Invalid API response for pages list.")
+            #_logger.error("Invalid API response for pages list.")
             return []
         categorized_data = pages_api_response_json.get('categorized', {})
         if not isinstance(categorized_data, dict):
-             _logger.error("Invalid 'categorized' data for pages list.")
+             #_logger.error("Invalid 'categorized' data for pages list.")
              return []
 
         # Đồng bộ từ cả 'activated' và 'inactivated' nếu API cung cấp page objects trong cả hai
