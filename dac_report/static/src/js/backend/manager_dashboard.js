@@ -53,9 +53,10 @@ export class ManagerDashboard extends Component {
       },
 
       // Filter state - NEW STRUCTURE
-      filterMode: "month", // 'month', 'year', 'custom'
+      filterMode: "month", // 'month', 'week', 'year', 'custom'
       selectedMonth: null, // 1-12
       selectedYear: null, // 2025, 2024...
+      selectedWeek: null, // 1-5 (tuần trong tháng)
       pickerYear: new Date().getFullYear(), // Year hiển thị trong picker
       showPeriodPicker: false,
       showCustomRange: false,
@@ -255,6 +256,16 @@ export class ManagerDashboard extends Component {
       // Custom range
       dateFrom = this.state.customDateFrom;
       dateTo = this.state.customDateTo;
+    } else if (this.state.filterMode === "week") {
+      // Specific week in month
+      const year = this.state.selectedYear || new Date().getFullYear();
+      const month = this.state.selectedMonth || new Date().getMonth() + 1;
+      const week = this.state.selectedWeek || 1;
+
+      // Tính ngày bắt đầu và kết thúc của tuần trong tháng
+      const weekRange = this.getWeekRangeInMonth(year, month, week);
+      dateFrom = formatDate(weekRange.start);
+      dateTo = formatDate(weekRange.end);
     } else if (this.state.filterMode === "month") {
       // Specific month/year
       const year = this.state.selectedYear || new Date().getFullYear();
@@ -285,6 +296,182 @@ export class ManagerDashboard extends Component {
     }
 
     return { dateFrom, dateTo };
+  }
+
+  /**
+   * Tính khoảng ngày của tuần thứ N trong tháng theo lịch thực tế
+   * Tuần bắt đầu từ Thứ 2 (Monday) và kết thúc Chủ nhật (Sunday)
+   * @param {number} year - Năm
+   * @param {number} month - Tháng (1-12)
+   * @param {number} weekNumber - Số tuần (1-5)
+   * @returns {object} - {start: Date, end: Date}
+   */
+  getWeekRangeInMonth(year, month, weekNumber) {
+    const firstDay = new Date(year, month - 1, 1);
+    const lastDay = new Date(year, month, 0);
+
+    // Tìm ngày Thứ 2 đầu tiên trong tháng
+    const firstDayOfWeek = firstDay.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
+    let firstMonday;
+
+    if (firstDayOfWeek === 0) {
+      // Nếu ngày 1 là Chủ nhật, Thứ 2 đầu tiên là ngày 2
+      firstMonday = 2;
+    } else if (firstDayOfWeek === 1) {
+      // Nếu ngày 1 là Thứ 2, giữ nguyên
+      firstMonday = 1;
+    } else {
+      // Nếu ngày 1 là Thứ 3-7, tìm Thứ 2 tiếp theo
+      firstMonday = 9 - firstDayOfWeek; // 2-7 ngày để đến Thứ 2
+    }
+
+    // Tính ngày bắt đầu của tuần thứ weekNumber
+    const startDay = firstMonday + (weekNumber - 1) * 7;
+    const endDay = Math.min(startDay + 6, lastDay.getDate()); // +6 ngày (Thứ 2 → Chủ nhật)
+
+    // Kiểm tra nếu startDay vượt quá số ngày trong tháng
+    if (startDay > lastDay.getDate()) {
+      // Trường hợp tuần này không tồn tại trong tháng
+      return {
+        start: lastDay,
+        end: lastDay,
+      };
+    }
+
+    return {
+      start: new Date(year, month - 1, startDay),
+      end: new Date(year, month - 1, endDay),
+    };
+  }
+
+  /**
+   * Lấy số tuần hiện tại trong tháng (theo lịch Thứ 2-CN)
+   */
+  getCurrentWeekInMonth() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const dayOfMonth = now.getDate();
+
+    // Tìm tuần chứa ngày hiện tại
+    const weeks = this.getWeeksInMonth();
+    for (let i = 0; i < weeks.length; i++) {
+      const week = weeks[i];
+      const range = this.getWeekRangeInMonth(year, month, week.number);
+      if (
+        dayOfMonth >= range.start.getDate() &&
+        dayOfMonth <= range.end.getDate()
+      ) {
+        return week.number;
+      }
+    }
+
+    return 1; // Fallback
+  }
+
+  /**
+   * Chọn tuần này
+   */
+  async selectThisWeek() {
+    const now = new Date();
+    this.state.filterMode = "week";
+    this.state.selectedYear = now.getFullYear();
+    this.state.selectedMonth = now.getMonth() + 1;
+    this.state.selectedWeek = this.getCurrentWeekInMonth();
+    await this.loadDashboardData();
+  }
+
+  /**
+   * Chọn tuần trước (theo lịch Thứ 2-CN)
+   */
+  async selectLastWeek() {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+
+    // Tìm tuần hiện tại
+    const currentWeek = this.getCurrentWeekInMonth();
+
+    if (currentWeek > 1) {
+      // Tuần trước trong cùng tháng
+      this.state.filterMode = "week";
+      this.state.selectedYear = currentYear;
+      this.state.selectedMonth = currentMonth;
+      this.state.selectedWeek = currentWeek - 1;
+    } else {
+      // Tuần cuối tháng trước
+      const lastMonthDate = new Date(currentYear, currentMonth - 1, 0); // Ngày cuối tháng trước
+      const lastMonth = lastMonthDate.getMonth() + 1;
+      const lastMonthYear = lastMonthDate.getFullYear();
+
+      // Tính số tuần trong tháng trước
+      this.state.selectedYear = lastMonthYear;
+      this.state.selectedMonth = lastMonth;
+      const weeksInLastMonth = this.getWeeksInMonth();
+
+      this.state.filterMode = "week";
+      this.state.selectedWeek = weeksInLastMonth.length; // Tuần cuối cùng
+    }
+
+    await this.loadDashboardData();
+  }
+
+  /**
+   * Chọn tuần cụ thể từ dropdown
+   */
+  async selectWeekNumber(weekNumber) {
+    this.state.filterMode = "week";
+    this.state.selectedWeek = weekNumber;
+
+    // Nếu chưa có tháng/năm, dùng tháng hiện tại
+    if (!this.state.selectedMonth || !this.state.selectedYear) {
+      const now = new Date();
+      this.state.selectedMonth = now.getMonth() + 1;
+      this.state.selectedYear = now.getFullYear();
+    }
+
+    await this.loadDashboardData();
+  }
+
+  /**
+   * Lấy danh sách tuần trong tháng hiện tại (theo lịch Thứ 2-CN)
+   */
+  getWeeksInMonth() {
+    const year = this.state.selectedYear || new Date().getFullYear();
+    const month = this.state.selectedMonth || new Date().getMonth() + 1;
+
+    const firstDay = new Date(year, month - 1, 1);
+    const lastDay = new Date(year, month, 0);
+    const firstDayOfWeek = firstDay.getDay();
+
+    // Tìm Thứ 2 đầu tiên
+    let firstMonday;
+    if (firstDayOfWeek === 0) {
+      firstMonday = 2;
+    } else if (firstDayOfWeek === 1) {
+      firstMonday = 1;
+    } else {
+      firstMonday = 9 - firstDayOfWeek;
+    }
+
+    // Đếm số tuần (mỗi tuần 7 ngày từ Thứ 2)
+    const weeks = [];
+    let weekNumber = 1;
+    let currentMonday = firstMonday;
+
+    while (currentMonday <= lastDay.getDate()) {
+      const range = this.getWeekRangeInMonth(year, month, weekNumber);
+      weeks.push({
+        number: weekNumber,
+        label: `Tuần ${weekNumber}`,
+        range: `${range.start.getDate()}/${month} - ${range.end.getDate()}/${month}`,
+      });
+
+      weekNumber++;
+      currentMonday += 7;
+    }
+
+    return weeks;
   }
 
   /**
@@ -432,26 +619,57 @@ export class ManagerDashboard extends Component {
    * Get period text for action title
    */
   getPeriodTextForTitle() {
-    if (this.state.filterMode === 'custom') {
+    if (this.state.filterMode === "custom") {
       if (this.state.customDateFrom && this.state.customDateTo) {
         const from = new Date(this.state.customDateFrom);
         const to = new Date(this.state.customDateTo);
-        return `${from.getDate()}/${from.getMonth()+1}/${from.getFullYear()} - ${to.getDate()}/${to.getMonth()+1}/${to.getFullYear()}`;
+        return `${from.getDate()}/${
+          from.getMonth() + 1
+        }/${from.getFullYear()} - ${to.getDate()}/${
+          to.getMonth() + 1
+        }/${to.getFullYear()}`;
       }
-      return 'Tùy chỉnh';
+      return "Tùy chỉnh";
     }
-    
-    if (this.state.filterMode === 'year') {
+
+    if (this.state.filterMode === "year") {
       return `Năm ${this.state.selectedYear}`;
     }
-    
-    if (this.state.filterMode === 'month') {
-      const monthNames = ['Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6',
-                          'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12'];
-      return `${monthNames[this.state.selectedMonth - 1]} / ${this.state.selectedYear}`;
+
+    if (this.state.filterMode === "week") {
+      const monthNames = [
+        "Tháng 1", "Tháng 2", "Tháng 3", "Tháng 4", "Tháng 5", "Tháng 6",
+        "Tháng 7", "Tháng 8", "Tháng 9", "Tháng 10", "Tháng 11", "Tháng 12",
+      ];
+      const range = this.getWeekRangeInMonth(
+        this.state.selectedYear,
+        this.state.selectedMonth,
+        this.state.selectedWeek
+      );
+      return `Tuần ${this.state.selectedWeek} - ${monthNames[this.state.selectedMonth - 1]} / ${this.state.selectedYear} (${range.start.getDate()}-${range.end.getDate()}/${this.state.selectedMonth})`;
     }
-    
-    return 'Tháng này';
+
+    if (this.state.filterMode === "month") {
+      const monthNames = [
+        "Tháng 1",
+        "Tháng 2",
+        "Tháng 3",
+        "Tháng 4",
+        "Tháng 5",
+        "Tháng 6",
+        "Tháng 7",
+        "Tháng 8",
+        "Tháng 9",
+        "Tháng 10",
+        "Tháng 11",
+        "Tháng 12",
+      ];
+      return `${monthNames[this.state.selectedMonth - 1]} / ${
+        this.state.selectedYear
+      }`;
+    }
+
+    return "Tháng này";
   }
 
   /**
@@ -567,6 +785,35 @@ export class ManagerDashboard extends Component {
 
     if (this.state.filterMode === "year") {
       return `Năm ${this.state.selectedYear}`;
+    }
+
+    if (this.state.filterMode === "week") {
+      const monthNames = [
+        "Tháng 1",
+        "Tháng 2",
+        "Tháng 3",
+        "Tháng 4",
+        "Tháng 5",
+        "Tháng 6",
+        "Tháng 7",
+        "Tháng 8",
+        "Tháng 9",
+        "Tháng 10",
+        "Tháng 11",
+        "Tháng 12",
+      ];
+      const range = this.getWeekRangeInMonth(
+        this.state.selectedYear,
+        this.state.selectedMonth,
+        this.state.selectedWeek
+      );
+      return `Tuần ${this.state.selectedWeek} - ${
+        monthNames[this.state.selectedMonth - 1]
+      } / ${
+        this.state.selectedYear
+      } (${range.start.getDate()}-${range.end.getDate()}/${
+        this.state.selectedMonth
+      })`;
     }
 
     if (this.state.filterMode === "month") {

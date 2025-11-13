@@ -539,27 +539,44 @@ class SaleOrderDashboardService(models.Model):
         has_custom = "order_state_custom" in self._fields
 
         # ===== KPI CARDS =====
-        # 1. Tổng Doanh Thu (CHỈ ĐƠN ĐÃ HOÀN THÀNH) - THEO THỜI GIAN CHỌN
-        revenue_dom = [
-            ("company_id", "=", company.id),
-            ("date", ">=", date_from),
-            ("date", "<=", date_to),
-            ("order_state_custom", "=", "completed"),  # CHỈ đơn hoàn thành
+        # 1. Tổng Doanh Thu = TỔNG TIỀN ĐÃ THU (account.payment đã paid) - THEO THỜI GIAN CHỌN
+        Payment = self.env['account.payment']
+        
+        payment_dom = [
+            ('company_id', '=', company.id),
+            ('state', '=', 'paid'),  # Đã thanh toán (trong Odoo 18, payment có state='paid')
+            ('payment_type', '=', 'inbound'),  # Phiếu thu (không tính chi)
+            ('date', '>=', date_from),  # Ngày thanh toán
+            ('date', '<=', date_to),
         ]
-        total_revenue = self._safe_sum_amount_total(revenue_dom)
+        payments = Payment.search(payment_dom)
+        total_revenue = sum(payments.mapped('amount'))
 
-        # 2. Doanh Thu Dự Kiến (từ SẢN XUẤT trở đi nhưng chưa thanh toán cuối) - THEO THỜI GIAN CHỌN
-        # Bao gồm: production, installation, delivery, payment (chưa hoàn thành)
-        expected_revenue_dom = [
+        # 2. Doanh Thu Dự Kiến = SỐ TIỀN CHƯA THU (toàn bộ hệ thống - KHÔNG LỌC THỜI GIAN)
+        # Công thức: Tổng amount_total của đơn chưa completed - Tổng payment đã posted
+        
+        # Tổng giá trị TẤT CẢ đơn hàng chưa hoàn thành (không lọc thời gian)
+        all_active_orders_dom = [
             ("company_id", "=", company.id),
-            ("date", ">=", date_from),
-            ("date", "<=", date_to),
-            ("order_state_custom", "in", ("production", "installation", "delivery", "payment")),
+            ("order_state_custom", "not in", ("completed", "cancel")),
         ]
-        expected_revenue = self._safe_sum_amount_total(expected_revenue_dom)
+        all_active_orders = self.search(all_active_orders_dom)
+        total_active_amount = sum(all_active_orders.mapped('amount_total'))
+        
+        # Tổng số tiền ĐÃ THU từ TẤT CẢ payments (không lọc thời gian)
+        all_payments_dom = [
+            ('company_id', '=', company.id),
+            ('state', '=', 'paid'),  # Đã thanh toán
+            ('payment_type', '=', 'inbound'),
+        ]
+        all_payments = Payment.search(all_payments_dom)
+        total_collected = sum(all_payments.mapped('amount'))
+        
+        # Doanh thu dự kiến = Tổng đơn chưa hoàn thành - Tổng đã thu
+        expected_revenue = max(0, total_active_amount - total_collected)
 
-        # 3. Công Nợ (đơn ở trạng thái PAYMENT - chưa có hóa đơn cuối hoặc hóa đơn cuối chưa thanh toán)
-        # Không tính hóa đơn cọc
+        # 3. Công Nợ = Đơn ở trạng thái PAYMENT chưa có hóa đơn cuối hoặc chưa thanh toán cuối
+        # (Theo thời gian - chỉ tính đơn trong khoảng date_from → date_to)
         payment_orders = self.search([
             ("company_id", "=", company.id),
             ("date", ">=", date_from),
@@ -708,22 +725,45 @@ class SaleOrderDashboardService(models.Model):
             })
 
         # ===== PERFORMANCE TRACKING =====
-        # Sales Performance
+        # Sales Performance - Tính theo PAYMENT đã thu của từng user
         sales_users = self.env['res.users'].search([
             ('groups_id', 'in', [self.env.ref('dac_erp.group_dac_erp_sale').id])
         ])
         sales_performance = []
         for user in sales_users:
-            user_dom = revenue_dom + [('user_id', '=', user.id)]
-            user_orders = self.search(user_dom)
-            user_revenue = sum(user_orders.mapped('amount_total'))
+            # Tìm payments của user này (lọc theo thời gian)
+            user_payment_dom = [
+                ('company_id', '=', company.id),
+                ('state', '=', 'paid'),  # Đã thanh toán
+                ('payment_type', '=', 'inbound'),
+                ('date', '>=', date_from),
+                ('date', '<=', date_to),
+            ]
+            
+            # Lọc theo user: tìm payments từ invoices của user này
+            user_payments = Payment.search(user_payment_dom)
+            user_revenue = 0
+            orders_count = 0
+            
+            # Tính doanh thu từ payments có liên quan đến đơn hàng của user
+            for payment in user_payments:
+                # Tìm invoice liên quan
+                if payment.reconciled_invoice_ids:
+                    for invoice in payment.reconciled_invoice_ids:
+                        # Tìm đơn hàng từ invoice_origin
+                        if invoice.invoice_origin:
+                            order = self.search([('name', '=', invoice.invoice_origin), ('user_id', '=', user.id)], limit=1)
+                            if order:
+                                user_revenue += payment.amount
+                                orders_count += 1
+                                break
             
             if user_revenue > 0:  # Chỉ hiển thị user có doanh thu
                 sales_performance.append({
                     'id': user.id,
                     'name': user.name,
                     'revenue': user_revenue,
-                    'orders_count': len(user_orders),
+                    'orders_count': orders_count,
                     'progress': min(100, int((user_revenue / total_revenue * 100) if total_revenue else 0)),
                 })
         

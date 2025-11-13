@@ -558,6 +558,77 @@
   position: relative;
 }
 
+/* Week Quick Filters */
+.week-quick-filters {
+  gap: 0.5rem;
+}
+
+.week-quick-filters .btn {
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.week-quick-filters .btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.week-quick-filters .btn.active {
+  background-color: #0d6efd;
+  color: #ffffff;
+  border-color: #0d6efd;
+}
+
+/* Week Dropdown */
+.week-dropdown .btn {
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  min-width: 140px;
+}
+
+.week-dropdown .dropdown-menu {
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border: 1px solid #dee2e6;
+  padding: 0.5rem 0;
+  min-width: 240px;
+}
+
+.week-dropdown .dropdown-item {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.week-dropdown .dropdown-item:hover {
+  background-color: #f8f9fa;
+  color: #0d6efd;
+}
+
+.week-dropdown .dropdown-item.active {
+  background-color: #0d6efd;
+  color: #ffffff;
+}
+
+.week-dropdown .dropdown-item .fa-calendar-week {
+  color: #6c757d;
+  width: 20px;
+}
+
+.week-dropdown .dropdown-item.active .fa-calendar-week {
+  color: #ffffff;
+}
+
+.week-dropdown .dropdown-item small {
+  font-size: 0.75rem;
+}
+
 .period-display {
   background: #ffffff;
   border: 1px solid #dee2e6;

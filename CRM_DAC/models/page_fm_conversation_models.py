@@ -86,6 +86,16 @@ class PageFmConversation(models.Model):
     message_count = fields.Integer(string="Message Count", compute='_compute_message_count', store=True)
     last_message_sync_fm = fields.Datetime(string="Last Message Sync (FM)", readonly=True, help="Thời điểm cuối cùng đồng bộ tin nhắn cho hội thoại này.")
 
+
+    #Trường last message
+    last_message_at_fm = fields.Datetime(
+        string="Thời Gian Tin Nhắn Cuối",
+        compute="_compute_last_message_at_fm",
+        store=True,
+        index=True,
+        help="Thời điểm tin nhắn cuối cùng được GỬI (từ model Message), dùng để sort/filter tin nhắn mới nhất."
+    )
+
     _sql_constraints = [
         ('conversation_fm_id_page_uniq', 'unique(conversation_fm_id, page_fm_page_id)', 'Conversation FM ID phải là duy nhất cho mỗi trang!')
     ]
@@ -1407,6 +1417,13 @@ class PageFmConversation(models.Model):
                 except Exception:
                     _logger.exception("Lỗi khi đồng bộ staff sang partner cho conv %s", record.id)
 
+        # Gọi hàm tính toán lại last_message_at_fm cho tất cả records đã sync
+        try:
+            # Gọi hàm compute một lần cho tất cả các records đã sync
+            self._compute_last_message_at_fm()
+        except Exception as e:
+            _logger.error(f"Lỗi khi tính toán lại last_message_at_fm: {e}")
+
         return {'type': 'ir.actions.client', 'tag': 'reload'}
 
     @api.model_create_multi
@@ -2396,3 +2413,31 @@ class PageFmConversation(models.Model):
                 'tag': 'reload',
             }
 
+    @api.depends('conv_message_ids.inserted_at_fm')
+    def _compute_last_message_at_fm(self):
+        """
+        Tính toán thời gian của tin nhắn cuối cùng (mới nhất)
+        dựa trên 'inserted_at_fm' từ model page.fm.message.
+        
+        BẢN SỬA LỖI: Dùng ORM (mapped) thay vì read_group.
+        Hàm này sẽ đọc từ cache, bao gồm cả các tin nhắn
+        vừa được .create() trong CÙNG một transaction.
+        """
+        _logger.info(f"Đang compute 'last_message_at_fm' cho {len(self.ids)} conversations (bằng ORM)...")
+        for rec in self:
+            # self.conv_message_ids sẽ bao gồm cả các tin nhắn
+            # vừa được tạo trong transaction này (trong cache)
+            if rec.conv_message_ids:
+                try:
+                    # Lấy tất cả thời gian, lọc bỏ False/None, rồi tìm max
+                    all_times = [t for t in rec.conv_message_ids.mapped('inserted_at_fm') if t]
+                    if all_times:
+                        rec.last_message_at_fm = max(all_times)
+                    else:
+                        rec.last_message_at_fm = False
+                except Exception as e:
+                    _logger.error(f"Lỗi khi tính max time cho conv {rec.id}: {e}")
+                    rec.last_message_at_fm = False
+            else:
+                # Không có tin nhắn
+                rec.last_message_at_fm = False
