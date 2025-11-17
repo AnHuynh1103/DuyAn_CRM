@@ -1958,4 +1958,3 @@ class DacConversationApi(http.Controller):
         result = rec.action_toggle_require_processing()
         return {'ok': True, 'result': result}
         return {'ok': True, 'checklist_ok': rec.checklist_ok}
-
