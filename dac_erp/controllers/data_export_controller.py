@@ -642,6 +642,9 @@ class DataExportController(http.Controller):
                 # Status
                 'status': status_info,
                 
+                # Internal conversation flag
+                'is_internal_conversation': bool(getattr(conv, 'is_internal_conversation', False)),
+                
                 # Messages
                 'last_message': last_message,
                 'message_count': getattr(conv, 'message_count', 0),
@@ -658,9 +661,6 @@ class DataExportController(http.Controller):
                 
                 # External URL
                 'external_url': external_url,
-                
-                # Internal conversation flag
-                'is_internal_conversation': bool(getattr(conv, 'is_internal_conversation', False)),
             }
             
             # Add message count if requested
