@@ -661,6 +661,41 @@ class PageFmConversation(models.Model):
         self.sudo().write(vals)
         return True
 
+    def _auto_detect_require_processing_from_tags(self):
+        """🆕 Tự động phát hiện require_processing từ Pancake tags
+        
+        Logic:
+        - Tags 'Đang tư vấn', 'Chưa thu tiền', 'Đang thiết kế', 'Đang sản xuất' → require_processing = True
+        - Tags 'Done', 'Fail' → require_processing = False
+        - Không có tags liên quan → giữ nguyên
+        """
+        for rec in self:
+            if not rec.pancake_tag_ids:
+                continue  # Không có tags → skip
+            
+            tag_names = [tag.name for tag in rec.pancake_tag_ids]
+            
+            # Tags yêu cầu xử lý
+            processing_tags = ['Đang tư vấn', 'Chưa thu tiền', 'Đang thiết kế', 'Đang sản xuất']
+            done_tags = ['Done', 'Fail']
+            
+            has_processing_tag = any(tag in tag_names for tag in processing_tags)
+            has_done_tag = any(tag in tag_names for tag in done_tags)
+            
+            new_value = None
+            if has_processing_tag and not has_done_tag:
+                new_value = True
+            elif has_done_tag and not has_processing_tag:
+                new_value = False
+            
+            # Chỉ update khi có thay đổi
+            if new_value is not None and rec.require_processing != new_value:
+                rec.sudo().write({
+                    'require_processing': new_value,
+                    'last_processing_change_at': fields.Datetime.now()
+                })
+                _logger.info(f"🏷️ Auto-detect require_processing={new_value} cho conversation {rec.id} từ tags: {tag_names}")
+    
     def _auto_bump_require_processing(self):
         """Bật require_processing khi có trạng thái đỏ hoặc chưa đọc."""
         for rec in self:
@@ -1344,7 +1379,7 @@ class PageFmConversation(models.Model):
                                 if idx == 0 and not owner_user_id:
                                     owner_user_id = user.id
                             else:
-                                _logger.warning(f"⚠️ Assignee not found: {name} (pancake_id: {pancake_id[:8] if pancake_id else 'N/A'}, email: {email or 'N/A'})")
+                                _logger.debug(f"⚠️ Assignee not found: {name} (pancake_id: {pancake_id[:8] if pancake_id else 'N/A'}, email: {email or 'N/A'})")
                         
                         # Gán owner
                         if owner_user_id:
@@ -1393,7 +1428,7 @@ class PageFmConversation(models.Model):
                     if record.pancake_tag_ids:
                         _logger.info(f"Synced {len(record.pancake_tag_ids)} tags from conversation to partner {record.partner_id.name}")
                     else:
-                        _logger.info(f"Cleared tags for partner {record.partner_id.name} (no tags in conversation)")
+                        _logger.debug(f"Cleared tags for partner {record.partner_id.name} (no tags in conversation)")
             except Exception as e:
                 _logger.error(f"Lỗi khi sync tags sang partner: {e}", exc_info=True)
 
@@ -1518,6 +1553,130 @@ class PageFmConversation(models.Model):
         }
         
     # === BATCH & CRON SYNC =================================================
+        
+    @api.model
+    def cron_smart_message_sync(self, batch_limit=50):
+        """TIER 3: Smart message sync với priority mới (time-based metrics TRƯỚC require_processing)
+        
+        Thứ tự ưu tiên (từ cao xuống thấp):
+        1. partner_id IS NULL → Conversations mới từ Pancake, chưa có khách hàng trong hệ thống
+        2. last_message_at_fm > last_message_sync_fm → Có tin nhắn mới chưa sync
+        3. last_update_at trong 3 ngày → Có hoạt động gần đây
+        4. require_processing = True → Cờ xử lý thủ công (ưu tiên thấp nhất)
+        
+        Batch size: 50 conversations/lần (tương đương ~3 phút sync)
+        """
+        _logger.info("🎯 TIER 3: Starting Smart Message Sync (Priority-based)")
+        
+        from datetime import datetime, timedelta
+        
+        # Ngưỡng thời gian: 3 ngày
+        three_days_ago = datetime.now() - timedelta(days=3)
+        
+        # === PRIORITY 1: Conversations MỚI (partner_id IS NULL) ===
+        priority_1 = self.search([
+            ('partner_id', '=', False),
+            '|',
+            ('last_message_sync_fm', '=', False),
+            ('last_message_at_fm', '>', fields.Datetime.to_string(three_days_ago))
+        ], limit=batch_limit, order='updated_at_fm desc')
+        
+        if priority_1:
+            _logger.info(f"🆕 Priority 1: Syncing {len(priority_1)} NEW conversations (partner_id IS NULL)")
+            self._perform_sync_batch_smart(priority_1, "P1-NEW")
+            return True  # Xử lý xong batch này, lần sau tiếp tục
+        
+        # === PRIORITY 2: Có tin nhắn MỚI chưa sync ===
+        # Điều kiện: last_message_at_fm > last_message_sync_fm (hoặc chưa sync bao giờ)
+        priority_2 = self.search([
+            ('partner_id', '!=', False),  # Đã có khách hàng
+            '|',
+            ('last_message_sync_fm', '=', False),  # Chưa sync bao giờ
+            '&',
+            ('last_message_at_fm', '!=', False),
+            ('last_message_at_fm', '>', 'last_message_sync_fm')  # Tin nhắn mới hơn lần sync cuối
+        ], limit=batch_limit, order='last_message_at_fm desc')
+        
+        if priority_2:
+            _logger.info(f"💬 Priority 2: Syncing {len(priority_2)} conversations with NEW messages")
+            self._perform_sync_batch_smart(priority_2, "P2-NEWMSG")
+            return True
+        
+        # === PRIORITY 3: Hoạt động GẦN ĐÂY (last_update_at < 3 ngày) ===
+        priority_3 = self.search([
+            ('partner_id', '!=', False),
+            ('last_update_at', '>=', fields.Datetime.to_string(three_days_ago)),
+            '|',
+            ('last_message_sync_fm', '=', False),
+            ('last_message_sync_fm', '<', fields.Datetime.to_string(three_days_ago))
+        ], limit=batch_limit, order='last_update_at desc')
+        
+        if priority_3:
+            _logger.info(f"⏰ Priority 3: Syncing {len(priority_3)} conversations with RECENT activity")
+            self._perform_sync_batch_smart(priority_3, "P3-RECENT")
+            return True
+        
+        # === PRIORITY 4: Cờ require_processing (thủ công - ưu tiên THẤP NHẤT) ===
+        priority_4 = self.search([
+            ('require_processing', '=', True),
+            ('partner_id', '!=', False),
+            '|',
+            ('last_message_sync_fm', '=', False),
+            ('last_message_sync_fm', '<', fields.Datetime.to_string(three_days_ago))
+        ], limit=batch_limit, order='last_processing_change_at desc')
+        
+        if priority_4:
+            _logger.info(f"🚩 Priority 4: Syncing {len(priority_4)} conversations with MANUAL flag (require_processing)")
+            self._perform_sync_batch_smart(priority_4, "P4-MANUAL")
+            return True
+        
+        _logger.info("✅ TIER 3 Complete: No conversations to sync (all up-to-date)")
+        return True
+    
+    def _perform_sync_batch_smart(self, conversations, priority_label):
+        """Helper method for smart sync with priority tracking"""
+        _logger.info(f"🔄 [{priority_label}] Starting sync for {len(conversations)} conversations")
+        
+        main_access_token = self.env['ir.config_parameter'].sudo().get_param('page_fm.access_token')
+        if not main_access_token:
+            _logger.error("Thiếu main_access_token trong system parameters.")
+            return
+        
+        synced_count = 0
+        error_count = 0
+        
+        for conv in conversations:
+            try:
+                page = conv.page_fm_page_id
+                if not page:
+                    error_count += 1
+                    continue
+                
+                page_token = page._generate_page_specific_access_token(main_access_token)
+                if not page_token:
+                    error_count += 1
+                    continue
+                
+                # Sync messages
+                conv.action_sync_messages()
+                synced_count += 1
+                
+                # Auto-detect require_processing từ tags sau khi sync
+                conv._auto_detect_require_processing_from_tags()
+                
+                self.env.cr.commit()
+                
+                # Rate limiting
+                import time
+                time.sleep(0.5)
+                
+            except Exception as e:
+                _logger.error(f"[{priority_label}] Error syncing conversation {conv.id}: {e}")
+                error_count += 1
+                self.env.cr.rollback()
+        
+        #_logger.info(f"✅ [{priority_label}] Finished: {synced_count} success, {error_count} errors")
+    
     # --- Helper: con trỏ tiến độ ---
     def _get_conv_pointer(self):
         ICP = self.env['ir.config_parameter'].sudo()
@@ -2031,12 +2190,12 @@ class PageFmConversation(models.Model):
             
             # 3. Log toàn bộ conversation data
             import json
-            #_logger.info("📋 FULL CONVERSATION JSON:")
-            #_logger.info(json.dumps(conv_data, indent=2, ensure_ascii=False))
+            _logger.info("📋 FULL CONVERSATION JSON:")
+            _logger.info(json.dumps(conv_data, indent=2, ensure_ascii=False))
             
             # 4. Extract assignee data
             current_assign_users = conv_data.get('current_assign_users', []) or []
-            #_logger.info(f"\n👥 CURRENT_ASSIGN_USERS: {current_assign_users}")
+            _logger.info(f"\n👥 CURRENT_ASSIGN_USERS: {current_assign_users}")
             
             assignee_data = []
             if isinstance(current_assign_users, list):
@@ -2423,7 +2582,7 @@ class PageFmConversation(models.Model):
         Hàm này sẽ đọc từ cache, bao gồm cả các tin nhắn
         vừa được .create() trong CÙNG một transaction.
         """
-        _logger.info(f"Đang compute 'last_message_at_fm' cho {len(self.ids)} conversations (bằng ORM)...")
+        #_logger.info(f"Đang compute 'last_message_at_fm' cho {len(self.ids)} conversations (bằng ORM)...")
         for rec in self:
             # self.conv_message_ids sẽ bao gồm cả các tin nhắn
             # vừa được tạo trong transaction này (trong cache)

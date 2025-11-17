@@ -980,7 +980,7 @@ class SaleOrderInherit(models.Model):
                         
                         if update_vals:
                             odoo_creator.sudo().write(update_vals)
-                            _logger.info(f"📝 [WEBHOOK] Synced creator fields: {list(update_vals.keys())}")
+                            _logger.debug(f"📝 [WEBHOOK] Synced creator fields: {list(update_vals.keys())}")
                 
                 # ƯU TIÊN 2: Tìm theo email
                 if not odoo_creator and creator_email:
@@ -1001,7 +1001,7 @@ class SaleOrderInherit(models.Model):
                         
                         if update_vals:
                             odoo_creator.sudo().write(update_vals)
-                            _logger.info(f"📝 [WEBHOOK] Synced creator fields: {list(update_vals.keys())}")
+                            _logger.debug(f"📝 [WEBHOOK] Synced creator fields: {list(update_vals.keys())}")
                 
                 # ƯU TIÊN 3: Tìm theo tên (không khuyến khích - có thể trùng)
                 if not odoo_creator and creator_name:
@@ -1019,7 +1019,7 @@ class SaleOrderInherit(models.Model):
                         
                         if update_vals:
                             odoo_creator.sudo().write(update_vals)
-                            _logger.info(f"📝 [WEBHOOK] Synced creator fields: {list(update_vals.keys())}")
+                            _logger.debug(f"📝 [WEBHOOK] Synced creator fields: {list(update_vals.keys())}")
                 
                 # TẠO USER MỚI nếu không tìm thấy - LƯU CẢ 3 FIELD
                 if not odoo_creator and creator_name and creator_email:
@@ -1098,7 +1098,7 @@ class SaleOrderInherit(models.Model):
                             update_vals['pancake_id'] = seller_uuid
                         if update_vals:
                             salesperson.sudo().write(update_vals)
-                            _logger.info(f"📝 [WEBHOOK] Synced salesperson fields: {list(update_vals.keys())}")
+                            _logger.debug(f"📝 [WEBHOOK] Synced salesperson fields: {list(update_vals.keys())}")
                 
                 # ƯU TIÊN 2: Tìm theo email
                 if not salesperson and seller_email:

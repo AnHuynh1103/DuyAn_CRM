@@ -152,7 +152,7 @@ class ResPartner(models.Model):
             if vals:
                 partner.write(vals)
                 if 'participant_user_ids' in vals:
-                    _logger.info(f"✅ Synced staff to partner {partner.name}: owner={conv.owner_id.name if conv and conv.owner_id else 'None'}, participants={len(merged_participants) if conv else 0}")
+                    _logger.debug(f"✅ Synced staff to partner {partner.name}: owner={conv.owner_id.name if conv and conv.owner_id else 'None'}, participants={len(merged_participants) if conv else 0}")
     
     
     def sync_tags_from_conversations(self):
@@ -168,7 +168,7 @@ class ResPartner(models.Model):
                 partner.write({
                     'pancake_tag_ids': [(6, 0, conv.pancake_tag_ids.ids)]
                 })
-                _logger.info(f"✅ Synced {len(conv.pancake_tag_ids)} tags from conversation to partner {partner.name}")
+                _logger.debug(f"✅ Synced {len(conv.pancake_tag_ids)} tags from conversation to partner {partner.name}")
 
                 
     _sql_constraints = [

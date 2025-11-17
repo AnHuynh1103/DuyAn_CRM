@@ -44,7 +44,7 @@ class SaleOrder(models.Model):
         user = self.env.user
 
         # quyền xem
-        if user.has_group("base.group_system"):
+        if user.has_group("dac_erp.group_dac_erp_manager"):
             base_domain = []
         elif user.has_group("dac_erp.group_dac_erp_design"):
             base_domain = [("user_id_design", "=", uid)]
@@ -193,7 +193,7 @@ class SaleOrder(models.Model):
         # Quyền xem
         if user.has_group("dac_erp.group_dac_erp_production"):
             base_domain = [("user_id_production", "=", uid)]
-        elif user.has_group("base.group_system"):
+        elif user.has_group("dac_erp.group_dac_erp_manager"):
             base_domain = []
         else:
             raise AccessError(_("Bạn không có quyền truy cập dashboard sản xuất."))

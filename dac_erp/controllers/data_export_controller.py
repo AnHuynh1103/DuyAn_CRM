@@ -230,14 +230,26 @@ class DataExportController(http.Controller):
     def export_conversation_info(self, 
                                  limit=None, 
                                  offset=0,
+                                 conversation_id=None,  # 🆕 Filter theo ID conversation
                                  page_id=None,
+                                 page_fm_id_str=None,  # 🆕 Filter theo page_fm_id_str
                                  status=None,
                                  require_processing=None,
                                  has_unread=None,
+                                 unread_only=None,  # 🆕 Alias cho has_unread
                                  owner_id=None,
                                  participant_id=None,
+                                 staff_user_id=None,  # 🆕 Filter theo staff user
+                                 staff_id_fm=None,  # 🆕 Filter theo staff Pancake ID
+                                 staff_name=None,  # 🆕 Filter theo tên staff
+                                 date=None,  # 🆕 Filter theo 1 ngày cụ thể
                                  date_from=None,
                                  date_to=None,
+                                 days=None,  # 🆕 Filter theo số ngày gần nhất
+                                 is_internal=None,  # Filter nội bộ
+                                 asc=None,  # 🆕 Sắp xếp ASC/DESC
+                                 include_last_message=None,  # 🆕 Include last message detail
+                                 include_message_count=None,  # 🆕 Include message count
                                  **kwargs):
         """
         API endpoint để get conversations với thông tin đầy đủ:
@@ -250,27 +262,50 @@ class DataExportController(http.Controller):
         Parameters:
         - limit: Số lượng conversation (mặc định 100)
         - offset: Bỏ qua bao nhiêu records
+        - conversation_id: ID của conversation (Odoo ID) - 🆕
         - page_id: ID của page (Odoo ID)
+        - page_fm_id_str: ID của page từ Pages.fm - 🆕
         - status: Trạng thái (new, recontact, waiting, done)
         - require_processing: '1'/'0' - Có yêu cầu xử lý không
-        - has_unread: '1'/'0' - Có tin nhắn chưa đọc không
-        - owner_id: ID người phụ trách CHÍNH (Odoo user ID) - CHỈ lấy conversations mà user này là owner
-        - participant_id: ID người THAM GIA (Odoo user ID) - Lấy conversations mà user này là owner HOẶC participant
+        - has_unread/unread_only: '1'/'0' - Có tin nhắn chưa đọc không
+        - owner_id: ID người phụ trách CHÍNH (Odoo user ID)
+        - participant_id: ID người THAM GIA (Odoo user ID)
+        - staff_user_id: ID staff user (Odoo user ID) - 🆕
+        - staff_id_fm: ID staff từ Pancake - 🆕
+        - staff_name: Tên staff (tìm kiếm gần đúng) - 🆕
+        - date: Lọc theo 1 ngày cụ thể (YYYY-MM-DD) - 🆕
         - date_from: Lọc từ ngày (YYYY-MM-DD)
         - date_to: Lọc đến ngày (YYYY-MM-DD)
+        - days: Số ngày gần nhất - 🆕
+        - is_internal: '1'/'0' - Lọc cuộc trò chuyện nội bộ
+        - asc: '1'/'0' - Sắp xếp tăng/giảm dần - 🆕
+        - include_last_message: '1'/'0' - Bao gồm chi tiết tin nhắn cuối - 🆕
+        - include_message_count: '1'/'0' - Đếm số tin nhắn - 🆕
         """
         try:
             data = self._get_conversation_info(
                 limit=limit,
                 offset=offset,
+                conversation_id=conversation_id,
                 page_id=page_id,
+                page_fm_id_str=page_fm_id_str,
                 status=status,
                 require_processing=require_processing,
                 has_unread=has_unread,
+                unread_only=unread_only,
                 owner_id=owner_id,
                 participant_id=participant_id,
+                staff_user_id=staff_user_id,
+                staff_id_fm=staff_id_fm,
+                staff_name=staff_name,
+                date=date,
                 date_from=date_from,
                 date_to=date_to,
+                days=days,
+                is_internal=is_internal,
+                asc=asc,
+                include_last_message=include_last_message,
+                include_message_count=include_message_count,
                 **kwargs
             )
             return http.Response(
@@ -289,25 +324,77 @@ class DataExportController(http.Controller):
     def _get_conversation_info(self,
                                limit=None,
                                offset=0,
+                               conversation_id=None,
                                page_id=None,
+                               page_fm_id_str=None,
                                status=None,
                                require_processing=None,
                                has_unread=None,
+                               unread_only=None,
                                owner_id=None,
                                participant_id=None,
+                               staff_user_id=None,
+                               staff_id_fm=None,
+                               staff_name=None,
+                               date=None,
                                date_from=None,
                                date_to=None,
+                               days=None,
+                               is_internal=None,
+                               asc=None,
+                               include_last_message=None,
+                               include_message_count=None,
                                **kwargs):
         """
         Get conversations với thông tin đầy đủ về participants và status
         
         Filter logic:
-        - owner_id: CHỈ lấy conversations mà user này là OWNER (người phụ trách chính)
-        - participant_id: Lấy conversations mà user này là OWNER HOẶC PARTICIPANT (người tham gia)
+        - conversation_id: Lọc theo ID conversation cụ thể
+        - owner_id: CHỈ lấy conversations mà user này là OWNER
+        - participant_id: Lấy conversations mà user này là OWNER HOẶC PARTICIPANT
+        - staff_*: Filter theo staff từ message (tìm conversations có message từ staff này)
+        - is_internal: '1' = chỉ nội bộ, '0' = chỉ không nội bộ, None = tất cả
         """
+        
+        Conv = request.env['page.fm.conversation'].sudo()
+        Message = request.env['page.fm.message'].sudo()
+        
+        # --- Timezone & helpers ---
+        args = request.httprequest.args
+        tzname = args.get('tz') or request.env.context.get('tz') or 'UTC'
+        try:
+            tz = pytz.timezone(tzname)
+        except Exception:
+            tz = pytz.UTC
+
+        def to_utc(dt):
+            if dt.tzinfo is None:
+                dt = tz.localize(dt)
+            return dt.astimezone(pytz.UTC)
+
+        def parse_any(s, is_end=False):
+            if not s:
+                return None
+            if len(s) == 10:
+                d = datetime.strptime(s, '%Y-%m-%d').date()
+                t = time.max if is_end else time.min
+                return to_utc(datetime.combine(d, t))
+            try:
+                dt = datetime.fromisoformat(s)
+            except ValueError:
+                dt = datetime.strptime(s, '%Y-%m-%d %H:%M:%S')
+            return to_utc(dt)
         
         # Build domain
         domain = []
+        
+        # Filter theo conversation_id cụ thể
+        if conversation_id:
+            try:
+                cid = int(conversation_id)
+                domain.append(('id', '=', cid))
+            except:
+                pass
         
         if page_id:
             try:
@@ -315,6 +402,9 @@ class DataExportController(http.Controller):
                 domain.append(('page_fm_page_id', '=', pid))
             except:
                 pass
+        
+        if page_fm_id_str:
+            domain.append(('page_fm_page_id.page_fm_id_str', '=', page_fm_id_str))
         
         if status:
             statuses = [s.strip() for s in str(status).split(',') if s.strip()]
@@ -324,42 +414,110 @@ class DataExportController(http.Controller):
         if require_processing is not None and str(require_processing) != '':
             domain.append(('require_processing', '=', str(require_processing).lower() in ('1', 'true', 't', 'yes')))
         
-        if has_unread is not None and str(has_unread) != '':
-            domain.append(('is_unread_fm', '=', str(has_unread).lower() in ('1', 'true', 't', 'yes')))
+        # Support both has_unread and unread_only
+        unread_filter = unread_only if unread_only is not None else has_unread
+        if unread_filter is not None and str(unread_filter) != '':
+            domain.append(('is_unread_fm', '=', str(unread_filter).lower() in ('1', 'true', 't', 'yes')))
         
-        # Filter theo OWNER (người phụ trách chính) - CHỈ conversations mà user này là owner
+        # Filter theo is_internal_conversation
+        if is_internal is not None and str(is_internal) != '':
+            domain.append(('is_internal_conversation', '=', str(is_internal).lower() in ('1', 'true', 't', 'yes')))
+        
+        # Filter theo OWNER
         if owner_id:
             try:
                 oid = int(owner_id)
                 domain.append(('owner_id', '=', oid))
-                _logger.info(f"🔍 Filter by OWNER: owner_id={oid}")
             except:
                 pass
         
-        # Filter theo PARTICIPANT (người tham gia) - Bao gồm cả owner và participants
-        # Chỉ áp dụng nếu KHÔNG có owner_id filter (tránh conflict)
+        # Filter theo PARTICIPANT
         if participant_id and not owner_id:
             try:
                 pid = int(participant_id)
-                # Tìm conversations mà user này là owner HOẶC participant
                 domain.append('|')
                 domain.append(('owner_id', '=', pid))
                 domain.append(('participant_user_ids', 'in', [pid]))
-                _logger.info(f"🔍 Filter by PARTICIPANT: user_id={pid} (owner OR participant)")
             except:
                 pass
         
-        if date_from:
-            domain.append(('updated_at_fm', '>=', date_from))
-        if date_to:
-            domain.append(('updated_at_fm', '<=', date_to))
+        # --- Xử lý date filters với timezone ---
+        dt_from_utc = dt_to_utc = None
+        dt_field = 'updated_at_fm'  # Default time field
+        
+        if date_from or date_to:
+            dt_from_utc = parse_any(date_from, is_end=False) if date_from else None
+            dt_to_utc = parse_any(date_to, is_end=True) if date_to else None
+        elif date:
+            dt_from_utc = parse_any(date, is_end=False)
+            dt_to_utc = parse_any(date, is_end=True)
+        elif days is not None:
+            try:
+                days_int = int(days)
+            except Exception:
+                days_int = 1
+            now_tz = datetime.now(tz)
+            start_tz = (now_tz - timedelta(days=days_int)).replace(hour=0, minute=0, second=0, microsecond=0)
+            end_tz = now_tz.replace(hour=23, minute=59, second=59, microsecond=999999)
+            dt_from_utc = start_tz.astimezone(pytz.UTC)
+            dt_to_utc = end_tz.astimezone(pytz.UTC)
+        
+        # --- Filter theo staff (từ messages) ---
+        conv_ids_from_staff = None
+        if staff_user_id or staff_id_fm or staff_name:
+            msg_domain = []
+            
+            if page_id:
+                msg_domain.append(('conversation_id.page_fm_page_id', '=', int(page_id)))
+            if page_fm_id_str:
+                msg_domain.append(('conversation_id.page_fm_page_id.page_fm_id_str', '=', page_fm_id_str))
+            
+            if staff_user_id:
+                msg_domain.append(('staff', '=', int(staff_user_id)))
+            if staff_id_fm:
+                msg_domain.append(('staff_id_fm', '=', str(staff_id_fm)))
+            if staff_name:
+                msg_domain.append(('staff_name_fm', 'ilike', staff_name))
+            
+            # Thêm điều kiện thời gian cho message nếu có
+            if dt_from_utc:
+                msg_domain.append(('inserted_at_fm', '>=', fields.Datetime.to_string(dt_from_utc)))
+            if dt_to_utc:
+                msg_domain.append(('inserted_at_fm', '<=', fields.Datetime.to_string(dt_to_utc)))
+            
+            msg_records = Message.search(msg_domain)
+            conv_ids_from_staff = list({m.conversation_id.id for m in msg_records if m.conversation_id})
+            
+            if conv_ids_from_staff:
+                domain.append(('id', 'in', conv_ids_from_staff))
+            else:
+                # Không có message nào từ staff này
+                return {
+                    'success': True,
+                    'count': 0,
+                    'limit': int(limit) if limit else 100,
+                    'offset': int(offset) if offset else 0,
+                    'total': 0,
+                    'items': [],
+                }
+        else:
+            # Áp dụng date filter cho conversation nếu không filter theo staff
+            if dt_from_utc:
+                domain.append((dt_field, '>=', fields.Datetime.to_string(dt_from_utc)))
+            if dt_to_utc:
+                domain.append((dt_field, '<=', fields.Datetime.to_string(dt_to_utc)))
         
         # Search conversations
         limit = int(limit) if limit else 100
         offset = int(offset) if offset else 0
         
-        Conv = request.env['page.fm.conversation'].sudo()
-        conversations = Conv.search(domain, limit=limit, offset=offset, order='updated_at_fm desc')
+        # Determine sort order
+        if asc is not None:
+            order = f'{dt_field} {"asc" if str(asc) in ("1","true","True") else "desc"}'
+        else:
+            order = f'{dt_field} desc'
+        
+        conversations = Conv.search(domain, limit=limit, offset=offset, order=order)
         
         conv_data = []
         for conv in conversations:
@@ -456,7 +614,7 @@ class DataExportController(http.Controller):
                     'page_fm_id': getattr(conv.page_fm_page_id, 'page_fm_id_str', None),
                 }
             
-            conv_data.append({
+            conv_item = {
                 # Basic info
                 'id': conv.id,
                 'conversation_fm_id': getattr(conv, 'conversation_fm_id', None),
@@ -471,8 +629,9 @@ class DataExportController(http.Controller):
                 'updated_at_fm': conv.updated_at_fm.isoformat() if conv.updated_at_fm else None,
                 'create_date': conv.create_date.isoformat() if conv.create_date else None,
                 'last_message_sync_fm': conv.last_message_sync_fm.isoformat() if getattr(conv, 'last_message_sync_fm', None) else None,
+                'last_message_at_fm': conv.last_message_at_fm.isoformat() if getattr(conv, 'last_message_at_fm', None) else None,  # 🆕
                 
-                # Owner & Participants (user_id = người phụ trách chính)
+                # Owner & Participants
                 'user_id': user_id,
                 'participants': participants,
                 'participants_count': len(participants),
@@ -499,7 +658,37 @@ class DataExportController(http.Controller):
                 
                 # External URL
                 'external_url': external_url,
-            })
+                
+                # Internal conversation flag
+                'is_internal_conversation': bool(getattr(conv, 'is_internal_conversation', False)),
+            }
+            
+            # Add message count if requested
+            if include_message_count and str(include_message_count) in ('1', 'true', 'True'):
+                conv_item['message_count_total'] = Message.search_count([('conversation_id', '=', conv.id)])
+            
+            # Add detailed last message if requested
+            if include_last_message and str(include_last_message) in ('1', 'true', 'True'):
+                msg_order = 'inserted_at_fm desc' if 'inserted_at_fm' in Message._fields else 'id desc'
+                last_msg = Message.search([('conversation_id', '=', conv.id)], limit=1, order=msg_order)
+                if last_msg:
+                    m = last_msg[0]
+                    try:
+                        attachments = json.loads(m.attachments_json) if m.attachments_json else None
+                    except Exception:
+                        attachments = m.attachments_json
+                    conv_item['last_message_detail'] = {
+                        'id': m.id,
+                        'message_fm_id': getattr(m, 'message_fm_id', None),
+                        'inserted_at_fm': m.inserted_at_fm.isoformat() if getattr(m, 'inserted_at_fm', None) else None,
+                        'sender_name_fm': getattr(m, 'sender_name_fm', None),
+                        'staff_name_fm': getattr(m, 'staff_name_fm', None),
+                        'type_content': getattr(m, 'type_content', None),
+                        'content_html': getattr(m, 'content_html', None),
+                        'attachments': attachments,
+                    }
+            
+            conv_data.append(conv_item)
         
         return {
             'success': True,
@@ -507,6 +696,8 @@ class DataExportController(http.Controller):
             'limit': limit,
             'offset': offset,
             'total': Conv.search_count(domain),
+            'order': order,
+            'date_field': dt_field,
             'items': conv_data,
         }
 
@@ -1580,261 +1771,9 @@ class DataExportController(http.Controller):
     # --- /MESSAGES EXPORT ------------------------------------------------
 
 
-    # --- CONVERSATIONS EXPORT -------------------------------------------------
-
-    @http.route('/dac_erp/api/export/conversations', type='http', auth='public', csrf=False, methods=['GET'])
-    def export_conversations_data(self,
-                                page_id=None,                # lọc theo page Odoo id 
-                                page_fm_id_str=None,         # lọc theo page_fm_id_str
-                                unread_only='0',             # '1' chỉ lấy cuộc chưa đọc
-                                days=None,                      # nếu không truyền date_from/to -> mặc định 2 ngày gần nhất
-                                date=None,                   # YYYY-MM-DD (lấy đúng 1 ngày)
-                                date_from=None,              # YYYY-MM-DD hoặc YYYY-MM-DD HH:MM:SS
-                                date_to=None,
-                                limit=None,
-                                offset=0,
-                                asc='0',                     # '1' = ASC, '0' = DESC theo mốc thời gian
-                                include_last_message='1',    # '1' trả kèm last message rút gọn
-                                include_message_count='0',    # '1' đếm tổng số message của cuộc
-                                staff_user_id=None,           # id res.users trong Odoo
-                                staff_id_fm=None,             # mã staff do Pages.fm trả về
-                                staff_name=None,              # tên staff (ilike)
-                                **kwargs):
-        """
-        Trả về danh sách conversations theo bộ lọc thời gian & điều kiện khác.
-        Dùng để liệt kê các cuộc cần chăm sóc.
-        """
-        try:
-            data = self._get_conversations_data(
-                page_id=page_id,
-                page_fm_id_str=page_fm_id_str,
-                unread_only=unread_only,
-                days=days,
-                date=date,
-                date_from=date_from,
-                date_to=date_to,
-                limit=limit,
-                offset=offset,
-                asc=asc,
-                include_last_message=include_last_message,
-                include_message_count=include_message_count,
-                staff_user_id=staff_user_id,
-                staff_id_fm=staff_id_fm,
-                staff_name=staff_name,
-            )
-            return http.Response(
-                json.dumps(data, ensure_ascii=False, default=str),
-                content_type='application/json',
-                status=200
-            )
-        except Exception as e:
-            _logger.error(f"Error in export_conversations_data: {e}", exc_info=True)
-            return http.Response(
-                json.dumps({'error': f'Lỗi khi export conversations: {e}'}),
-                content_type='application/json',
-                status=500
-            )
-
-    def _get_conversations_data(self,
-                            page_id=None,
-                            page_fm_id_str=None,
-                            unread_only='0',
-                            days=None,
-                            date=None,
-                            date_from=None,
-                            date_to=None,
-                            limit=None,
-                            offset=0,
-                            asc='0',
-                            include_last_message='1',
-                            include_message_count='0',
-                            staff_user_id=None,
-                            staff_id_fm=None,
-                            staff_name=None,
-                            **kwargs):
-        """Lấy dữ liệu conversations theo bộ lọc thời gian & điều kiện khác."""
-        Conv = request.env['page.fm.conversation'].sudo()
-        Message = request.env['page.fm.message'].sudo()
-
-        # Chọn field mốc thời gian ưu tiên
-        if 'last_updated_fm' in Conv._fields:
-            dt_field = 'last_updated_fm'
-        elif 'last_message_sync_fm' in Conv._fields:
-            dt_field = 'last_message_sync_fm'
-        else:
-            dt_field = 'write_date'
-
-        domain = []
-
-        # Lọc theo page nếu có
-        if page_id:
-            page_id = int(page_id)
-            domain.append(('page_fm_page_id', '=', page_id))
-        if page_fm_id_str:
-            domain.append(('page_fm_page_id.page_fm_id_str', '=', page_fm_id_str))
-
-        if str(unread_only) in ('1', 'true', 'True'):
-            if 'is_unread' in Conv._fields:
-                domain.append(('is_unread', '=', True))
-
-        # --- Timezone & helpers ---
-        args = request.httprequest.args
-        tzname = args.get('tz') or request.env.context.get('tz') or 'UTC'
-        try:
-            tz = pytz.timezone(tzname)
-        except Exception:
-            tz = pytz.UTC
-
-        def to_utc(dt):
-            # dt naive => hiểu theo tz đang chọn
-            if dt.tzinfo is None:
-                dt = tz.localize(dt)
-            return dt.astimezone(pytz.UTC)
-
-        def parse_any(s, is_end=False):
-            if not s:
-                return None
-            # 'YYYY-MM-DD'
-            if len(s) == 10:
-                d = datetime.strptime(s, '%Y-%m-%d').date()
-                t = time.max if is_end else time.min
-                return to_utc(datetime.combine(d, t))
-            # ISO or 'YYYY-MM-DD HH:MM:SS'
-            try:
-                dt = datetime.fromisoformat(s)
-            except ValueError:
-                dt = datetime.strptime(s, '%Y-%m-%d %H:%M:%S')
-            return to_utc(dt)
-
-        # --- Xây khoảng thời gian ---
-        dt_from_utc = dt_to_utc = None
-
-        if date_from or date_to:
-            dt_from_utc = parse_any(date_from, is_end=False) if date_from else None
-            dt_to_utc   = parse_any(date_to,   is_end=True)  if date_to   else None
-        elif date:
-            # lấy trọn 1 ngày theo TZ rồi đổi sang UTC
-            dt_from_utc = parse_any(date, is_end=False)
-            dt_to_utc   = parse_any(date, is_end=True)
-        elif days is not None:
-            # CHỈ áp dụng khi client truyền days
-            try:
-                days_int = int(days)
-            except Exception:
-                # bạn có thể raise lỗi 400 thay vì ngầm sửa giá trị
-                days_int = 1
-            now_tz = datetime.now(tz)
-            start_tz = (now_tz - timedelta(days=days_int)).replace(hour=0, minute=0, second=0, microsecond=0)
-            end_tz   = now_tz.replace(hour=23, minute=59, second=59, microsecond=999999)
-            dt_from_utc = start_tz.astimezone(pytz.UTC)
-            dt_to_utc   = end_tz.astimezone(pytz.UTC)
-
-        # Domain cho message theo khoảng thời gian
-        msg_domain = []
-        if page_id:
-            msg_domain.append(('conversation_id.page_fm_page_id', '=', int(page_id)))
-        if page_fm_id_str:
-            msg_domain.append(('conversation_id.page_fm_page_id.page_fm_id_str', '=', page_fm_id_str))
-
-        # staff (ít nhất một trong 3 tham số) ---
-        if staff_user_id:
-            # Many2one res.users trên message: field 'staff'
-            msg_domain.append(('staff', '=', int(staff_user_id)))
-        if staff_id_fm:
-            # Mã staff từ Pages/Pancake lưu ở Char 'staff_id_fm'
-            msg_domain.append(('staff_id_fm', '=', str(staff_id_fm)))
-        if staff_name:
-            # Tên staff (ilike) ở Char 'staff_name_fm'
-            msg_domain.append(('staff_name_fm', 'ilike', staff_name))
-        
-        # Thêm điều kiện thời gian cho message khi có mốc
-        if dt_from_utc:
-            msg_domain.append(('inserted_at_fm', '>=', fields.Datetime.to_string(dt_from_utc)))
-        if dt_to_utc:
-            msg_domain.append(('inserted_at_fm', '<=', fields.Datetime.to_string(dt_to_utc)))
-
-        # Lấy các message trong khoảng -> gom id conversation
-        msg_records = Message.search(msg_domain)
-        conv_ids = list({m.conversation_id.id for m in msg_records if m.conversation_id})
-
-        # Không có cuộc nào thì trả rỗng sớm
-        if not conv_ids:
-            return {
-                'count': 0,
-                'limit': int(limit) if limit else 200,
-                'offset': int(offset) if offset else 0,
-                'order': f'inserted_at_fm {"asc" if str(asc) in ("1","true","True") else "desc"}',
-                'date_field': 'inserted_at_fm',
-                'items': [],
-            }
-
-        # Khóa domain conversation theo tập id vừa tìm được
-        domain.append(('id', 'in', conv_ids))
-
-        # Paging & sort
-        limit = int(limit) if limit else 200
-        offset = int(offset) if offset else 0
-        order = f"{dt_field} {'asc' if str(asc) in ('1','true','True') else 'desc'}"
-
-        conversations = Conv.search(domain, limit=limit, offset=offset, order=order)
-
-        rows = []
-        for c in conversations:
-            page_info = None
-            if getattr(c, 'page_fm_page_id', False):
-                page_info = {
-                    'id': c.page_fm_page_id.id,
-                    'name': getattr(c.page_fm_page_id, 'display_name', c.page_fm_page_id.name),
-                    'page_fm_id_str': getattr(c.page_fm_page_id, 'page_fm_id_str', None),
-                }
-            row = {
-                'id': c.id,
-                'name': getattr(c, 'display_name', getattr(c, 'name', None)),
-                'conversation_fm_id': getattr(c, 'conversation_fm_id', None),
-                'page': page_info,
-                'partner_id': c.partner_id.id if c.partner_id else None,
-                'partner_name': c.partner_id.name if c.partner_id else None,
-                'is_unread': getattr(c, 'is_unread', None),
-                'last_message_snippet': getattr(c, 'last_message_snippet', None),
-                'last_updated_fm': getattr(c, 'last_updated_fm', None).isoformat() if getattr(c, 'last_updated_fm', None) else None,
-                'last_message_sync_fm': getattr(c, 'last_message_sync_fm', None).isoformat() if getattr(c, 'last_message_sync_fm', None) else None,
-                'write_date': c.write_date.isoformat() if getattr(c, 'write_date', None) else None,
-            }
-
-            if str(include_message_count) in ('1','true','True'):
-                row['message_count'] = Message.search_count([('conversation_id', '=', c.id)])
-
-            if str(include_last_message) in ('1','true','True'):
-                msg_order = 'inserted_at_fm desc' if 'inserted_at_fm' in Message._fields else 'id desc'
-                last_msg = Message.search([('conversation_id', '=', c.id)], limit=1, order=msg_order)
-                if last_msg:
-                    m = last_msg[0]
-                    try:
-                        attachments = json.loads(m.attachments_json) if m.attachments_json else None
-                    except Exception:
-                        attachments = m.attachments_json
-                    row['last_message'] = {
-                        'id': m.id,
-                        'message_fm_id': getattr(m, 'message_fm_id', None),
-                        'inserted_at_fm': m.inserted_at_fm.isoformat() if getattr(m, 'inserted_at_fm', None) else None,
-                        'sender_name_fm': getattr(m, 'sender_name_fm', None),
-                        'staff_name_fm': getattr(m, 'staff_name_fm', None),
-                        'type_content': getattr(m, 'type_content', None),
-                        'content_html': getattr(m, 'content_html', None),
-                        'attachments': attachments,
-                    }
-
-            rows.append(row)
-
-        return {
-            'count': len(rows),
-            'limit': limit,
-            'offset': offset,
-            'order': order,
-            'date_field': 'inserted_at_fm',
-            'items': rows,
-        }
-
+    # --- CONVERSATIONS EXPORT (DEPRECATED - Use /conversation_info instead) ---
+    # The /export/conversations endpoint has been removed.
+    # Please use /export/conversation_info with the same parameters.
     # --- /CONVERSATIONS EXPORT -------------------------------------------------
     
 
@@ -2019,5 +1958,4 @@ class DacConversationApi(http.Controller):
         result = rec.action_toggle_require_processing()
         return {'ok': True, 'result': result}
         return {'ok': True, 'checklist_ok': rec.checklist_ok}
-    
-    
+

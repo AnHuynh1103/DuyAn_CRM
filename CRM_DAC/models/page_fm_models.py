@@ -429,7 +429,7 @@ class PageFmPage(models.Model):
                             if idx == 0 and not owner_user_id:
                                 owner_user_id = user.id
                         else:
-                            _logger.warning(f"⚠️ Assignee not found: {name} (pancake_id: {pancake_id[:8] if pancake_id else 'N/A'}, email: {email or 'N/A'})")
+                            _logger.debug(f"⚠️ Assignee not found: {name} (pancake_id: {pancake_id[:8] if pancake_id else 'N/A'}, email: {email or 'N/A'})")
                 
                 # Gán owner (chỉ khi có từ API)
                 if owner_user_id:
@@ -569,6 +569,46 @@ class PageFmPage(models.Model):
             raise
 
     @api.model
+    def cron_quick_sync_conversations(self):
+        """TIER 2: Quick metadata sync - Chỉ sync conversations metadata, KHÔNG sync messages
+        
+        Purpose: Cập nhật nhanh metadata (updated_at, is_unread, tags, assignees) mỗi 30 phút
+        để phát hiện conversations mới và thay đổi trạng thái mà không tốn thời gian sync messages.
+        """
+        _logger.info("🔄 TIER 2: Starting Quick Metadata Sync (Conversations only)")
+        
+        main_access_token = self.env['ir.config_parameter'].sudo().get_param('page_fm.access_token')
+        if not main_access_token:
+            _logger.error("Thiếu main_access_token, không thể sync conversations.")
+            return False
+        
+        # Lấy tất cả pages active
+        pages = self.search([('active', '=', True)])
+        if not pages:
+            _logger.warning("Không có page nào active để sync.")
+            return False
+        
+        total_synced = 0
+        for page in pages:
+            try:
+                _logger.info(f"📥 Syncing metadata for page: {page.name} (FM ID: {page.page_fm_id_str})")
+                conversations_list = page._fetch_conversations_for_page_record(main_access_token)
+                
+                if conversations_list:
+                    page._create_or_update_conversations(conversations_list)
+                    total_synced += len(conversations_list)
+                    _logger.info(f"✅ Synced {len(conversations_list)} conversations for {page.name}")
+                else:
+                    _logger.info(f"No conversations found for {page.name}")
+                    
+            except Exception as e:
+                _logger.error(f"Error syncing conversations for page {page.name}: {e}", exc_info=True)
+                continue
+        
+        _logger.info(f"🎉 TIER 2 Complete: Synced {total_synced} conversations across {len(pages)} pages")
+        return True
+    
+    @api.model
     def process_api_pages_data(self, pages_api_response_json):
         if not isinstance(pages_api_response_json, dict):
             #_logger.error("Invalid API response for pages list.")
@@ -583,7 +623,6 @@ class PageFmPage(models.Model):
         # Giả sử 'activated' chứa danh sách các object page đang hoạt động
         pages_to_process_data = categorized_data.get('activated', []) 
         if not isinstance(pages_to_process_data, list):
-            _logger.warning("'activated' pages data is not a list. Trying 'inactivated' as fallback for full sync.")
             # Fallback hoặc logic khác nếu 'activated' không phải là list page objects
             # For now, if activated is not a list of objects, we stop here for pages.
             # If your /pages API returns objects in 'inactivated' and just IDs in 'activated', this needs adjustment.

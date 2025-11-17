@@ -17,6 +17,8 @@
           <field name="kpi_completed_customer_count" optional="hide"/>
           <field name="active"/>
           <field name="note" optional="hide"/>
+          <field name="company_id" invisible="1" optional="hide"/>
+          <field name="currency_id" invisible="1" optional="hide"/>
         </list>
       </field>
     </record>
@@ -70,6 +72,8 @@
                 <!-- GIỮ ĐÚNG TÊN FIELD: target_amount -->
                 <field name="target_amount"/>
                 <field name="note"/>
+                <field name="company_id" invisible="1" optional="hide"/>
+                <field name="currency_id" invisible="1" optional="hide"/>
               </group>
             </group>
 
