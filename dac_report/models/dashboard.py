@@ -283,7 +283,7 @@ class SaleOrderDashboardService(models.Model):
         
         # 🆕 Filter quotations chỉ trong 14 ngày gần nhất để tránh đơn cũ (tránh mất đơn khi chuyển tháng)
         two_weeks_ago = fields.Datetime.now() - timedelta(days=14)
-        q_dom_filtered = q_dom + [("date_order", ">=", two_weeks_ago)]
+        q_dom_filtered = q_dom + [("date_order", ">=", two_weeks_ago), ("is_zero_amount", "=", False)]
         
         # Fetch quotations (không sort trong SQL vì amount_total không stored)
         quotes = self.search(q_dom_filtered, order="date_order desc, id desc")
@@ -646,6 +646,9 @@ class SaleOrderDashboardService(models.Model):
                     state_dom += [("date", ">=", date_from), ("date", "<=", date_to)]
                 
                 orders = self.search(state_dom)
+                # 🆕 Bỏ qua đơn 0đ (cơ hội) khi tính pipeline cho quotation
+                if state == 'quotation':
+                    orders = orders.filtered(lambda x: not x.is_zero_amount)
                 pipeline_states[state]['count'] = len(orders)
                 pipeline_states[state]['amount'] = sum(orders.mapped('amount_total'))
 

@@ -745,7 +745,8 @@
                     <field name="partner_id"/>
                     <field name="order_number"/>
                     <field name="order_state_custom"/>
-                    <filter string="Báo giá" name="quotation" domain="[('order_state_custom', '=', 'quotation')]"/>
+                    <filter string="Cơ hội" name="opportunity" domain="[('is_zero_amount', '=', True)]"/>
+                    <filter string="Báo giá" name="quotation" domain="[('order_state_custom', '=', 'quotation'), ('is_zero_amount', '=', False)]"/>
                     <filter string="Đặt cọc" name="deposit" domain="[('order_state_custom', '=', 'deposit')]"/>
                     <filter string="Sản xuất" name="production" domain="[('order_state_custom', '=', 'production')]"/>
                     <filter string="Thi công - lắp đặt" name="installation" domain="[('order_state_custom','=','installation')]"/>
@@ -758,7 +759,7 @@
                     <filter string="Số đặt hàng" name="order_number" domain="[('order_number', '!=', False)]"/>
                     <filter name="quote_or_deposit"
                             string="Đã báo giá"
-                            domain="[('order_state_custom','in',['quotation','deposit'])]" invisible="1"/>
+                            domain="[('order_state_custom','in',['quotation','deposit']), ('is_zero_amount', '=', False)]" invisible="1"/>
                     <group expand="1" string="Nhóm theo">
                         <filter string="Trạng thái" name="group_by_state" context="{'group_by': 'order_state_custom'}"/>
                         <filter string="Sale phụ trách" name="group_by_user" context="{'group_by': 'user_id'}"/>

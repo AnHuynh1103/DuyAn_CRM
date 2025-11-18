@@ -204,6 +204,14 @@ class SaleOrder(models.Model):
         currency_field='currency_id',
         store=False
     )
+    
+    # Field đánh dấu đơn 0đ (cơ hội) - STORED để dùng trong domain filter
+    is_zero_amount = fields.Boolean(
+        string="Đơn 0đ (Cơ hội)",
+        compute="_compute_is_zero_amount",
+        store=True,
+        help="Đánh dấu đơn hàng có giá trị = 0 (đơn cơ hội từ Pancake tự tạo)"
+    )
 
     # Computed field để tự động kiểm tra và thêm dòng đặt cọc
     auto_check_deposit = fields.Boolean(string="Auto Check Deposit", compute="_compute_auto_check_deposit", store=False)
@@ -344,6 +352,16 @@ class SaleOrder(models.Model):
                         order.add_deposit_order_line(deposit_amount, invoice=deposit_invoices[0])
             
             order.auto_check_deposit = True
+
+    @api.depends('order_line', 'order_line.price_unit', 'order_line.product_uom_qty', 'order_line.display_type')
+    def _compute_is_zero_amount(self):
+        """Đánh dấu đơn 0đ - tính từ product lines dương (bỏ qua section/note/dòng cọc âm)"""
+        for order in self:
+            product_lines = order.order_line.filtered(
+                lambda l: not l.display_type and l.price_unit >= 0
+            )
+            total = sum(line.price_unit * line.product_uom_qty for line in product_lines)
+            order.is_zero_amount = (total == 0)
 
     @api.depends('is_deposit_confirmed')
     def _compute_can_delete_products(self):
