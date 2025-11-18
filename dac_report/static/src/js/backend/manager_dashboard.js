@@ -598,6 +598,11 @@ export class ManagerDashboard extends Component {
       ["date", ">=", dateFrom],
       ["date", "<=", dateTo],
     ];
+    
+    // 🆕 Lọc bỏ đơn 0đ (cơ hội) khi xem Báo giá
+    if (state === "quotation") {
+      domain.push(["is_zero_amount", "=", false]);
+    }
 
     // Tạo text hiển thị khoảng thời gian
     const periodText = this.getPeriodTextForTitle();
