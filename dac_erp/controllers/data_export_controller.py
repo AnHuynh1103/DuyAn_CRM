@@ -246,6 +246,7 @@ class DataExportController(http.Controller):
                                  date_from=None,
                                  date_to=None,
                                  days=None,  # 🆕 Filter theo số ngày gần nhất
+                                 date_field='updated_at_fm',  # 🆕 Field để filter: 'updated_at_fm' | 'last_message_at_fm'
                                  is_internal=None,  # Filter nội bộ
                                  asc=None,  # 🆕 Sắp xếp ASC/DESC
                                  include_last_message=None,  # 🆕 Include last message detail
@@ -277,6 +278,9 @@ class DataExportController(http.Controller):
         - date_from: Lọc từ ngày (YYYY-MM-DD)
         - date_to: Lọc đến ngày (YYYY-MM-DD)
         - days: Số ngày gần nhất - 🆕
+        - date_field: Field để filter theo thời gian - 🆕
+          * 'updated_at_fm' (mặc định): Thời điểm cập nhật cuối conversation
+          * 'last_message_at_fm': Thời điểm tin nhắn cuối được gửi
         - is_internal: '1'/'0' - Lọc cuộc trò chuyện nội bộ
         - asc: '1'/'0' - Sắp xếp tăng/giảm dần - 🆕
         - include_last_message: '1'/'0' - Bao gồm chi tiết tin nhắn cuối - 🆕
@@ -302,6 +306,7 @@ class DataExportController(http.Controller):
                 date_from=date_from,
                 date_to=date_to,
                 days=days,
+                date_field=date_field,
                 is_internal=is_internal,
                 asc=asc,
                 include_last_message=include_last_message,
@@ -340,6 +345,7 @@ class DataExportController(http.Controller):
                                date_from=None,
                                date_to=None,
                                days=None,
+                               date_field='updated_at_fm',
                                is_internal=None,
                                asc=None,
                                include_last_message=None,
@@ -353,6 +359,7 @@ class DataExportController(http.Controller):
         - owner_id: CHỈ lấy conversations mà user này là OWNER
         - participant_id: Lấy conversations mà user này là OWNER HOẶC PARTICIPANT
         - staff_*: Filter theo staff từ message (tìm conversations có message từ staff này)
+        - date_field: Field để filter theo thời gian ('updated_at_fm' hoặc 'last_message_at_fm')
         - is_internal: '1' = chỉ nội bộ, '0' = chỉ không nội bộ, None = tất cả
         """
         
@@ -443,7 +450,12 @@ class DataExportController(http.Controller):
         
         # --- Xử lý date filters với timezone ---
         dt_from_utc = dt_to_utc = None
-        dt_field = 'updated_at_fm'  # Default time field
+        
+        # Validate and set date field (chỉ cho phép 2 giá trị hợp lệ)
+        if date_field not in ('updated_at_fm', 'last_message_at_fm'):
+            dt_field = 'updated_at_fm'  # Default nếu giá trị không hợp lệ
+        else:
+            dt_field = date_field
         
         if date_from or date_to:
             dt_from_utc = parse_any(date_from, is_end=False) if date_from else None
