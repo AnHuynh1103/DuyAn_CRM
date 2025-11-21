@@ -22,8 +22,13 @@ API này cung cấp khả năng export và quản lý toàn bộ dữ liệu t�
 ## Base URL
 
 ```
-http://your-odoo-domain:dac_erp/port
+http(s)://<your-domain>/dac_erp/api/export/
 ```
+
+**Ví dụ:**
+
+- Development: `http://localhost:8069/dac_erp/api/export/`
+- Production: `https://crm.duyan.vn/dac_erp/api/export/`
 
 ## Endpoints
 
@@ -176,7 +181,7 @@ Export dữ liệu đơn hàng với nhiều bộ lọc và hỗ trợ conversat
       "delivery": {
         "address": "123 ABC Street"
       },
-      
+
       "installation": {
         "address": "456 XYZ Construction Site"
       },
@@ -429,22 +434,52 @@ Export dữ liệu nhân viên (từ res.users).
 ### 1. Get all data with date filter
 
 ```bash
-curl -X GET "http://localhost:8069/api/export/all?date_from=2025-01-01&date_to=2025-01-31" \
+curl -X GET "http(s)://<your-domain>/dac_erp/api/export/all?date_from=2025-01-01&date_to=2025-01-31" \
   -H "Cookie: session_id=your_session_id"
+```
+
+**Ví dụ cụ thể:**
+
+```bash
+# Development
+curl -X GET "http://localhost:8069/dac_erp/api/export/all?date_from=2025-01-01&date_to=2025-01-31"
+
+# Production
+curl -X GET "https://crm.duyan.vn/dac_erp/api/export/all?date_from=2025-01-01&date_to=2025-01-31"
 ```
 
 ### 2. Get sales data with limit
 
 ```bash
-curl -X GET "http://localhost:8069/api/export/sales?limit=100" \
+curl -X GET "http(s)://<your-domain>/dac_erp/api/export/sales?limit=100" \
   -H "Cookie: session_id=your_session_id"
+```
+
+**Ví dụ cụ thể:**
+
+```bash
+# Development
+curl -X GET "http://localhost:8069/dac_erp/api/export/sales?limit=100"
+
+# Production
+curl -X GET "https://crm.duyan.vn/dac_erp/api/export/sales?limit=100"
 ```
 
 ### 3. Get customers data
 
 ```bash
-curl -X GET "http://localhost:8069/api/export/customers" \
+curl -X GET "http(s)://<your-domain>/dac_erp/api/export/customers" \
   -H "Cookie: session_id=your_session_id"
+```
+
+**Ví dụ cụ thể:**
+
+```bash
+# Development
+curl -X GET "http://localhost:8069/dac_erp/api/export/customers"
+
+# Production
+curl -X GET "https://crm.duyan.vn/dac_erp/api/export/customers"
 ```
 
 ## Features
@@ -487,26 +522,53 @@ curl -X GET "http://localhost:8069/api/export/customers" \
 ```python
 import requests
 
+# Cấu hình domain
+BASE_URL = "http(s)://<your-domain>"  # Thay đổi theo môi trường
+# BASE_URL = "http://localhost:8069"  # Development
+# BASE_URL = "https://crm.duyan.vn"   # Production
+
 session = requests.Session()
+
 # Login first
 login_data = {
     'login': 'admin',
     'password': 'admin',
     'db': 'your_db'
 }
-session.post('http://localhost:8069/web/login', data=login_data)
+session.post(f'{BASE_URL}/web/login', data=login_data)
 
 # Get data
-response = session.get('http://localhost:8069/api/export/all')
+response = session.get(f'{BASE_URL}/dac_erp/api/export/all')
 data = response.json()
+
+# Ví dụ: Get sales data với filter
+response = session.get(
+    f'{BASE_URL}/dac_erp/api/export/sales',
+    params={'date_from': '2025-01-01', 'date_to': '2025-01-31', 'limit': 100}
+)
+sales_data = response.json()
 ```
 
 ### JavaScript
 
 ```javascript
-fetch("/api/export/sales?limit=50")
+// Sử dụng relative path (tự động dùng domain hiện tại)
+fetch("/dac_erp/api/export/sales?limit=50")
   .then((response) => response.json())
   .then((data) => {
-    console.log("Sales data:", data.data);
+    console.log("Sales data:", data);
   });
+
+// Hoặc dùng absolute URL với domain cụ thể
+const BASE_URL = "http(s)://<your-domain>"; // Thay đổi theo môi trường
+// const BASE_URL = "http://localhost:8069";  // Development
+// const BASE_URL = "https://crm.duyan.vn";   // Production
+
+fetch(`${BASE_URL}/dac_erp/api/export/sales?limit=50&date_from=2025-01-01`)
+  .then((response) => response.json())
+  .then((data) => {
+    console.log("Sales data:", data);
+    console.log("Total items:", data.count);
+  })
+  .catch((error) => console.error("Error:", error));
 ```
