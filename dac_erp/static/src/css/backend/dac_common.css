@@ -482,10 +482,6 @@
     max-height: calc(100vh - 420px);
   }
 }
-.dac-theme-production .list-scroll {
-  max-height: 420px; /* cho 2 card dưới */
-  overflow: auto;
-}
 
 .dac-ticket .task-card-header {
   font-weight: 600;
@@ -573,11 +569,6 @@
   border-radius: 8px;
 }
 
-/* danh sách ở hai card phía dưới vẫn dùng class list-scroll sẵn có */
-.list-scroll {
-  max-height: 32vh; /* khối dưới thấp hơn vùng trên */
-  overflow: auto;
-}
 /* ==== KPI màu & hover (Production) ==== */
 .dac-theme-production .k-card {
   background: #fff;
@@ -612,15 +603,31 @@
   color: #16a34a;
 } /* xanh lá */
 
-/* danh sách ở hai card phía dưới */
-.list-scroll {
-  max-height: 22vh; /* ↓ thấp hơn để gọn */
-  min-height: 14vh; /* chống co quá nhỏ */
-  overflow: auto;
-}
-/* 1) HẠ chiều cao chung của 2 panel trên */
+/* ============================================================
+   HƯỚNG DẪN ĐIỀU CHỈNH CHIỀU CAO DASHBOARD SẢN XUẤT
+   ============================================================ */
+
+/* 1️⃣ CHIỀU CAO 2 Ô TRÊN (Việc đang sản xuất + Chưa xác nhận hoàn tất) */
 .o_dac_dashboard.dac-theme-production {
-  --prod-pane-h: 50vh; /*  50vh (có thể 44–48 tùy mắt) */
+  --prod-pane-h: 60vh;
+  /* 👆 Đổi giá trị này:
+     - 50vh (thấp hơn)
+     - 60vh (hiện tại)
+     - 70vh (cao hơn)
+     - Hoặc dùng pixel: 500px, 600px, 700px */
+}
+
+/* 2️⃣ CHIỀU CAO 2 Ô DƯỚI (Đã hoàn thành sản xuất) */
+/* Chỉ áp dụng cho .list-scroll KHÔNG NẰM trong .prod-top-row */
+.dac-theme-production .list-scroll {
+  max-height: 22vh !important;
+  /* 👆 Đổi giá trị này:
+     - 10vh (thấp hơn)
+     - 12vh (hiện tại)
+     - 20vh (cao hơn)
+     - Hoặc dùng pixel: 200px, 300px, 400px */
+  min-height: 14vh; /* Chiều cao tối thiểu, tránh co quá nhỏ */
+  overflow: auto; /* Bật thanh cuộn khi nội dung tràn */
 }
 
 /* 2) CHỈ áp height cho card cha trực tiếp trong 2 cột của hàng trên */
@@ -667,4 +674,15 @@
 .dac-theme-production .prod-top-row .list-scroll > :last-child,
 .dac-theme-production .prod-top-row .work-scroll > .row > :last-child {
   margin-bottom: 0;
+}
+
+/* ============================================================
+   GHI ĐÈ: Ô "Đã hoàn thành" bên DƯỚI (KHÔNG có .prod-top-row)
+   ============================================================ */
+.dac-theme-production .row:not(.prod-top-row) .list-scroll {
+  max-height: 30vh !important;
+  /* 👆 ĐIỀU CHỈNH CHIỀU CAO Ô "ĐÃ HOÀN THÀNH SẢN XUẤT" TẠI ĐÂY */
+  min-height: 15vh !important;
+  flex: initial !important; /* Gỡ flex từ rule trên */
+  overflow: auto !important;
 }
